@@ -1,6 +1,8 @@
 // app/projects/[projectId]/page.tsx
 
 import { getProject } from "@/lib/firestore";
+import { TaskFilters } from "./TaskFilters";
+
 import Link from "next/link";
 
 export default async function ProjectPage(props: {

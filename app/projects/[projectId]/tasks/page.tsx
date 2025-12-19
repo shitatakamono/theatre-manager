@@ -1,76 +1,83 @@
-// app/projects/[projectId]/tasks/page.tsx
+"use client";
 
-import { getTasks, addTask, toggleTask } from "@/lib/firestore";
-import { revalidatePath } from "next/cache";
+import { useState, useEffect } from "react";
+import { getTasks } from "@/lib/firestore";
 import Link from "next/link";
+import { TaskFilters } from "./TaskFilters"; // ← STEP1 で作成したコンポーネントを使用
 
-export default async function TasksPage(props: {
-  params: Promise<{ projectId: string }>;
-}) {
-  const { projectId } = await props.params;
+export default function TasksPage({ params }) {
+  const { projectId } = params;
 
-  // ------------------------------
-  // Server Action: タスク追加
-  // ------------------------------
-  async function createTask(formData: FormData) {
-    "use server";
+  const [tasks, setTasks] = useState([]);
+  const [filtered, setFiltered] = useState([]);
 
-    const title = String(formData.get("title") || "");
-    if (!title) return;
+  const [categoryMap, setCategoryMap] = useState({});
 
-    await addTask(projectId, title);
-    revalidatePath(`/projects/${projectId}/tasks`);
+// Firestore 読み込み（API経由）
+useEffect(() => {
+  async function load() {
+    // ▼ タスク取得（API Route）
+    const resTasks = await fetch(`/api/tasks/list?projectId=${projectId}`);
+    const jsonTasks = await resTasks.json();
+
+    console.log("🔥 page.tsx loaded tasks =", jsonTasks.tasks);
+
+    setTasks(jsonTasks.tasks);
+    setFiltered(jsonTasks.tasks);
+
+    // ▼ カテゴリのロード
+    const res = await fetch("/api/categories/list");
+    const json = await res.json();
+    console.log("🔥 page.tsx json.map =", json.map);
+
+    setCategoryMap(json.map);
   }
 
-  // ------------------------------
-  // Server Action: 完了切替
-  // ------------------------------
-  async function toggleDone(taskId: string, done: boolean) {
-    "use server";
+  load();
+}, [projectId]);
 
-    await toggleTask(projectId, taskId, done);
-    revalidatePath(`/projects/${projectId}/tasks`);
+
+
+  // ----------------------------
+  // フィルター処理
+  // ----------------------------
+  function applyFilter({ stage, parent, child }) {
+    let result = [...tasks];
+
+    if (stage) {
+      result = result.filter((t) => t.stage === stage);
+    }
+    if (parent) {
+      result = result.filter((t) => t.category_parent === parent);
+    }
+    if (child) {
+      result = result.filter((t) => t.category_child === child);
+    }
+
+    setFiltered(result);
   }
-
-  const tasks = await getTasks(projectId);
 
   return (
     <div className="p-6 max-w-xl mx-auto space-y-6">
       <h1 className="text-2xl font-bold">タスク一覧</h1>
 
-      {/* -------- タスク追加フォーム -------- */}
-      <form action={createTask} className="flex gap-2">
-        <input
-          type="text"
-          name="title"
-          placeholder="タスク名を入力"
-          className="border p-2 rounded flex-1"
-          required
-        />
-        <button className="bg-blue-600 text-white px-4 rounded">
-          追加
-        </button>
-      </form>
+      {/* ▼ フィルター UI */}
+      <TaskFilters categoryMap={categoryMap} onFilter={applyFilter} />
 
-      {/* -------- タスク一覧 -------- */}
+      {/* ▼ タスク一覧 */}
       <div className="space-y-3">
-        {tasks.map((task) => (
+        {filtered.map((task) => (
           <div key={task.id} className="flex items-center gap-3 border p-3 rounded">
-            {/* 完了切替（bind で安全に渡す） */}
-            <form action={toggleDone.bind(null, task.id, !task.done)}>
-              <button
-                className={`w-6 h-6 border rounded flex items-center justify-center ${
-                  task.done ? "bg-blue-600 text-white" : ""
-                }`}
-              >
-                {task.done ? "✓" : ""}
-              </button>
-            </form>
+            <div className={`w-2 h-full rounded ${task.done ? "bg-gray-400" : "bg-blue-600"}`}></div>
 
-            {/* タスク名 */}
-            <span className={task.done ? "line-through text-gray-400" : ""}>
-              {task.title}
-            </span>
+            <div className="flex-1">
+              <div className={task.done ? "line-through text-gray-600" : ""}>
+                {task.title}
+              </div>
+              <div className="text-xs text-gray-500">
+                {task.stage} / {task.category_parent} / {task.category_child}
+              </div>
+            </div>
           </div>
         ))}
       </div>
