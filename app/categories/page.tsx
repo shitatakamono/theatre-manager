@@ -1,13 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  getCategories,
-  toCategoryMap
-} from "@/lib/firestore";
+import { getCategories, type Category } from "@/lib/firestore";
 
 export default function CategoryManagerPage() {
-  const [categories, setCategories] = useState<any[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {

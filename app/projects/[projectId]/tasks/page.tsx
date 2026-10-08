@@ -1,24 +1,40 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { getTasks } from "@/lib/firestore";
+import { use, useEffect, useState } from "react";
+import type { Task } from "@/lib/firestore";
 import Link from "next/link";
-import { TaskFilters } from "./TaskFilters"; // ← STEP1 で作成したコンポーネントを使用
+import {
+  TaskFilters,
+  type CategoryMap,
+  type TaskFilterValues,
+} from "./TaskFilters";
 
-export default function TasksPage({ params }) {
-  const { projectId } = params;
+type TasksPageProps = {
+  params: Promise<{ projectId: string }>;
+};
 
-  const [tasks, setTasks] = useState([]);
-  const [filtered, setFiltered] = useState([]);
+type TasksResponse = {
+  tasks: Task[];
+};
 
-  const [categoryMap, setCategoryMap] = useState({});
+type CategoriesResponse = {
+  map: CategoryMap;
+};
+
+export default function TasksPage({ params }: TasksPageProps) {
+  const { projectId } = use(params);
+
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [filtered, setFiltered] = useState<Task[]>([]);
+
+  const [categoryMap, setCategoryMap] = useState<CategoryMap>({});
 
 // Firestore 読み込み（API経由）
 useEffect(() => {
   async function load() {
     // ▼ タスク取得（API Route）
     const resTasks = await fetch(`/api/tasks/list?projectId=${projectId}`);
-    const jsonTasks = await resTasks.json();
+    const jsonTasks = (await resTasks.json()) as TasksResponse;
 
     console.log("🔥 page.tsx loaded tasks =", jsonTasks.tasks);
 
@@ -27,7 +43,7 @@ useEffect(() => {
 
     // ▼ カテゴリのロード
     const res = await fetch("/api/categories/list");
-    const json = await res.json();
+    const json = (await res.json()) as CategoriesResponse;
     console.log("🔥 page.tsx json.map =", json.map);
 
     setCategoryMap(json.map);
@@ -41,7 +57,7 @@ useEffect(() => {
   // ----------------------------
   // フィルター処理
   // ----------------------------
-  function applyFilter({ stage, parent, child }) {
+  function applyFilter({ stage, parent, child }: TaskFilterValues) {
     let result = [...tasks];
 
     if (stage) {

@@ -28,6 +28,21 @@ export type Project = {
   createdAt?: Timestamp;
 };
 
+export type Task = {
+  id: string;
+  title: string;
+  stage: string;
+  category_parent: string;
+  category_child: string;
+  done: boolean;
+};
+
+export type Category = {
+  id: string;
+  name: string;
+  children?: string[];
+};
+
 // 公演追加
 export async function addProject(data: Project) {
   const ref = await addDoc(projectsRef, {
@@ -70,13 +85,13 @@ export async function deleteProject(projectId: string) {
 ================================ */
 
 // タスク取得
-export async function getTasks(projectId: string) {
+export async function getTasks(projectId: string): Promise<Task[]> {
   const ref = collection(db, "projects", projectId, "tasks");
   const snap = await getDocs(ref);
 
   return snap.docs.map((doc) => ({
     id: doc.id,
-    ...doc.data(),
+    ...(doc.data() as Omit<Task, "id">),
   }));
 }
 
@@ -119,18 +134,18 @@ export async function toggleTask(
 ================================ */
 
 // カテゴリ取得
-export async function getCategories() {
+export async function getCategories(): Promise<Category[]> {
   const ref = collection(db, "categories");
   const snap = await getDocs(ref);
 
   return snap.docs.map((doc) => ({
     id: doc.id,
-    ...doc.data(),
+    ...(doc.data() as Omit<Category, "id">),
   }));
 }
 
 // Firestore のカテゴリを { 親名: 子リスト } に変換する
-export function toCategoryMap(categories: any[]) {
+export function toCategoryMap(categories: Category[]) {
   const map: Record<string, string[]> = {};
 
   categories.forEach((cat) => {

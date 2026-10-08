@@ -2,7 +2,20 @@
 
 import { useState } from "react";
 
-export function TaskFilters({ categoryMap, onFilter }) {
+export type CategoryMap = Record<string, string[]>;
+
+export type TaskFilterValues = {
+  stage: string;
+  parent: string;
+  child: string;
+};
+
+type TaskFiltersProps = {
+  categoryMap: CategoryMap;
+  onFilter: (filters: TaskFilterValues) => void;
+};
+
+export function TaskFilters({ categoryMap, onFilter }: TaskFiltersProps) {
   console.log("🔥 TaskFilters categoryMap =", categoryMap);
 
   const [stage, setStage] = useState("");
@@ -11,7 +24,7 @@ export function TaskFilters({ categoryMap, onFilter }) {
 
   const children = parent ? categoryMap[parent] || [] : [];
 
-  function updateFilters(next) {
+  function updateFilters(next: Partial<TaskFilterValues>) {
     const filters = {
       stage: next.stage ?? stage,
       parent: next.parent ?? parent,
