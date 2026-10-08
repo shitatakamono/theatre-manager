@@ -28,6 +28,13 @@ export default async function ProjectPage(props: {
     <div className="p-6 space-y-6">
       <h1 className="text-3xl font-bold">{project.title}</h1>
 
+      {/* 公演情報へ */}
+      <Link href={`/projects/${projectId}/info`}>
+        <button className="bg-emerald-700 text-white px-4 py-2 rounded">
+          公演情報を見る
+        </button>
+      </Link>
+
       {/* タスク一覧へ */}
       <Link href={`/projects/${projectId}/tasks`}>
         <button className="bg-blue-600 text-white px-4 py-2 rounded">

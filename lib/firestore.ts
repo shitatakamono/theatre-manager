@@ -10,6 +10,12 @@ import {
   deleteDoc,
   Timestamp,
 } from "firebase/firestore";
+import {
+  pickPerformanceData,
+  type PerformanceSection,
+  type PerformanceSectionMap,
+  type ProjectPerformanceData,
+} from "./performance";
 
 /* ================================
    公演（projects）
@@ -19,13 +25,23 @@ import {
 const projectsRef = collection(db, "projects");
 
 // 公演型
-export type Project = {
+export type Project = ProjectPerformanceData & {
   title: string;
   start_date?: string;
   end_date?: string;
   show_start_date?: string;
   show_end_date?: string;
   createdAt?: Timestamp;
+};
+
+export type ProjectPerformanceRecord = {
+  id: string;
+  legacyTitle?: string;
+  startDate?: string;
+  endDate?: string;
+  showStartDate?: string;
+  showEndDate?: string;
+  data: ProjectPerformanceData;
 };
 
 export type Task = {
@@ -72,6 +88,34 @@ export async function getProject(projectId: string) {
     id: snap.id,
     ...(snap.data() as Project),
   };
+}
+
+export async function getProjectPerformanceData(
+  projectId: string
+): Promise<ProjectPerformanceRecord | null> {
+  const project = await getProject(projectId);
+  if (!project) return null;
+
+  return {
+    id: project.id,
+    legacyTitle: project.title,
+    startDate: project.start_date,
+    endDate: project.end_date,
+    showStartDate: project.show_start_date,
+    showEndDate: project.show_end_date,
+    data: pickPerformanceData(project),
+  };
+}
+
+export async function updateProjectPerformanceSection<
+  Section extends PerformanceSection,
+>(
+  projectId: string,
+  section: Section,
+  value: PerformanceSectionMap[Section]
+) {
+  const ref = doc(db, "projects", projectId);
+  await updateDoc(ref, { [section]: value });
 }
 
 // 公演削除（必要なら）

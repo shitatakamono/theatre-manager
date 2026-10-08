@@ -1,0 +1,679 @@
+"use client";
+
+import Link from "next/link";
+import { useMemo, useState } from "react";
+import type { ProjectPerformanceRecord } from "@/lib/firestore";
+import {
+  calculateEndTime,
+  formatPerformanceDate,
+  normalizePerformanceData,
+  type CastMember,
+  type ContactInfo,
+  type CreditInfo,
+  type CreditType,
+  type PerformanceInfo,
+  type PerformanceSection,
+  type PerformanceShow,
+  type ProjectPerformanceData,
+  type StaffMember,
+  type StaffRole,
+  type TicketInfo,
+  type VenueInfo,
+} from "@/lib/performance";
+import styles from "./performance-info.module.css";
+
+type MobileTab = "basic" | "shows" | "people" | "other";
+
+const editorLabels: Record<PerformanceSection, string> = {
+  performanceInfo: "基本情報",
+  venue: "会場",
+  performances: "公演回",
+  tickets: "チケット",
+  cast: "出演者",
+  staff: "スタッフ",
+  contact: "問い合わせ・公式情報",
+  credits: "掲載情報",
+};
+
+const creditLabels: Record<CreditType, string> = {
+  support: "後援",
+  sponsor: "協賛・スポンサー",
+  cooperation: "協力",
+  grant: "助成",
+  other: "その他",
+};
+
+const mobileTabs: { id: MobileTab; label: string }[] = [
+  { id: "basic", label: "基本" },
+  { id: "shows", label: "公演" },
+  { id: "people", label: "出演・スタッフ" },
+  { id: "other", label: "その他" },
+];
+
+function createId() {
+  return crypto.randomUUID();
+}
+
+function numberOrUndefined(value: string) {
+  return value === "" ? undefined : Number(value);
+}
+
+function displayValue(value?: string | number) {
+  return value === undefined || value === "" ? "未設定" : String(value);
+}
+
+function externalUrl(value: string) {
+  return /^https?:\/\//i.test(value) ? value : `https://${value}`;
+}
+
+function formatPeriod(project: ProjectPerformanceRecord) {
+  const start = project.showStartDate || project.startDate;
+  const end = project.showEndDate || project.endDate;
+  if (!start && !end) return "期間未設定";
+  if (start && end) return `${start} 〜 ${end}`;
+  return start || end || "期間未設定";
+}
+
+type CardProps = {
+  title: string;
+  section: PerformanceSection;
+  group: MobileTab;
+  className?: string;
+  children: React.ReactNode;
+  onEdit: (section: PerformanceSection) => void;
+};
+
+function InfoCard({
+  title,
+  section,
+  group,
+  className = "",
+  children,
+  onEdit,
+}: CardProps) {
+  return (
+    <section className={`${styles.card} ${className}`} data-mobile-group={group}>
+      <header className={styles.cardHeader}>
+        <h2>{title}</h2>
+        <button className={styles.editButton} onClick={() => onEdit(section)}>
+          編集
+        </button>
+      </header>
+      {children}
+    </section>
+  );
+}
+
+type FieldProps = {
+  label: string;
+  value: string | number;
+  onChange: (value: string) => void;
+  type?: "text" | "number" | "date" | "time" | "email" | "url" | "tel";
+  min?: number;
+  placeholder?: string;
+};
+
+function Field({
+  label,
+  value,
+  onChange,
+  type = "text",
+  min,
+  placeholder,
+}: FieldProps) {
+  return (
+    <label className={styles.field}>
+      <span>{label}</span>
+      <input
+        type={type}
+        min={min}
+        value={value}
+        placeholder={placeholder}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
+  );
+}
+
+type TextareaFieldProps = {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  rows?: number;
+};
+
+function TextareaField({ label, value, onChange, rows = 3 }: TextareaFieldProps) {
+  return (
+    <label className={`${styles.field} ${styles.fullField}`}>
+      <span>{label}</span>
+      <textarea
+        rows={rows}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
+  );
+}
+
+export function PerformanceInfoClient({
+  project,
+}: {
+  project: ProjectPerformanceRecord;
+}) {
+  const [data, setData] = useState<ProjectPerformanceData>(() =>
+    normalizePerformanceData(project.data)
+  );
+  const [draft, setDraft] = useState<ProjectPerformanceData>(() =>
+    normalizePerformanceData(project.data)
+  );
+  const [activeEditor, setActiveEditor] = useState<PerformanceSection | null>(
+    null
+  );
+  const [mobileTab, setMobileTab] = useState<MobileTab>("basic");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [savedMessage, setSavedMessage] = useState("");
+  const [configuredSections, setConfiguredSections] = useState<
+    Set<PerformanceSection>
+  >(
+    () =>
+      new Set(
+        Object.keys(project.data).filter(
+          (key): key is PerformanceSection =>
+            project.data[key as PerformanceSection] !== undefined
+        ) as PerformanceSection[]
+      )
+  );
+
+  const basic = data.performanceInfo as PerformanceInfo;
+  const venue = data.venue as VenueInfo;
+  const shows = data.performances ?? [];
+  const tickets = data.tickets as TicketInfo;
+  const cast = useMemo(
+    () => [...(data.cast ?? [])].sort((a, b) => a.order - b.order),
+    [data.cast]
+  );
+  const staff = data.staff ?? [];
+  const contact = data.contact as ContactInfo;
+  const credits = data.credits ?? [];
+  const displayTitle = basic.title || project.legacyTitle || "公演タイトル未設定";
+
+  function openEditor(section: PerformanceSection) {
+    setDraft(structuredClone(data));
+    setSaveError("");
+    setSavedMessage("");
+    setActiveEditor(section);
+  }
+
+  async function saveSection() {
+    if (!activeEditor) return;
+    const value = draft[activeEditor];
+    if (value === undefined) return;
+
+    setSaving(true);
+    setSaveError("");
+
+    try {
+      const response = await fetch(`/api/projects/${project.id}/info`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ section: activeEditor, value }),
+      });
+
+      if (!response.ok) {
+        const result = (await response.json()) as { error?: string };
+        throw new Error(result.error || "保存できませんでした");
+      }
+
+      setData((current) => ({ ...current, [activeEditor]: value }));
+      setConfiguredSections((current) => {
+        const next = new Set(current);
+        next.add(activeEditor);
+        return next;
+      });
+      setSavedMessage(`${editorLabels[activeEditor]}を保存しました`);
+      setActiveEditor(null);
+    } catch (error) {
+      setSaveError(
+        error instanceof Error ? error.message : "保存できませんでした"
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function patchBasic(patch: Partial<PerformanceInfo>) {
+    setDraft((current) => ({
+      ...current,
+      performanceInfo: {
+        ...(current.performanceInfo as PerformanceInfo),
+        ...patch,
+      },
+    }));
+  }
+
+  function patchVenue(patch: Partial<VenueInfo>) {
+    setDraft((current) => ({
+      ...current,
+      venue: { ...(current.venue as VenueInfo), ...patch },
+    }));
+  }
+
+  function patchTickets(patch: Partial<TicketInfo>) {
+    setDraft((current) => ({
+      ...current,
+      tickets: { ...(current.tickets as TicketInfo), ...patch },
+    }));
+  }
+
+  function patchContact(patch: Partial<ContactInfo>) {
+    setDraft((current) => ({
+      ...current,
+      contact: { ...(current.contact as ContactInfo), ...patch },
+    }));
+  }
+
+  function updateShow(index: number, patch: Partial<PerformanceShow>) {
+    setDraft((current) => ({
+      ...current,
+      performances: (current.performances ?? []).map((show, showIndex) =>
+        showIndex === index ? { ...show, ...patch } : show
+      ),
+    }));
+  }
+
+  function updateCast(index: number, patch: Partial<CastMember>) {
+    setDraft((current) => ({
+      ...current,
+      cast: (current.cast ?? []).map((member, memberIndex) =>
+        memberIndex === index ? { ...member, ...patch } : member
+      ),
+    }));
+  }
+
+  function updateStaffRole(index: number, patch: Partial<StaffRole>) {
+    setDraft((current) => ({
+      ...current,
+      staff: (current.staff ?? []).map((role, roleIndex) =>
+        roleIndex === index ? { ...role, ...patch } : role
+      ),
+    }));
+  }
+
+  function updateStaffMember(
+    roleIndex: number,
+    memberIndex: number,
+    patch: Partial<StaffMember>
+  ) {
+    const roles = draft.staff ?? [];
+    const role = roles[roleIndex];
+    updateStaffRole(roleIndex, {
+      members: role.members.map((member, index) =>
+        index === memberIndex ? { ...member, ...patch } : member
+      ),
+    });
+  }
+
+  function updateCredit(index: number, patch: Partial<CreditInfo>) {
+    setDraft((current) => ({
+      ...current,
+      credits: (current.credits ?? []).map((credit, creditIndex) =>
+        creditIndex === index ? { ...credit, ...patch } : credit
+      ),
+    }));
+  }
+
+  function sectionClass(group: MobileTab) {
+    return mobileTab === group ? "" : styles.mobileSectionHidden;
+  }
+
+  return (
+    <main className={styles.page}>
+      <header className={styles.hero}>
+        <div>
+          <Link className={styles.backLink} href={`/projects/${project.id}`}>
+            ← 公演トップ
+          </Link>
+          <p className={styles.eyebrow}>{basic.performanceName || "公演情報"}</p>
+          <h1>{displayTitle}</h1>
+          {basic.subtitle && <p className={styles.subtitle}>{basic.subtitle}</p>}
+        </div>
+        <div className={styles.heroFacts}>
+          <span>{formatPeriod(project)}</span>
+          <strong>{shows.length}公演</strong>
+          <span>
+            {basic.durationMinutes ? `${basic.durationMinutes}分` : "上演時間未設定"}
+          </span>
+        </div>
+      </header>
+
+      {savedMessage && <p className={styles.successMessage}>{savedMessage}</p>}
+
+      <nav className={styles.mobileTabs} aria-label="公演情報カテゴリ">
+        {mobileTabs.map((tab) => (
+          <button
+            key={tab.id}
+            className={mobileTab === tab.id ? styles.activeTab : ""}
+            onClick={() => setMobileTab(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </nav>
+
+      <div className={styles.dashboard}>
+        <InfoCard
+          title="基本情報"
+          section="performanceInfo"
+          group="basic"
+          className={`${styles.basicCard} ${sectionClass("basic")}`}
+          onEdit={openEditor}
+        >
+          <dl className={styles.factGrid}>
+            <div><dt>主催</dt><dd>{displayValue(basic.organizer)}</dd></div>
+            <div><dt>共催</dt><dd>{displayValue(basic.coOrganizer)}</dd></div>
+            <div><dt>後援</dt><dd>{displayValue(basic.support)}</dd></div>
+            <div><dt>年齢制限</dt><dd>{displayValue(basic.ageRestriction)}</dd></div>
+            <div><dt>休憩</dt><dd>{!configuredSections.has("performanceInfo") ? "未設定" : basic.hasIntermission ? `${basic.intermissionMinutes ?? "時間未設定"}分` : "なし"}</dd></div>
+            <div><dt>上演時間</dt><dd>{basic.durationMinutes ? `${basic.durationMinutes}分（休憩込み）` : "未設定"}</dd></div>
+          </dl>
+          {(basic.notice || basic.synopsis) && (
+            <div className={styles.summaryText}>
+              {basic.notice && <p><strong>注意事項：</strong>{basic.notice}</p>}
+              {basic.synopsis && <p>{basic.synopsis}</p>}
+            </div>
+          )}
+        </InfoCard>
+
+        <InfoCard
+          title="会場"
+          section="venue"
+          group="basic"
+          className={`${styles.venueCard} ${sectionClass("basic")}`}
+          onEdit={openEditor}
+        >
+          <p className={styles.primaryValue}>{venue.hall || venue.name || "未設定"}</p>
+          {venue.hall && venue.name && <p>{venue.name}</p>}
+          <p className={styles.muted}>{displayValue(venue.address)}</p>
+          <p><strong>交通アクセス：</strong>{displayValue(venue.access)}</p>
+          {venue.url && <a className={styles.inlineLink} href={externalUrl(venue.url)} target="_blank" rel="noreferrer">会場サイト ↗</a>}
+        </InfoCard>
+
+        <InfoCard
+          title="公演回"
+          section="performances"
+          group="shows"
+          className={`${styles.showsCard} ${sectionClass("shows")}`}
+          onEdit={openEditor}
+        >
+          {shows.length === 0 ? <p className={styles.empty}>公演回は未設定です</p> : (
+            <div className={styles.showList}>
+              {shows.slice(0, 6).map((show) => {
+                const automaticEnd = calculateEndTime(show.startTime, basic.durationMinutes);
+                const end = show.endTimeOverride || automaticEnd;
+                return (
+                  <div key={show.id} className={styles.showRow}>
+                    <strong>{formatPerformanceDate(show.date)}</strong>
+                    <span>開場 {show.openTime || "--:--"}</span>
+                    <span>開演 {show.startTime || "--:--"}</span>
+                    <span>終演 {end || "--:--"}{show.endTimeOverride && <small> 手動</small>}</span>
+                    {show.note && <em>{show.note}</em>}
+                  </div>
+                );
+              })}
+              {shows.length > 6 && <p className={styles.more}>ほか {shows.length - 6} 公演</p>}
+            </div>
+          )}
+        </InfoCard>
+
+        <InfoCard
+          title="チケット"
+          section="tickets"
+          group="shows"
+          className={`${styles.ticketCard} ${sectionClass("shows")}`}
+          onEdit={openEditor}
+        >
+          {!configuredSections.has("tickets") ? <p className={styles.empty}>未設定</p> : !tickets.isPaid ? <p className={styles.primaryValue}>無料公演</p> : (
+            <dl className={styles.priceGrid}>
+              <div><dt>前売一般</dt><dd>{tickets.advanceGeneral !== undefined ? `¥${tickets.advanceGeneral.toLocaleString()}` : "未設定"}</dd></div>
+              <div><dt>前売学生</dt><dd>{tickets.advanceStudent !== undefined ? `¥${tickets.advanceStudent.toLocaleString()}` : "未設定"}</dd></div>
+              <div><dt>当日一般</dt><dd>{tickets.doorGeneral !== undefined ? `¥${tickets.doorGeneral.toLocaleString()}` : "未設定"}</dd></div>
+              <div><dt>当日学生</dt><dd>{tickets.doorStudent !== undefined ? `¥${tickets.doorStudent.toLocaleString()}` : "未設定"}</dd></div>
+            </dl>
+          )}
+          {tickets.note && <p className={styles.muted}>{tickets.note}</p>}
+        </InfoCard>
+
+        <InfoCard
+          title={`出演者 ${cast.length ? `(${cast.length})` : ""}`}
+          section="cast"
+          group="people"
+          className={`${styles.castCard} ${sectionClass("people")}`}
+          onEdit={openEditor}
+        >
+          {cast.length === 0 ? <p className={styles.empty}>出演者は未設定です</p> : (
+            <ul className={styles.peopleList}>
+              {cast.slice(0, 8).map((member) => (
+                <li key={member.id}>
+                  <span><strong>{member.displayName || member.name}</strong>{member.affiliation && <small>{member.affiliation}</small>}</span>
+                  {member.role && <em>{member.role}</em>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </InfoCard>
+
+        <InfoCard
+          title="スタッフ"
+          section="staff"
+          group="people"
+          className={`${styles.staffCard} ${sectionClass("people")}`}
+          onEdit={openEditor}
+        >
+          {staff.length === 0 ? <p className={styles.empty}>スタッフは未設定です</p> : (
+            <dl className={styles.staffList}>
+              {staff.slice(0, 8).map((role) => (
+                <div key={role.id}><dt>{role.role || "役職未設定"}</dt><dd>{role.members.map((member) => member.creditName || member.name).filter(Boolean).join("、") || "担当者未設定"}</dd></div>
+              ))}
+            </dl>
+          )}
+        </InfoCard>
+
+        <InfoCard
+          title="問い合わせ・公式情報"
+          section="contact"
+          group="other"
+          className={`${styles.contactCard} ${sectionClass("other")}`}
+          onEdit={openEditor}
+        >
+          <p className={styles.primaryValue}>{displayValue(contact.name)}</p>
+          <div className={styles.linkList}>
+            {contact.phone && <a href={`tel:${contact.phone}`}>{contact.phone}</a>}
+            {contact.email && <a href={`mailto:${contact.email}`}>{contact.email}</a>}
+            {contact.website && <a href={externalUrl(contact.website)} target="_blank" rel="noreferrer">公式サイト ↗</a>}
+            {contact.x && <a href={externalUrl(contact.x)} target="_blank" rel="noreferrer">X ↗</a>}
+            {contact.instagram && <a href={externalUrl(contact.instagram)} target="_blank" rel="noreferrer">Instagram ↗</a>}
+          </div>
+          {contact.other && <p className={styles.muted}>{contact.other}</p>}
+        </InfoCard>
+
+        <InfoCard
+          title="掲載情報"
+          section="credits"
+          group="other"
+          className={`${styles.creditsCard} ${sectionClass("other")}`}
+          onEdit={openEditor}
+        >
+          {credits.length === 0 ? <p className={styles.empty}>掲載情報は未設定です</p> : (
+            <ul className={styles.creditList}>
+              {credits.slice(0, 8).map((credit) => (
+                <li key={credit.id}><span>{creditLabels[credit.type]}</span><strong>{credit.displayName || credit.name}</strong>{credit.hasLogo && <small>ロゴあり</small>}</li>
+              ))}
+            </ul>
+          )}
+        </InfoCard>
+      </div>
+
+      {activeEditor && (
+        <div className={styles.drawerLayer} role="presentation">
+          <button className={styles.backdrop} aria-label="編集を閉じる" onClick={() => setActiveEditor(null)} />
+          <aside className={styles.drawer} aria-label={`${editorLabels[activeEditor]}を編集`}>
+            <header className={styles.drawerHeader}>
+              <div><p>公演情報</p><h2>{editorLabels[activeEditor]}を編集</h2></div>
+              <button aria-label="閉じる" onClick={() => setActiveEditor(null)}>×</button>
+            </header>
+            <div className={styles.drawerBody}>{renderEditor()}</div>
+            <footer className={styles.drawerFooter}>
+              {saveError && <p>{saveError}</p>}
+              <button className={styles.cancelButton} onClick={() => setActiveEditor(null)} disabled={saving}>キャンセル</button>
+              <button className={styles.saveButton} onClick={saveSection} disabled={saving}>{saving ? "保存中…" : "保存"}</button>
+            </footer>
+          </aside>
+        </div>
+      )}
+    </main>
+  );
+
+  function renderEditor() {
+    const draftBasic = draft.performanceInfo as PerformanceInfo;
+    const draftVenue = draft.venue as VenueInfo;
+    const draftTickets = draft.tickets as TicketInfo;
+    const draftContact = draft.contact as ContactInfo;
+
+    switch (activeEditor) {
+      case "performanceInfo":
+        return (
+          <div className={styles.formGrid}>
+            <Field label="公演名称" value={draftBasic.performanceName ?? ""} onChange={(value) => patchBasic({ performanceName: value })} />
+            <Field label="公演タイトル" value={draftBasic.title ?? ""} onChange={(value) => patchBasic({ title: value })} placeholder={project.legacyTitle} />
+            <Field label="サブタイトル" value={draftBasic.subtitle ?? ""} onChange={(value) => patchBasic({ subtitle: value })} />
+            <Field label="主催" value={draftBasic.organizer ?? ""} onChange={(value) => patchBasic({ organizer: value })} />
+            <Field label="共催" value={draftBasic.coOrganizer ?? ""} onChange={(value) => patchBasic({ coOrganizer: value })} />
+            <Field label="後援" value={draftBasic.support ?? ""} onChange={(value) => patchBasic({ support: value })} />
+            <Field label="上演時間（分・休憩込み）" type="number" min={1} value={draftBasic.durationMinutes ?? ""} onChange={(value) => patchBasic({ durationMinutes: numberOrUndefined(value) })} />
+            <Field label="年齢制限" value={draftBasic.ageRestriction ?? ""} onChange={(value) => patchBasic({ ageRestriction: value })} />
+            <label className={`${styles.checkboxField} ${styles.fullField}`}><input type="checkbox" checked={draftBasic.hasIntermission} onChange={(event) => patchBasic({ hasIntermission: event.target.checked, intermissionMinutes: event.target.checked ? draftBasic.intermissionMinutes : undefined })} /><span>休憩あり</span></label>
+            {draftBasic.hasIntermission && <Field label="休憩時間（分）" type="number" min={1} value={draftBasic.intermissionMinutes ?? ""} onChange={(value) => patchBasic({ intermissionMinutes: numberOrUndefined(value) })} />}
+            <TextareaField label="注意事項" value={draftBasic.notice ?? ""} onChange={(value) => patchBasic({ notice: value })} />
+            <TextareaField label="公演概要・あらすじ" value={draftBasic.synopsis ?? ""} rows={5} onChange={(value) => patchBasic({ synopsis: value })} />
+          </div>
+        );
+      case "venue":
+        return (
+          <div className={styles.formGrid}>
+            <Field label="会場名" value={draftVenue.name ?? ""} onChange={(value) => patchVenue({ name: value })} />
+            <Field label="ホール・劇場名" value={draftVenue.hall ?? ""} onChange={(value) => patchVenue({ hall: value })} />
+            <Field label="所在地" value={draftVenue.address ?? ""} onChange={(value) => patchVenue({ address: value })} />
+            <Field label="会場URL" type="url" value={draftVenue.url ?? ""} onChange={(value) => patchVenue({ url: value })} />
+            <TextareaField label="交通アクセス" value={draftVenue.access ?? ""} onChange={(value) => patchVenue({ access: value })} />
+          </div>
+        );
+      case "performances":
+        return (
+          <div className={styles.repeater}>
+            {(draft.performances ?? []).map((show, index) => {
+              const autoEnd = calculateEndTime(show.startTime, draftBasic.durationMinutes);
+              return (
+                <div className={styles.repeaterItem} key={show.id}>
+                  <div className={styles.repeaterHeader}><strong>公演回 {index + 1}</strong><button onClick={() => setDraft((current) => ({ ...current, performances: (current.performances ?? []).filter((_, itemIndex) => itemIndex !== index) }))}>削除</button></div>
+                  <div className={styles.formGrid}>
+                    <Field label="日付" type="date" value={show.date} onChange={(value) => updateShow(index, { date: value })} />
+                    <Field label="開場" type="time" value={show.openTime ?? ""} onChange={(value) => updateShow(index, { openTime: value })} />
+                    <Field label="開演" type="time" value={show.startTime ?? ""} onChange={(value) => updateShow(index, { startTime: value })} />
+                    <div className={styles.field}><span>終演予定</span><strong className={styles.calculatedValue}>{show.endTimeOverride || autoEnd || "未計算"} <small>{show.endTimeOverride ? "手動値" : autoEnd ? "自動計算" : ""}</small></strong></div>
+                    <Field label="終演予定を手動上書き" type="time" value={show.endTimeOverride ?? ""} onChange={(value) => updateShow(index, { endTimeOverride: value })} />
+                    <Field label="備考" value={show.note ?? ""} onChange={(value) => updateShow(index, { note: value })} />
+                  </div>
+                </div>
+              );
+            })}
+            <button className={styles.addButton} onClick={() => setDraft((current) => ({ ...current, performances: [...(current.performances ?? []), { id: createId(), date: "" }] }))}>＋公演回を追加</button>
+          </div>
+        );
+      case "tickets":
+        return (
+          <div className={styles.formGrid}>
+            <label className={`${styles.checkboxField} ${styles.fullField}`}><input type="checkbox" checked={draftTickets.isPaid} onChange={(event) => patchTickets({ isPaid: event.target.checked })} /><span>有料公演</span></label>
+            {draftTickets.isPaid && <>
+              <Field label="前売一般" type="number" min={0} value={draftTickets.advanceGeneral ?? ""} onChange={(value) => patchTickets({ advanceGeneral: numberOrUndefined(value) })} />
+              <Field label="前売学生" type="number" min={0} value={draftTickets.advanceStudent ?? ""} onChange={(value) => patchTickets({ advanceStudent: numberOrUndefined(value) })} />
+              <Field label="当日一般" type="number" min={0} value={draftTickets.doorGeneral ?? ""} onChange={(value) => patchTickets({ doorGeneral: numberOrUndefined(value) })} />
+              <Field label="当日学生" type="number" min={0} value={draftTickets.doorStudent ?? ""} onChange={(value) => patchTickets({ doorStudent: numberOrUndefined(value) })} />
+            </>}
+            <TextareaField label="備考" value={draftTickets.note ?? ""} onChange={(value) => patchTickets({ note: value })} />
+          </div>
+        );
+      case "cast":
+        return (
+          <div className={styles.repeater}>
+            {(draft.cast ?? []).map((member, index) => (
+              <div className={styles.repeaterItem} key={member.id}>
+                <div className={styles.repeaterHeader}><strong>出演者 {index + 1}</strong><button onClick={() => setDraft((current) => ({ ...current, cast: (current.cast ?? []).filter((_, itemIndex) => itemIndex !== index) }))}>削除</button></div>
+                <div className={styles.formGrid}>
+                  <Field label="表示順" type="number" min={1} value={member.order} onChange={(value) => updateCast(index, { order: Number(value) || index + 1 })} />
+                  <Field label="氏名" value={member.name} onChange={(value) => updateCast(index, { name: value })} />
+                  <Field label="所属団体" value={member.affiliation ?? ""} onChange={(value) => updateCast(index, { affiliation: value })} />
+                  <Field label="役名" value={member.role ?? ""} onChange={(value) => updateCast(index, { role: value })} />
+                  <Field label="掲載名" value={member.displayName ?? ""} onChange={(value) => updateCast(index, { displayName: value })} placeholder="空欄時は氏名を表示" />
+                </div>
+              </div>
+            ))}
+            <button className={styles.addButton} onClick={() => setDraft((current) => ({ ...current, cast: [...(current.cast ?? []), { id: createId(), order: (current.cast?.length ?? 0) + 1, name: "" }] }))}>＋出演者を追加</button>
+          </div>
+        );
+      case "staff":
+        return (
+          <div className={styles.repeater}>
+            {(draft.staff ?? []).map((role, roleIndex) => (
+              <div className={styles.repeaterItem} key={role.id}>
+                <div className={styles.repeaterHeader}><Field label="役職" value={role.role} onChange={(value) => updateStaffRole(roleIndex, { role: value })} /><button onClick={() => setDraft((current) => ({ ...current, staff: (current.staff ?? []).filter((_, index) => index !== roleIndex) }))}>役職を削除</button></div>
+                <div className={styles.memberList}>
+                  {role.members.map((member, memberIndex) => (
+                    <div className={styles.memberRow} key={member.id}>
+                      <Field label="氏名" value={member.name} onChange={(value) => updateStaffMember(roleIndex, memberIndex, { name: value })} />
+                      <Field label="掲載名" value={member.creditName ?? ""} onChange={(value) => updateStaffMember(roleIndex, memberIndex, { creditName: value })} />
+                      <button onClick={() => updateStaffRole(roleIndex, { members: role.members.filter((_, index) => index !== memberIndex) })}>削除</button>
+                    </div>
+                  ))}
+                  <button className={styles.subAddButton} onClick={() => updateStaffRole(roleIndex, { members: [...role.members, { id: createId(), name: "" }] })}>＋担当者を追加</button>
+                </div>
+              </div>
+            ))}
+            <button className={styles.addButton} onClick={() => setDraft((current) => ({ ...current, staff: [...(current.staff ?? []), { id: createId(), role: "", members: [] }] }))}>＋役職を追加</button>
+          </div>
+        );
+      case "contact":
+        return (
+          <div className={styles.formGrid}>
+            <Field label="問い合わせ名称" value={draftContact.name ?? ""} onChange={(value) => patchContact({ name: value })} />
+            <Field label="電話" type="tel" value={draftContact.phone ?? ""} onChange={(value) => patchContact({ phone: value })} />
+            <Field label="メール" type="email" value={draftContact.email ?? ""} onChange={(value) => patchContact({ email: value })} />
+            <Field label="公式サイト" type="url" value={draftContact.website ?? ""} onChange={(value) => patchContact({ website: value })} />
+            <Field label="X" type="url" value={draftContact.x ?? ""} onChange={(value) => patchContact({ x: value })} />
+            <Field label="Instagram" type="url" value={draftContact.instagram ?? ""} onChange={(value) => patchContact({ instagram: value })} />
+            <TextareaField label="その他SNS" value={draftContact.other ?? ""} onChange={(value) => patchContact({ other: value })} />
+          </div>
+        );
+      case "credits":
+        return (
+          <div className={styles.repeater}>
+            {(draft.credits ?? []).map((credit, index) => (
+              <div className={styles.repeaterItem} key={credit.id}>
+                <div className={styles.repeaterHeader}><strong>掲載情報 {index + 1}</strong><button onClick={() => setDraft((current) => ({ ...current, credits: (current.credits ?? []).filter((_, itemIndex) => itemIndex !== index) }))}>削除</button></div>
+                <div className={styles.formGrid}>
+                  <label className={styles.field}><span>種別</span><select value={credit.type} onChange={(event) => updateCredit(index, { type: event.target.value as CreditType })}>{Object.entries(creditLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+                  <Field label="正式名称" value={credit.name} onChange={(value) => updateCredit(index, { name: value })} />
+                  <Field label="掲載表記" value={credit.displayName ?? ""} onChange={(value) => updateCredit(index, { displayName: value })} />
+                  <label className={styles.checkboxField}><input type="checkbox" checked={credit.hasLogo} onChange={(event) => updateCredit(index, { hasLogo: event.target.checked })} /><span>ロゴ素材あり</span></label>
+                  <TextareaField label="備考" value={credit.note ?? ""} onChange={(value) => updateCredit(index, { note: value })} />
+                </div>
+              </div>
+            ))}
+            <button className={styles.addButton} onClick={() => setDraft((current) => ({ ...current, credits: [...(current.credits ?? []), { id: createId(), type: "support", name: "", hasLogo: false }] }))}>＋掲載情報を追加</button>
+          </div>
+        );
+      default:
+        return null;
+    }
+  }
+}
