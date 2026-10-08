@@ -1,0 +1,505 @@
+.page {
+  min-height: 100vh;
+  overflow-x: clip;
+  background: #f4f6f5;
+  color: #17201d;
+  padding: 22px 32px 28px;
+}
+
+.header,
+.roadmapSection,
+.notices {
+  width: min(1280px, 100%);
+  margin-inline: auto;
+}
+
+.topLine,
+.hero,
+.sectionHeading,
+.noticeHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.topLine {
+  min-height: 36px;
+  margin-bottom: 12px;
+}
+
+.backLink {
+  color: #53645e;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.backLink:hover,
+.actions a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.actions a {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #cbd5d1;
+  border-radius: 7px;
+  background: #fff;
+  color: #375047;
+  padding: 7px 12px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.actions .infoLink {
+  border-color: #286c55;
+  background: #286c55;
+  color: #fff;
+}
+
+.hero {
+  align-items: flex-end;
+  border-bottom: 1px solid #d7dedb;
+  padding-bottom: 18px;
+}
+
+.titleBlock {
+  min-width: 0;
+}
+
+.performanceName {
+  overflow: hidden;
+  color: #64736d;
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hero h1 {
+  overflow-wrap: anywhere;
+  margin-top: 2px;
+  font-size: clamp(25px, 3vw, 38px);
+  font-weight: 850;
+  letter-spacing: -.04em;
+  line-height: 1.1;
+}
+
+.summary {
+  display: flex;
+  align-items: center;
+  gap: 12px 26px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.summary > div {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+}
+
+.summary dt {
+  color: #728079;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .04em;
+}
+
+.summary dd {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.countdown {
+  flex: none;
+  border: 1px solid #bcd0c8;
+  border-radius: 10px;
+  background: #fff;
+  color: #1f644d;
+  padding: 12px 18px;
+  font-size: 19px;
+  font-weight: 900;
+  letter-spacing: -.02em;
+  box-shadow: 0 4px 16px rgba(28, 62, 50, .06);
+}
+
+.roadmapSection {
+  margin-top: 18px;
+}
+
+.sectionHeading {
+  align-items: end;
+  margin-bottom: 10px;
+}
+
+.sectionHeading p {
+  color: #6f7e78;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .16em;
+}
+
+.sectionHeading h2,
+.noticeHeading h2 {
+  font-size: 17px;
+  font-weight: 850;
+  letter-spacing: -.02em;
+}
+
+.sectionHeading > span {
+  color: #75827d;
+  font-size: 10px;
+}
+
+.chartViewport {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  border: 1px solid #d4ddd9;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 6px 24px rgba(24, 48, 39, .05);
+}
+
+.chart {
+  min-width: 880px;
+}
+
+.timelineHeader,
+.roadmapRow {
+  display: grid;
+  grid-template-columns: 176px minmax(0, 1fr);
+}
+
+.timelineHeader {
+  min-height: 42px;
+  border-bottom: 1px solid #d8dfdc;
+  background: #f7f9f8;
+}
+
+.sectionHeader,
+.sectionLabel {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  border-right: 1px solid #d8dfdc;
+  background: inherit;
+  padding-inline: 14px;
+}
+
+.sectionHeader {
+  color: #66746e;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.months,
+.timeline {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+
+.months > span:not(.todayMarker) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid #e1e6e4;
+  color: #62716b;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.months > span:last-of-type {
+  border-right: 0;
+}
+
+.todayMarker {
+  position: absolute;
+  z-index: 4;
+  bottom: 2px;
+  left: var(--today-position);
+  transform: translateX(-50%);
+  border-radius: 3px;
+  background: #d64c42;
+  color: #fff;
+  padding: 2px 4px;
+  font-size: 8px;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.roadmapRow {
+  min-height: 57px;
+  border-bottom: 1px solid #e3e8e6;
+  color: inherit;
+}
+
+.roadmapRow:last-child {
+  border-bottom: 0;
+}
+
+.roadmapRow:hover {
+  background: #f5faf7;
+}
+
+.sectionLabel {
+  z-index: 2;
+  justify-content: space-between;
+  gap: 8px;
+  background: #fff;
+}
+
+.roadmapRow:hover .sectionLabel {
+  background: #f5faf7;
+}
+
+.sectionLabel strong {
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.sectionLabel span {
+  flex: none;
+  border-radius: 999px;
+  background: #e8ecea;
+  color: #6c7974;
+  padding: 3px 6px;
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.timeline {
+  align-items: center;
+  background-image: repeating-linear-gradient(
+    to right,
+    transparent 0,
+    transparent calc(12.5% - 1px),
+    #e5eae8 calc(12.5% - 1px),
+    #e5eae8 12.5%
+  );
+  padding-block: 12px;
+}
+
+.bar {
+  z-index: 1;
+  height: 17px;
+  margin-inline: 5px;
+  border-radius: 5px;
+  background: linear-gradient(90deg, #367c64, #4e977e);
+  box-shadow: inset 0 0 0 1px rgba(18, 79, 59, .12);
+  transition: filter .15s ease, transform .15s ease;
+}
+
+.roadmapRow:hover .bar {
+  filter: saturate(1.2) brightness(.98);
+  transform: translateY(-1px);
+}
+
+.todayLine {
+  position: absolute;
+  z-index: 2;
+  inset-block: 0;
+  left: var(--today-position);
+  width: 2px;
+  transform: translateX(-1px);
+  background: #d64c42;
+  pointer-events: none;
+}
+
+.notices {
+  display: grid;
+  grid-template-columns: 128px minmax(0, 1fr);
+  gap: 18px;
+  margin-top: 15px;
+  border-top: 1px solid #d8dfdc;
+  padding-top: 12px;
+}
+
+.noticeHeading {
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.noticeHeading h2 {
+  font-size: 14px;
+}
+
+.noticeHeading span {
+  border-radius: 999px;
+  background: #e4e9e7;
+  color: #5f6d68;
+  padding: 2px 6px;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.notices ul {
+  display: flex;
+  align-items: center;
+  gap: 6px 20px;
+  flex-wrap: wrap;
+}
+
+.notices li,
+.notices > p {
+  color: #596862;
+  font-size: 11px;
+}
+
+.notices li::before {
+  content: "!";
+  display: inline-grid;
+  width: 16px;
+  height: 16px;
+  place-items: center;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: #fff0d9;
+  color: #9a621d;
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.notFound {
+  min-height: 100vh;
+  display: grid;
+  place-content: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+}
+
+.notFound h1 {
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.notFound a {
+  color: #276b54;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+@media (max-width: 700px) {
+  .page {
+    padding: 14px 14px 24px;
+  }
+
+  .topLine {
+    align-items: flex-start;
+    margin-bottom: 14px;
+  }
+
+  .actions {
+    gap: 5px;
+  }
+
+  .actions a {
+    min-height: 38px;
+    padding-inline: 9px;
+  }
+
+  .hero {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 14px;
+    padding-bottom: 15px;
+  }
+
+  .hero h1 {
+    font-size: 27px;
+  }
+
+  .performanceName {
+    white-space: normal;
+  }
+
+  .summary {
+    display: grid;
+    gap: 7px;
+    margin-top: 11px;
+  }
+
+  .summary > div {
+    align-items: flex-start;
+  }
+
+  .summary dt {
+    flex: 0 0 52px;
+  }
+
+  .countdown {
+    align-self: flex-start;
+    padding: 9px 13px;
+    font-size: 17px;
+  }
+
+  .roadmapSection {
+    margin-top: 15px;
+  }
+
+  .sectionHeading > span {
+    display: none;
+  }
+
+  .chartViewport {
+    margin-right: -14px;
+    border-radius: 8px 0 0 8px;
+  }
+
+  .chart {
+    min-width: 760px;
+  }
+
+  .timelineHeader,
+  .roadmapRow {
+    grid-template-columns: 132px minmax(0, 1fr);
+  }
+
+  .sectionHeader,
+  .sectionLabel {
+    padding-inline: 10px;
+    box-shadow: 7px 0 12px rgba(28, 49, 41, .05);
+  }
+
+  .sectionLabel {
+    align-items: flex-start;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+  }
+
+  .roadmapRow {
+    min-height: 55px;
+  }
+
+  .notices {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    margin-top: 13px;
+  }
+
+  .notices ul {
+    display: grid;
+    gap: 7px;
+  }
+}
+
+@media (max-width: 390px) {
+  .actions a:first-child {
+    display: none;
+  }
+}

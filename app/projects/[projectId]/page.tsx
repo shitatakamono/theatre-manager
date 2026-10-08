@@ -1,53 +1,278 @@
-// app/projects/[projectId]/page.tsx
-
-import { getProject } from "@/lib/firestore";
+import type { CSSProperties } from "react";
 import Link from "next/link";
+import { getProjectPerformanceData } from "@/lib/firestore";
+import styles from "./project-roadmap.module.css";
 
-export default async function ProjectPage(props: {
+type ProjectPageProps = {
   params: Promise<{ projectId: string }>;
-}) {
-  // Next.js 16: params は Promise のため await する
-  const { projectId } = await props.params;
+};
 
-  const project = await getProject(projectId);
+type ProductionStatus = "not-started" | "in-progress" | "complete";
+
+type RoadmapSection = {
+  slug: string;
+  label: string;
+  startColumn: number;
+  endColumn: number;
+  status: ProductionStatus;
+};
+
+const timelineLabels = [
+  "6か月前",
+  "5か月前",
+  "4か月前",
+  "3か月前",
+  "2か月前",
+  "1か月前",
+  "本番",
+  "後",
+];
+
+const roadmapSections: RoadmapSection[] = [
+  { slug: "venue", label: "会場", startColumn: 0, endColumn: 6, status: "not-started" },
+  { slug: "flyer", label: "チラシ・ポスター", startColumn: 2, endColumn: 4, status: "not-started" },
+  { slug: "web", label: "Web・SNS", startColumn: 2, endColumn: 7, status: "not-started" },
+  { slug: "tickets", label: "チケット", startColumn: 4, endColumn: 6, status: "not-started" },
+  { slug: "reception", label: "当日受付", startColumn: 5, endColumn: 6, status: "not-started" },
+  { slug: "accounting", label: "会計", startColumn: 0, endColumn: 7, status: "not-started" },
+];
+
+const statusLabels: Record<ProductionStatus, string> = {
+  "not-started": "未着手",
+  "in-progress": "進行中",
+  complete: "完了",
+};
+
+const DAY_IN_MILLISECONDS = 24 * 60 * 60 * 1000;
+
+function parseDate(value?: string): Date | null {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  return date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+    ? date
+    : null;
+}
+
+function addMonths(date: Date, months: number): Date {
+  const target = new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, 1)
+  );
+  const lastDay = new Date(
+    Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)
+  ).getUTCDate();
+  target.setUTCDate(Math.min(date.getUTCDate(), lastDay));
+  return target;
+}
+
+function getTodayInJapan(): Date {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+
+  return new Date(
+    Date.UTC(Number(values.year), Number(values.month) - 1, Number(values.day))
+  );
+}
+
+function formatDate(date: Date): string {
+  return new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "UTC",
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    weekday: "short",
+  }).format(date);
+}
+
+function formatPeriod(firstDate: Date | null, lastDate: Date | null): string {
+  if (!firstDate) return "公演日未設定";
+  if (!lastDate || firstDate.getTime() === lastDate.getTime()) {
+    return formatDate(firstDate);
+  }
+  return `${formatDate(firstDate)} 〜 ${formatDate(lastDate)}`;
+}
+
+function getCountdown(firstDate: Date | null, today: Date): string {
+  if (!firstDate) return "本番日未設定";
+
+  const days = Math.round(
+    (firstDate.getTime() - today.getTime()) / DAY_IN_MILLISECONDS
+  );
+  if (days > 0) return `本番まであと${days}日`;
+  if (days === 0) return "本番当日";
+  return "本番終了";
+}
+
+function getTodayPosition(firstDate: Date | null, today: Date): number | null {
+  if (!firstDate) return null;
+
+  const timelineStart = addMonths(firstDate, -6);
+  const timelineEnd = addMonths(firstDate, 2);
+  const elapsed = today.getTime() - timelineStart.getTime();
+  const duration = timelineEnd.getTime() - timelineStart.getTime();
+
+  return Math.min(100, Math.max(0, (elapsed / duration) * 100));
+}
+
+export default async function ProjectPage({ params }: ProjectPageProps) {
+  const { projectId } = await params;
+  const project = await getProjectPerformanceData(projectId);
 
   if (!project) {
     return (
-      <div className="p-6">
-        <h1 className="text-xl font-bold mb-2">公演が見つかりません。</h1>
-        <Link href="/">
-          <button className="bg-gray-600 text-white px-4 py-2 rounded">
-            公演一覧に戻る
-          </button>
-        </Link>
-      </div>
+      <main className={styles.notFound}>
+        <h1>公演が見つかりません。</h1>
+        <Link href="/">公演一覧に戻る</Link>
+      </main>
     );
   }
 
+  const basic = project.data.performanceInfo;
+  const venue = project.data.venue;
+  const performanceDates = (project.data.performances ?? [])
+    .map((performance) => parseDate(performance.date))
+    .filter((date): date is Date => date !== null)
+    .sort((a, b) => a.getTime() - b.getTime());
+  const firstDate =
+    performanceDates[0] ??
+    parseDate(project.showStartDate) ??
+    parseDate(project.startDate);
+  const lastDate =
+    performanceDates.at(-1) ??
+    parseDate(project.showEndDate) ??
+    parseDate(project.endDate) ??
+    firstDate;
+  const today = getTodayInJapan();
+  const todayPosition = getTodayPosition(firstDate, today);
+  const timelineStyle =
+    todayPosition === null
+      ? undefined
+      : ({ "--today-position": `${todayPosition}%` } as CSSProperties);
+  const title = basic?.title || project.legacyTitle || "公演タイトル未設定";
+  const performanceName = basic?.performanceName || "公演名称未設定";
+  const venueName = venue?.name || "会場未設定";
+  const hallName = venue?.hall;
+  const notices = [
+    !firstDate ? "公演日が未設定です" : null,
+    !venue?.name ? "会場が未設定です" : null,
+    !basic?.durationMinutes ? "上演時間が未設定です" : null,
+  ].filter((notice): notice is string => notice !== null);
+
   return (
-    <div className="p-6 space-y-6">
-      <h1 className="text-3xl font-bold">{project.title}</h1>
+    <main className={styles.page}>
+      <header className={styles.header}>
+        <div className={styles.topLine}>
+          <Link className={styles.backLink} href="/">
+            ← 公演一覧
+          </Link>
+          <nav className={styles.actions} aria-label="公演メニュー">
+            <Link href={`/projects/${projectId}/tasks`}>タスク一覧</Link>
+            <Link className={styles.infoLink} href={`/projects/${projectId}/info`}>
+              公演情報を見る
+            </Link>
+          </nav>
+        </div>
 
-      {/* 公演情報へ */}
-      <Link href={`/projects/${projectId}/info`}>
-        <button className="bg-emerald-700 text-white px-4 py-2 rounded">
-          公演情報を見る
-        </button>
-      </Link>
+        <div className={styles.hero}>
+          <div className={styles.titleBlock}>
+            <p className={styles.performanceName}>{performanceName}</p>
+            <h1>{title}</h1>
+            <dl className={styles.summary}>
+              <div>
+                <dt>公演期間</dt>
+                <dd>{formatPeriod(firstDate, lastDate)}</dd>
+              </div>
+              <div>
+                <dt>会場</dt>
+                <dd>
+                  {venueName}
+                  {hallName ? ` / ${hallName}` : ""}
+                </dd>
+              </div>
+            </dl>
+          </div>
+          <div className={styles.countdown}>{getCountdown(firstDate, today)}</div>
+        </div>
+      </header>
 
-      {/* タスク一覧へ */}
-      <Link href={`/projects/${projectId}/tasks`}>
-        <button className="bg-blue-600 text-white px-4 py-2 rounded">
-          タスク一覧を見る
-        </button>
-      </Link>
+      <section className={styles.roadmapSection} aria-labelledby="roadmap-title">
+        <div className={styles.sectionHeading}>
+          <div>
+            <p>PRODUCTION ROADMAP</p>
+            <h2 id="roadmap-title">制作ロードマップ</h2>
+          </div>
+          <span>各項目を選択すると詳細画面へ移動します</span>
+        </div>
 
-      {/* 公演一覧へ */}
-      <Link href="/">
-        <button className="bg-gray-600 text-white px-4 py-2 rounded">
-          公演一覧に戻る
-        </button>
-      </Link>
-    </div>
+        <div className={styles.chartViewport}>
+          <div className={styles.chart} style={timelineStyle}>
+            <div className={styles.timelineHeader}>
+              <div className={styles.sectionHeader}>制作セクション</div>
+              <div className={styles.months}>
+                {timelineLabels.map((label) => (
+                  <span key={label}>{label}</span>
+                ))}
+                {todayPosition !== null && (
+                  <span className={styles.todayMarker} aria-label="今日">
+                    今日
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className={styles.rows}>
+              {roadmapSections.map((section) => (
+                <Link
+                  className={styles.roadmapRow}
+                  href={`/projects/${projectId}/production/${section.slug}`}
+                  key={section.slug}
+                >
+                  <div className={styles.sectionLabel}>
+                    <strong>{section.label}</strong>
+                    <span data-status={section.status}>
+                      {statusLabels[section.status]}
+                    </span>
+                  </div>
+                  <div className={styles.timeline}>
+                    <span
+                      className={styles.bar}
+                      style={{
+                        gridColumn: `${section.startColumn + 1} / ${section.endColumn + 2}`,
+                      }}
+                    />
+                    {todayPosition !== null && <span className={styles.todayLine} />}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className={styles.notices} aria-labelledby="notices-title">
+        <div className={styles.noticeHeading}>
+          <h2 id="notices-title">要確認</h2>
+          <span>{notices.length}件</span>
+        </div>
+        {notices.length > 0 ? (
+          <ul>
+            {notices.map((notice) => (
+              <li key={notice}>{notice}</li>
+            ))}
+          </ul>
+        ) : (
+          <p>現在、要確認事項はありません。</p>
+        )}
+      </section>
+    </main>
   );
 }
