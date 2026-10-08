@@ -61,7 +61,7 @@ const standardStaffRoles = [
   "美術",
   "衣装",
   "制作",
-  "宣伝美術",
+  "広報",
   "写真",
   "映像",
 ] as const;
