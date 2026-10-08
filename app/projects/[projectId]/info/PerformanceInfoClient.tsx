@@ -52,8 +52,30 @@ const sectionLinks: { id: string; label: string }[] = [
   { id: "credits", label: "掲載情報" },
 ];
 
+const standardStaffRoles = [
+  "作",
+  "演出",
+  "舞台監督",
+  "照明",
+  "音響",
+  "美術",
+  "衣装",
+  "制作",
+  "宣伝美術",
+  "写真",
+  "映像",
+] as const;
+
 function createId() {
   return crypto.randomUUID();
+}
+
+function createStandardStaffTemplate(): StaffRole[] {
+  return standardStaffRoles.map((role) => ({
+    id: createId(),
+    role,
+    members: [],
+  }));
 }
 
 function numberOrUndefined(value: string) {
@@ -198,7 +220,13 @@ export function PerformanceInfoClient({
   const displayTitle = basic.title || project.legacyTitle || "公演タイトル未設定";
 
   function openEditor(section: PerformanceSection) {
-    setDraft(structuredClone(data));
+    const nextDraft = structuredClone(data);
+
+    if (section === "staff" && !configuredSections.has("staff")) {
+      nextDraft.staff = createStandardStaffTemplate();
+    }
+
+    setDraft(nextDraft);
     setSaveError("");
     setSavedMessage("");
     setActiveEditor(section);
