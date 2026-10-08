@@ -22,8 +22,6 @@ import {
 } from "@/lib/performance";
 import styles from "./performance-info.module.css";
 
-type MobileTab = "basic" | "shows" | "people" | "other";
-
 const editorLabels: Record<PerformanceSection, string> = {
   performanceInfo: "基本情報",
   venue: "会場",
@@ -43,11 +41,15 @@ const creditLabels: Record<CreditType, string> = {
   other: "その他",
 };
 
-const mobileTabs: { id: MobileTab; label: string }[] = [
+const sectionLinks: { id: string; label: string }[] = [
   { id: "basic", label: "基本" },
-  { id: "shows", label: "公演" },
-  { id: "people", label: "出演・スタッフ" },
-  { id: "other", label: "その他" },
+  { id: "venue", label: "会場" },
+  { id: "shows", label: "公演回" },
+  { id: "tickets", label: "料金" },
+  { id: "cast", label: "出演者" },
+  { id: "staff", label: "スタッフ" },
+  { id: "contact", label: "問合せ" },
+  { id: "credits", label: "掲載情報" },
 ];
 
 function createId() {
@@ -75,24 +77,22 @@ function formatPeriod(project: ProjectPerformanceRecord) {
 }
 
 type CardProps = {
+  id: string;
   title: string;
   section: PerformanceSection;
-  group: MobileTab;
-  className?: string;
   children: React.ReactNode;
   onEdit: (section: PerformanceSection) => void;
 };
 
 function InfoCard({
+  id,
   title,
   section,
-  group,
-  className = "",
   children,
   onEdit,
 }: CardProps) {
   return (
-    <section className={`${styles.card} ${className}`} data-mobile-group={group}>
+    <section id={id} className={styles.card}>
       <header className={styles.cardHeader}>
         <h2>{title}</h2>
         <button className={styles.editButton} onClick={() => onEdit(section)}>
@@ -169,7 +169,6 @@ export function PerformanceInfoClient({
   const [activeEditor, setActiveEditor] = useState<PerformanceSection | null>(
     null
   );
-  const [mobileTab, setMobileTab] = useState<MobileTab>("basic");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [savedMessage, setSavedMessage] = useState("");
@@ -323,10 +322,6 @@ export function PerformanceInfoClient({
     }));
   }
 
-  function sectionClass(group: MobileTab) {
-    return mobileTab === group ? "" : styles.mobileSectionHidden;
-  }
-
   return (
     <main className={styles.page}>
       <header className={styles.hero}>
@@ -349,66 +344,62 @@ export function PerformanceInfoClient({
 
       {savedMessage && <p className={styles.successMessage}>{savedMessage}</p>}
 
-      <nav className={styles.mobileTabs} aria-label="公演情報カテゴリ">
-        {mobileTabs.map((tab) => (
-          <button
-            key={tab.id}
-            className={mobileTab === tab.id ? styles.activeTab : ""}
-            onClick={() => setMobileTab(tab.id)}
-          >
-            {tab.label}
-          </button>
+      <nav className={styles.sectionNav} aria-label="公演情報のセクション">
+        {sectionLinks.map((link) => (
+          <a key={link.id} href={`#${link.id}`}>
+            {link.label}
+          </a>
         ))}
       </nav>
 
       <div className={styles.dashboard}>
         <InfoCard
+          id="basic"
           title="基本情報"
           section="performanceInfo"
-          group="basic"
-          className={`${styles.basicCard} ${sectionClass("basic")}`}
           onEdit={openEditor}
         >
-          <dl className={styles.factGrid}>
+          <dl className={styles.detailList}>
+            <div><dt>公演名称</dt><dd>{displayValue(basic.performanceName)}</dd></div>
+            <div><dt>タイトル</dt><dd>{displayTitle}</dd></div>
+            <div><dt>サブタイトル</dt><dd>{displayValue(basic.subtitle)}</dd></div>
             <div><dt>主催</dt><dd>{displayValue(basic.organizer)}</dd></div>
             <div><dt>共催</dt><dd>{displayValue(basic.coOrganizer)}</dd></div>
             <div><dt>後援</dt><dd>{displayValue(basic.support)}</dd></div>
-            <div><dt>年齢制限</dt><dd>{displayValue(basic.ageRestriction)}</dd></div>
-            <div><dt>休憩</dt><dd>{!configuredSections.has("performanceInfo") ? "未設定" : basic.hasIntermission ? `${basic.intermissionMinutes ?? "時間未設定"}分` : "なし"}</dd></div>
             <div><dt>上演時間</dt><dd>{basic.durationMinutes ? `${basic.durationMinutes}分（休憩込み）` : "未設定"}</dd></div>
+            <div><dt>休憩</dt><dd>{!configuredSections.has("performanceInfo") ? "未設定" : basic.hasIntermission ? `${basic.intermissionMinutes ?? "時間未設定"}分` : "なし"}</dd></div>
           </dl>
-          {(basic.notice || basic.synopsis) && (
-            <div className={styles.summaryText}>
-              {basic.notice && <p><strong>注意事項：</strong>{basic.notice}</p>}
-              {basic.synopsis && <p>{basic.synopsis}</p>}
-            </div>
-          )}
+          <div className={styles.longDetails}>
+            <div><h3>年齢制限</h3><p>{displayValue(basic.ageRestriction)}</p></div>
+            <div><h3>注意事項</h3><p>{displayValue(basic.notice)}</p></div>
+            <div><h3>公演概要・あらすじ</h3><p>{displayValue(basic.synopsis)}</p></div>
+          </div>
         </InfoCard>
 
         <InfoCard
+          id="venue"
           title="会場"
           section="venue"
-          group="basic"
-          className={`${styles.venueCard} ${sectionClass("basic")}`}
           onEdit={openEditor}
         >
-          <p className={styles.primaryValue}>{venue.hall || venue.name || "未設定"}</p>
-          {venue.hall && venue.name && <p>{venue.name}</p>}
-          <p className={styles.muted}>{displayValue(venue.address)}</p>
-          <p><strong>交通アクセス：</strong>{displayValue(venue.access)}</p>
-          {venue.url && <a className={styles.inlineLink} href={externalUrl(venue.url)} target="_blank" rel="noreferrer">会場サイト ↗</a>}
+          <dl className={styles.detailList}>
+            <div><dt>会場名</dt><dd>{displayValue(venue.name)}</dd></div>
+            <div><dt>ホール・劇場名</dt><dd>{displayValue(venue.hall)}</dd></div>
+            <div><dt>所在地</dt><dd>{displayValue(venue.address)}</dd></div>
+            <div><dt>会場URL</dt><dd>{venue.url ? <a className={styles.inlineLink} href={externalUrl(venue.url)} target="_blank" rel="noreferrer">{venue.url} ↗</a> : "未設定"}</dd></div>
+          </dl>
+          <div className={styles.longDetails}><div><h3>交通アクセス</h3><p>{displayValue(venue.access)}</p></div></div>
         </InfoCard>
 
         <InfoCard
+          id="shows"
           title="公演回"
           section="performances"
-          group="shows"
-          className={`${styles.showsCard} ${sectionClass("shows")}`}
           onEdit={openEditor}
         >
           {shows.length === 0 ? <p className={styles.empty}>公演回は未設定です</p> : (
             <div className={styles.showList}>
-              {shows.slice(0, 6).map((show) => {
+              {shows.map((show) => {
                 const automaticEnd = calculateEndTime(show.startTime, basic.durationMinutes);
                 const end = show.endTimeOverride || automaticEnd;
                 return (
@@ -421,39 +412,31 @@ export function PerformanceInfoClient({
                   </div>
                 );
               })}
-              {shows.length > 6 && <p className={styles.more}>ほか {shows.length - 6} 公演</p>}
             </div>
           )}
         </InfoCard>
 
         <InfoCard
+          id="tickets"
           title="チケット"
           section="tickets"
-          group="shows"
-          className={`${styles.ticketCard} ${sectionClass("shows")}`}
           onEdit={openEditor}
         >
-          {!configuredSections.has("tickets") ? <p className={styles.empty}>未設定</p> : !tickets.isPaid ? <p className={styles.primaryValue}>無料公演</p> : (
-            <dl className={styles.priceGrid}>
-              <div><dt>前売一般</dt><dd>{tickets.advanceGeneral !== undefined ? `¥${tickets.advanceGeneral.toLocaleString()}` : "未設定"}</dd></div>
-              <div><dt>前売学生</dt><dd>{tickets.advanceStudent !== undefined ? `¥${tickets.advanceStudent.toLocaleString()}` : "未設定"}</dd></div>
-              <div><dt>当日一般</dt><dd>{tickets.doorGeneral !== undefined ? `¥${tickets.doorGeneral.toLocaleString()}` : "未設定"}</dd></div>
-              <div><dt>当日学生</dt><dd>{tickets.doorStudent !== undefined ? `¥${tickets.doorStudent.toLocaleString()}` : "未設定"}</dd></div>
-            </dl>
+          {!configuredSections.has("tickets") ? <p className={styles.empty}>未設定</p> : !tickets.isPaid ? <p className={styles.ticketStatus}>無料公演</p> : (
+            <><p className={styles.ticketStatus}>有料公演</p><table className={styles.priceTable}><thead><tr><th></th><th>一般</th><th>学生</th></tr></thead><tbody><tr><th>前売</th><td>{tickets.advanceGeneral !== undefined ? `${tickets.advanceGeneral.toLocaleString()}円` : "未設定"}</td><td>{tickets.advanceStudent !== undefined ? `${tickets.advanceStudent.toLocaleString()}円` : "未設定"}</td></tr><tr><th>当日</th><td>{tickets.doorGeneral !== undefined ? `${tickets.doorGeneral.toLocaleString()}円` : "未設定"}</td><td>{tickets.doorStudent !== undefined ? `${tickets.doorStudent.toLocaleString()}円` : "未設定"}</td></tr></tbody></table></>
           )}
           {tickets.note && <p className={styles.muted}>{tickets.note}</p>}
         </InfoCard>
 
         <InfoCard
+          id="cast"
           title={`出演者 ${cast.length ? `(${cast.length})` : ""}`}
           section="cast"
-          group="people"
-          className={`${styles.castCard} ${sectionClass("people")}`}
           onEdit={openEditor}
         >
           {cast.length === 0 ? <p className={styles.empty}>出演者は未設定です</p> : (
             <ul className={styles.peopleList}>
-              {cast.slice(0, 8).map((member) => (
+              {cast.map((member) => (
                 <li key={member.id}>
                   <span><strong>{member.displayName || member.name}</strong>{member.affiliation && <small>{member.affiliation}</small>}</span>
                   {member.role && <em>{member.role}</em>}
@@ -464,49 +447,46 @@ export function PerformanceInfoClient({
         </InfoCard>
 
         <InfoCard
+          id="staff"
           title="スタッフ"
           section="staff"
-          group="people"
-          className={`${styles.staffCard} ${sectionClass("people")}`}
           onEdit={openEditor}
         >
           {staff.length === 0 ? <p className={styles.empty}>スタッフは未設定です</p> : (
             <dl className={styles.staffList}>
-              {staff.slice(0, 8).map((role) => (
-                <div key={role.id}><dt>{role.role || "役職未設定"}</dt><dd>{role.members.map((member) => member.creditName || member.name).filter(Boolean).join("、") || "担当者未設定"}</dd></div>
+              {staff.map((role) => (
+                <div key={role.id}><dt>{role.role || "役職未設定"}</dt><dd>{role.members.map((member) => member.creditName || member.name).filter(Boolean).join(" / ") || "担当者未設定"}</dd></div>
               ))}
             </dl>
           )}
         </InfoCard>
 
         <InfoCard
+          id="contact"
           title="問い合わせ・公式情報"
           section="contact"
-          group="other"
-          className={`${styles.contactCard} ${sectionClass("other")}`}
           onEdit={openEditor}
         >
-          <p className={styles.primaryValue}>{displayValue(contact.name)}</p>
-          <div className={styles.linkList}>
-            {contact.phone && <a href={`tel:${contact.phone}`}>{contact.phone}</a>}
-            {contact.email && <a href={`mailto:${contact.email}`}>{contact.email}</a>}
-            {contact.website && <a href={externalUrl(contact.website)} target="_blank" rel="noreferrer">公式サイト ↗</a>}
-            {contact.x && <a href={externalUrl(contact.x)} target="_blank" rel="noreferrer">X ↗</a>}
-            {contact.instagram && <a href={externalUrl(contact.instagram)} target="_blank" rel="noreferrer">Instagram ↗</a>}
-          </div>
-          {contact.other && <p className={styles.muted}>{contact.other}</p>}
+          <dl className={styles.detailList}>
+            <div><dt>問い合わせ名称</dt><dd>{displayValue(contact.name)}</dd></div>
+            <div><dt>電話</dt><dd>{contact.phone ? <a href={`tel:${contact.phone}`}>{contact.phone}</a> : "未設定"}</dd></div>
+            <div><dt>メール</dt><dd>{contact.email ? <a href={`mailto:${contact.email}`}>{contact.email}</a> : "未設定"}</dd></div>
+            <div><dt>公式サイト</dt><dd>{contact.website ? <a href={externalUrl(contact.website)} target="_blank" rel="noreferrer">{contact.website} ↗</a> : "未設定"}</dd></div>
+            <div><dt>X</dt><dd>{contact.x ? <a href={externalUrl(contact.x)} target="_blank" rel="noreferrer">{contact.x} ↗</a> : "未設定"}</dd></div>
+            <div><dt>Instagram</dt><dd>{contact.instagram ? <a href={externalUrl(contact.instagram)} target="_blank" rel="noreferrer">{contact.instagram} ↗</a> : "未設定"}</dd></div>
+            <div><dt>その他SNS</dt><dd>{displayValue(contact.other)}</dd></div>
+          </dl>
         </InfoCard>
 
         <InfoCard
+          id="credits"
           title="掲載情報"
           section="credits"
-          group="other"
-          className={`${styles.creditsCard} ${sectionClass("other")}`}
           onEdit={openEditor}
         >
           {credits.length === 0 ? <p className={styles.empty}>掲載情報は未設定です</p> : (
             <ul className={styles.creditList}>
-              {credits.slice(0, 8).map((credit) => (
+              {credits.map((credit) => (
                 <li key={credit.id}><span>{creditLabels[credit.type]}</span><strong>{credit.displayName || credit.name}</strong>{credit.hasLogo && <small>ロゴあり</small>}</li>
               ))}
             </ul>
