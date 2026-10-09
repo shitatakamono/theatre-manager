@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { getProject } from "@/lib/firestore";
+import { pickPerformanceData } from "@/lib/performance";
+import { VenueManagementClient } from "./VenueManagementClient";
 
 type ProductionSectionPageProps = {
   params: Promise<{ projectId: string; section: string }>;
@@ -32,6 +34,23 @@ export default async function ProductionSectionPage({
           {project ? "公演トップに戻る" : "公演一覧に戻る"}
         </Link>
       </main>
+    );
+  }
+
+  if (section === "venue") {
+    return (
+      <VenueManagementClient
+        project={{
+          id: project.id,
+          legacyTitle: project.title,
+          startDate: project.start_date,
+          endDate: project.end_date,
+          showStartDate: project.show_start_date,
+          showEndDate: project.show_end_date,
+          data: pickPerformanceData(project),
+          venueManagement: project.production?.venue,
+        }}
+      />
     );
   }
 

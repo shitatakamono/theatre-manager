@@ -8,6 +8,7 @@ import {
   updateDoc,
   doc,
   deleteDoc,
+  deleteField,
   Timestamp,
 } from "firebase/firestore";
 import {
@@ -16,6 +17,12 @@ import {
   type PerformanceSectionMap,
   type ProjectPerformanceData,
 } from "./performance";
+import {
+  VENUE_CONTRACT_FIELDS,
+  type ProductionManagement,
+  type VenueManagementSection,
+  type VenueManagementSectionMap,
+} from "./venue-management";
 
 /* ================================
    公演（projects）
@@ -31,6 +38,7 @@ export type Project = ProjectPerformanceData & {
   end_date?: string;
   show_start_date?: string;
   show_end_date?: string;
+  production?: ProductionManagement;
   createdAt?: Timestamp;
 };
 
@@ -116,6 +124,32 @@ export async function updateProjectPerformanceSection<
 ) {
   const ref = doc(db, "projects", projectId);
   await updateDoc(ref, { [section]: value });
+}
+
+export async function updateProjectVenueSection<
+  Section extends VenueManagementSection,
+>(
+  projectId: string,
+  section: Section,
+  value: VenueManagementSectionMap[Section]
+) {
+  const ref = doc(db, "projects", projectId);
+
+  if (section === "contract") {
+    const contract = value as VenueManagementSectionMap["contract"];
+    const updates: Record<string, unknown> = {};
+
+    for (const field of VENUE_CONTRACT_FIELDS) {
+      const fieldValue = contract[field];
+      updates[`production.venue.${field}`] =
+        fieldValue === undefined || fieldValue === "" ? deleteField() : fieldValue;
+    }
+
+    await updateDoc(ref, updates);
+    return;
+  }
+
+  await updateDoc(ref, { [`production.venue.${section}`]: value });
 }
 
 // 公演削除（必要なら）
