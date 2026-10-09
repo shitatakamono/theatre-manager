@@ -254,6 +254,68 @@
   color: #176046;
 }
 
+.scheduleList,
+.accountingList {
+  display: grid;
+  gap: 8px;
+}
+
+.scheduleList li,
+.accountingList li {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) minmax(100px, auto);
+  gap: 4px 12px;
+  align-items: baseline;
+  border-bottom: 1px solid #e8ecea;
+  padding-bottom: 8px;
+}
+
+.scheduleList time,
+.accountingList em {
+  color: #24684f;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.scheduleList span,
+.accountingList small {
+  color: #687871;
+  font-size: 11px;
+  text-align: right;
+}
+
+.scheduleList p,
+.accountingList p {
+  grid-column: 2 / -1;
+  color: #687871;
+  font-size: 11px;
+  white-space: pre-wrap;
+}
+
+.accountingList li > span {
+  justify-self: start;
+  border-radius: 999px;
+  background: #f4e5df;
+  color: #8a4a35;
+  padding: 3px 7px;
+  font-size: 9px;
+  font-weight: 850;
+}
+
+.accountingList li > span[data-complete="true"] {
+  background: #dcf1e8;
+  color: #176046;
+}
+
+.accountingList em {
+  text-align: right;
+}
+
+.accountingList small {
+  grid-column: 2 / -1;
+}
+
 .timetableStatus {
   display: flex;
   align-items: center;
@@ -426,6 +488,7 @@
 }
 
 .field input,
+.field select,
 .field textarea {
   width: 100%;
   border: 1px solid #cbd6d1;
@@ -438,6 +501,7 @@
 }
 
 .field input:focus,
+.field select:focus,
 .field textarea:focus {
   border-color: #267057;
   box-shadow: 0 0 0 3px rgba(38, 112, 87, .1);
@@ -612,6 +676,24 @@
 
   .checkList li {
     justify-self: start;
+  }
+
+  .scheduleList li,
+  .accountingList li {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  .scheduleList span,
+  .accountingList em {
+    grid-column: 2;
+    text-align: left;
+  }
+
+  .scheduleList p,
+  .accountingList p,
+  .accountingList small {
+    grid-column: 2;
+    text-align: left;
   }
 
   .documentList li {

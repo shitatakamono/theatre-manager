@@ -23,6 +23,10 @@ import {
   type VenueManagementSection,
   type VenueManagementSectionMap,
 } from "./venue-management";
+import type {
+  ManagedProductionSection,
+  ProductionSectionDataMap,
+} from "./production-management";
 
 /* ================================
    公演（projects）
@@ -150,6 +154,19 @@ export async function updateProjectVenueSection<
   }
 
   await updateDoc(ref, { [`production.venue.${section}`]: value });
+}
+
+export async function updateProjectProductionBlock<
+  Section extends ManagedProductionSection,
+  Block extends keyof ProductionSectionDataMap[Section] & string,
+>(
+  projectId: string,
+  section: Section,
+  block: Block,
+  value: ProductionSectionDataMap[Section][Block]
+) {
+  const ref = doc(db, "projects", projectId);
+  await updateDoc(ref, { [`production.${section}.${block}`]: value });
 }
 
 // 公演削除（必要なら）

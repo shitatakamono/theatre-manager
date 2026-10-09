@@ -1,7 +1,12 @@
 import Link from "next/link";
 import { getProject } from "@/lib/firestore";
 import { pickPerformanceData } from "@/lib/performance";
+import { AccountingManagementClient } from "./AccountingManagementClient";
+import { FlyerManagementClient } from "./FlyerManagementClient";
+import { ReceptionManagementClient } from "./ReceptionManagementClient";
+import { TicketManagementClient } from "./TicketManagementClient";
 import { VenueManagementClient } from "./VenueManagementClient";
+import { WebManagementClient } from "./WebManagementClient";
 
 type ProductionSectionPageProps = {
   params: Promise<{ projectId: string; section: string }>;
@@ -37,38 +42,61 @@ export default async function ProductionSectionPage({
     );
   }
 
-  if (section === "venue") {
-    return (
-      <VenueManagementClient
-        project={{
-          id: project.id,
-          legacyTitle: project.title,
-          startDate: project.start_date,
-          endDate: project.end_date,
-          showStartDate: project.show_start_date,
-          showEndDate: project.show_end_date,
-          data: pickPerformanceData(project),
-          venueManagement: project.production?.venue,
-        }}
-      />
-    );
-  }
+  const projectRecord = {
+    id: project.id,
+    legacyTitle: project.title,
+    startDate: project.start_date,
+    endDate: project.end_date,
+    showStartDate: project.show_start_date,
+    showEndDate: project.show_end_date,
+    data: pickPerformanceData(project),
+  };
 
-  return (
-    <main className="grid min-h-screen place-content-center gap-4 bg-stone-50 p-6 text-center text-stone-900">
-      <p className="text-xs font-bold tracking-widest text-emerald-800">
-        PRODUCTION
-      </p>
-      <h1 className="text-3xl font-bold">{sectionName}</h1>
-      <p className="text-sm text-stone-600">
-        この制作管理画面は現在準備中です。
-      </p>
-      <Link
-        className="mx-auto mt-2 rounded-md bg-emerald-800 px-4 py-2 text-sm font-bold text-white"
-        href={`/projects/${projectId}`}
-      >
-        公演トップに戻る
-      </Link>
-    </main>
-  );
+  switch (section) {
+    case "venue":
+      return (
+        <VenueManagementClient
+          project={{
+            ...projectRecord,
+            venueManagement: project.production?.venue,
+          }}
+        />
+      );
+    case "flyer":
+      return (
+        <FlyerManagementClient
+          project={projectRecord}
+          management={project.production?.flyer}
+        />
+      );
+    case "web":
+      return (
+        <WebManagementClient
+          project={projectRecord}
+          management={project.production?.web}
+        />
+      );
+    case "tickets":
+      return (
+        <TicketManagementClient
+          project={projectRecord}
+          management={project.production?.tickets}
+        />
+      );
+    case "reception":
+      return (
+        <ReceptionManagementClient
+          project={projectRecord}
+          management={project.production?.reception}
+          ticketManagement={project.production?.tickets}
+        />
+      );
+    case "accounting":
+      return (
+        <AccountingManagementClient
+          project={projectRecord}
+          management={project.production?.accounting}
+        />
+      );
+  }
 }

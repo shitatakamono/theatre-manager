@@ -1,3 +1,11 @@
+import type {
+  AccountingManagement,
+  FlyerManagement,
+  ReceptionManagement,
+  TicketManagement,
+  WebManagement,
+} from "./production-management";
+
 export type VenueDocument = {
   id: string;
   name: string;
@@ -60,6 +68,11 @@ export type VenueManagement = {
 
 export type ProductionManagement = {
   venue?: VenueManagement;
+  flyer?: FlyerManagement;
+  web?: WebManagement;
+  tickets?: TicketManagement;
+  reception?: ReceptionManagement;
+  accounting?: AccountingManagement;
 };
 
 export const VENUE_CONTRACT_FIELDS = [
