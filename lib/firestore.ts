@@ -11,6 +11,7 @@ import {
   deleteField,
   serverTimestamp,
   Timestamp,
+  writeBatch,
 } from "firebase/firestore";
 import {
   pickPerformanceData,
@@ -57,6 +58,7 @@ export type ProjectPerformanceRecord = {
   showEndDate?: string;
   performanceInfoUpdatedAt?: string;
   data: ProjectPerformanceData;
+  production?: ProductionManagement;
 };
 
 export type Task = {
@@ -120,6 +122,7 @@ export async function getProjectPerformanceData(
     showEndDate: project.show_end_date,
     performanceInfoUpdatedAt: project.performanceInfoUpdatedAt?.toDate().toISOString(),
     data: pickPerformanceData(project),
+    production: project.production,
   };
 }
 
@@ -176,10 +179,32 @@ export async function updateProjectProductionBlock<
   await updateDoc(ref, { [`production.${section}.${block}`]: value });
 }
 
-// 公演削除（必要なら）
-export async function deleteProject(projectId: string) {
+export async function renameProject(projectId: string, title: string) {
   const ref = doc(db, "projects", projectId);
-  await deleteDoc(ref);
+  await updateDoc(ref, { title });
+}
+
+export async function deleteProjectWithTasks(projectId: string) {
+  const projectRef = doc(db, "projects", projectId);
+  const tasksSnapshot = await getDocs(
+    collection(db, "projects", projectId, "tasks")
+  );
+
+  if (tasksSnapshot.size < 500) {
+    const batch = writeBatch(db);
+    tasksSnapshot.docs.forEach((task) => batch.delete(task.ref));
+    batch.delete(projectRef);
+    await batch.commit();
+    return;
+  }
+
+  const taskDocs = tasksSnapshot.docs;
+  for (let index = 0; index < taskDocs.length; index += 450) {
+    const batch = writeBatch(db);
+    taskDocs.slice(index, index + 450).forEach((task) => batch.delete(task.ref));
+    await batch.commit();
+  }
+  await deleteDoc(projectRef);
 }
 
 /* ================================

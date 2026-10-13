@@ -7,6 +7,7 @@
 }
 
 .header,
+.onboarding,
 .roadmapSection,
 .notices {
   width: min(1280px, 100%);
@@ -41,12 +42,14 @@
 }
 
 .actions {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.actions a {
+.actions a,
+.howTo summary {
   min-height: 34px;
   display: inline-flex;
   align-items: center;
@@ -59,6 +62,76 @@
   font-weight: 800;
 }
 
+.howTo summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.howTo summary::-webkit-details-marker {
+  display: none;
+}
+
+.howTo > div {
+  position: absolute;
+  z-index: 10;
+  top: 42px;
+  right: 0;
+  width: min(390px, calc(100vw - 28px));
+  border: 1px solid #cbd5d1;
+  border-radius: 10px;
+  background: #fff;
+  padding: 16px;
+  box-shadow: 0 16px 38px rgba(24, 48, 39, .18);
+}
+
+.howTo h2 {
+  font-size: 14px;
+  font-weight: 850;
+}
+
+.howTo ol {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  counter-reset: howto;
+}
+
+.howTo li {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  column-gap: 7px;
+  counter-increment: howto;
+}
+
+.howTo li::before {
+  content: counter(howto);
+  display: grid;
+  width: 19px;
+  height: 19px;
+  place-items: center;
+  border-radius: 50%;
+  background: #e3eee9;
+  color: #286c55;
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.howTo li strong,
+.howTo li span {
+  grid-column: 2;
+}
+
+.howTo li strong {
+  font-size: 11px;
+}
+
+.howTo li span {
+  margin-top: 2px;
+  color: #61706a;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
 .actions .infoLink {
   border-color: #286c55;
   background: #286c55;
@@ -69,6 +142,58 @@
   align-items: flex-end;
   border-bottom: 1px solid #d7dedb;
   padding-bottom: 18px;
+}
+
+.onboarding {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-top: 13px;
+  border: 1px solid #b9cec6;
+  border-radius: 10px;
+  background: #eef6f2;
+  padding: 13px 16px;
+}
+
+.onboarding h2 {
+  color: #205c48;
+  font-size: 15px;
+  font-weight: 850;
+}
+
+.onboarding p {
+  margin-top: 2px;
+  color: #597068;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.onboarding > a {
+  flex: none;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 7px;
+  background: #286c55;
+  color: #fff;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.onboarding[data-compact="true"] {
+  border-color: #d5dfdb;
+  background: #f8faf9;
+  padding-block: 9px;
+}
+
+.onboarding[data-compact="true"] h2 {
+  font-size: 12px;
+}
+
+.onboarding[data-compact="true"] p {
+  display: none;
 }
 
 .titleBlock {
@@ -177,7 +302,7 @@
 .timelineHeader,
 .roadmapRow {
   display: grid;
-  grid-template-columns: 176px minmax(0, 1fr);
+  grid-template-columns: 210px minmax(0, 1fr);
 }
 
 .timelineHeader {
@@ -301,6 +426,31 @@
   padding: 3px 6px;
   font-size: 8px;
   font-weight: 800;
+}
+
+.progressLabel {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.progressLabel b {
+  color: #3f554d;
+  font-size: 8px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.progressLabel span[data-status="in-progress"] {
+  background: #e3eee9;
+  color: #286c55;
+}
+
+.progressLabel span[data-status="complete"] {
+  background: #d9efe4;
+  color: #176342;
 }
 
 .timeline {
@@ -448,6 +598,21 @@
     margin-bottom: 14px;
   }
 
+  .onboarding {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .onboarding > a {
+    justify-content: center;
+  }
+
+  .onboarding[data-compact="true"] {
+    align-items: center;
+    flex-direction: row;
+  }
+
   .actions {
     gap: 5px;
   }
@@ -511,13 +676,17 @@
 
   .timelineHeader,
   .roadmapRow {
-    grid-template-columns: 132px minmax(0, 1fr);
+    grid-template-columns: 150px minmax(0, 1fr);
   }
 
   .sectionHeader,
   .sectionLabel {
     padding-inline: 10px;
     box-shadow: 7px 0 12px rgba(28, 49, 41, .05);
+  }
+
+  .progressLabel {
+    align-items: flex-start;
   }
 
   .sectionLabel {
@@ -544,7 +713,11 @@
 }
 
 @media (max-width: 390px) {
-  .actions a:first-child {
+  .tasksLink {
+    display: none;
+  }
+
+  .onboarding[data-compact="true"] p {
     display: none;
   }
 }

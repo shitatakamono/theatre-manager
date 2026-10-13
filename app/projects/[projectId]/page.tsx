@@ -1,6 +1,16 @@
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { getProjectPerformanceData } from "@/lib/firestore";
+import { resolveSeatsPerPerformance } from "@/lib/performance";
+import {
+  getAccountingProgress,
+  getFlyerProgress,
+  getReceptionProgress,
+  getTicketProgress,
+  getVenueProgress,
+  getWebProgress,
+  type SectionProgress,
+} from "@/lib/production-progress";
 import styles from "./project-roadmap.module.css";
 
 type ProjectPageProps = {
@@ -15,7 +25,6 @@ type RoadmapRange = {
   label: string;
   start: TimelineOffset;
   end: TimelineOffset;
-  status: ProductionStatus;
 };
 
 type RoadmapMilestone = {
@@ -23,7 +32,6 @@ type RoadmapMilestone = {
   slug: string;
   label: string;
   offset: TimelineOffset;
-  status: ProductionStatus;
 };
 
 type RoadmapSection = RoadmapRange | RoadmapMilestone;
@@ -47,12 +55,12 @@ const timelinePoints: { label?: string; offset: TimelineOffset }[] = [
 ];
 
 const roadmapSections: RoadmapSection[] = [
-  { kind: "range", slug: "venue", label: "会場", start: { months: -6 }, end: {}, status: "not-started" },
-  { kind: "range", slug: "flyer", label: "チラシ・ポスター", start: { months: -4 }, end: { months: -2 }, status: "not-started" },
-  { kind: "range", slug: "web", label: "Web・SNS", start: { months: -4 }, end: { weeks: 2 }, status: "not-started" },
-  { kind: "range", slug: "tickets", label: "チケット", start: { months: -2 }, end: {}, status: "not-started" },
-  { kind: "range", slug: "reception", label: "当日受付", start: { months: -1 }, end: {}, status: "not-started" },
-  { kind: "range", slug: "accounting", label: "会計", start: { months: -6 }, end: { weeks: 2 }, status: "not-started" },
+  { kind: "range", slug: "venue", label: "会場", start: { months: -6 }, end: {} },
+  { kind: "range", slug: "flyer", label: "チラシ・ポスター", start: { months: -4 }, end: { months: -2 } },
+  { kind: "range", slug: "web", label: "Web・SNS", start: { months: -4 }, end: { weeks: 2 } },
+  { kind: "range", slug: "tickets", label: "チケット", start: { months: -2 }, end: {} },
+  { kind: "range", slug: "reception", label: "当日受付", start: { months: -1 }, end: {} },
+  { kind: "range", slug: "accounting", label: "会計", start: { months: -6 }, end: { weeks: 2 } },
 ];
 
 const statusLabels: Record<ProductionStatus, string> = {
@@ -207,6 +215,24 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
     !venue?.name ? "会場が未設定です" : null,
     !basic?.durationMinutes ? "上演時間が未設定です" : null,
   ].filter((notice): notice is string => notice !== null);
+  const shows = project.data.performances ?? [];
+  const commonInformationScore = [
+    Boolean(basic?.title?.trim()),
+    shows.length > 0,
+    Boolean(venue?.name?.trim()),
+    resolveSeatsPerPerformance(basic, shows.length) !== undefined,
+  ].filter(Boolean).length;
+  const showOnboarding = commonInformationScore < 4;
+  const onboardingIsPrimary = commonInformationScore <= 1;
+  const production = project.production;
+  const sectionProgress: Record<string, SectionProgress> = {
+    venue: getVenueProgress(production?.venue),
+    flyer: getFlyerProgress(production?.flyer),
+    web: getWebProgress(production?.web, today, lastDate),
+    tickets: getTicketProgress(production?.tickets),
+    reception: getReceptionProgress(production?.reception, shows, today),
+    accounting: getAccountingProgress(production?.accounting, today, firstDate, lastDate),
+  };
 
   return (
     <main className={styles.page}>
@@ -216,7 +242,18 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
             ← 公演一覧
           </Link>
           <nav className={styles.actions} aria-label="公演メニュー">
-            <Link href={`/projects/${projectId}/tasks`}>タスク一覧</Link>
+            <details className={styles.howTo}>
+              <summary>使い方</summary>
+              <div>
+                <h2>SeisakuBoardの基本的な使い方</h2>
+                <ol>
+                  <li><strong>公演情報を登録</strong><span>日時・会場・料金など、全セクションで使う情報を登録します。</span></li>
+                  <li><strong>制作ロードマップを確認</strong><span>いつ何を進めるか、現在の準備状況を確認します。</span></li>
+                  <li><strong>各制作セクションを進める</strong><span>会場、チケット、広報、受付、会計などを順次管理します。</span></li>
+                </ol>
+              </div>
+            </details>
+            <Link className={styles.tasksLink} href={`/projects/${projectId}/tasks`}>タスク一覧</Link>
             <Link className={styles.infoLink} href={`/projects/${projectId}/info`}>
               公演情報を見る
             </Link>
@@ -244,6 +281,16 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
           <div className={styles.countdown}>{getCountdown(firstDate, today)}</div>
         </div>
       </header>
+
+      {showOnboarding && (
+        <section className={styles.onboarding} data-compact={!onboardingIsPrimary}>
+          <div>
+            <h2>まず公演情報を登録しましょう</h2>
+            <p>公演日・会場・座席数などを登録すると、制作ロードマップや各管理画面に自動反映されます。</p>
+          </div>
+          <Link href={`/projects/${projectId}/info`}>公演情報を入力する</Link>
+        </section>
+      )}
 
       <section className={styles.roadmapSection} aria-labelledby="roadmap-title">
         <div className={styles.sectionHeading}>
@@ -286,9 +333,12 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
                 >
                   <div className={styles.sectionLabel}>
                     <strong>{section.label}</strong>
-                    <span data-status={section.status}>
-                      {statusLabels[section.status]}
-                    </span>
+                    <div className={styles.progressLabel}>
+                      <b>準備進捗 {sectionProgress[section.slug].percentage}%</b>
+                      <span data-status={getProgressStatus(sectionProgress[section.slug])}>
+                        {statusLabels[getProgressStatus(sectionProgress[section.slug])]}
+                      </span>
+                    </div>
                   </div>
                   <div className={styles.timeline}>
                     <span
@@ -333,4 +383,10 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
       </section>
     </main>
   );
+}
+
+function getProgressStatus(progress: SectionProgress): ProductionStatus {
+  if (progress.percentage === 100 && progress.total > 0) return "complete";
+  if (progress.completed > 0) return "in-progress";
+  return "not-started";
 }
