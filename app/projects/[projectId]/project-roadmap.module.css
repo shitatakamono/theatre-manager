@@ -171,7 +171,7 @@
 }
 
 .chart {
-  min-width: 880px;
+  min-width: 1120px;
 }
 
 .timelineHeader,
@@ -181,7 +181,7 @@
 }
 
 .timelineHeader {
-  min-height: 42px;
+  min-height: 56px;
   border-bottom: 1px solid #d8dfdc;
   background: #f7f9f8;
 }
@@ -207,22 +207,44 @@
 .months,
 .timeline {
   position: relative;
-  display: grid;
-  grid-template-columns: repeat(8, minmax(0, 1fr));
 }
 
-.months > span:not(.todayMarker) {
+.timelineMark {
+  position: absolute;
+  inset-block: 0;
+  left: var(--mark-position);
+  width: 58px;
+  transform: translateX(-50%);
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  border-right: 1px solid #e1e6e4;
   color: #62716b;
-  font-size: 10px;
+  font-size: 8px;
   font-weight: 700;
+  line-height: 1.25;
+  text-align: center;
 }
 
-.months > span:last-of-type {
-  border-right: 0;
+.timelineMark:first-child {
+  transform: none;
+  align-items: flex-start;
+}
+
+.timelineMarkEnd {
+  transform: translateX(-100%);
+  align-items: flex-end;
+}
+
+.timelineMark strong {
+  white-space: nowrap;
+}
+
+.timelineMark small {
+  margin-top: 3px;
+  color: #8a9691;
+  font-size: 7px;
+  font-weight: 650;
 }
 
 .todayMarker {
@@ -283,29 +305,52 @@
 
 .timeline {
   align-items: center;
-  background-image: repeating-linear-gradient(
-    to right,
-    transparent 0,
-    transparent calc(12.5% - 1px),
-    #e5eae8 calc(12.5% - 1px),
-    #e5eae8 12.5%
-  );
   padding-block: 12px;
 }
 
 .bar {
+  position: absolute;
+  top: 50%;
+  left: var(--bar-start);
+  width: max(5px, calc(var(--bar-end) - var(--bar-start) - 8px));
   z-index: 1;
   height: 17px;
-  margin-inline: 5px;
+  margin-left: 4px;
   border-radius: 5px;
   background: linear-gradient(90deg, #367c64, #4e977e);
   box-shadow: inset 0 0 0 1px rgba(18, 79, 59, .12);
+  transform: translateY(-50%);
   transition: filter .15s ease, transform .15s ease;
+}
+
+.milestone {
+  position: absolute;
+  left: var(--milestone-position, 50%);
+  top: 50%;
+  z-index: 2;
+  width: 10px;
+  height: 10px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #2d765d;
+  box-shadow: 0 0 0 1px #2d765d;
+  transform: translate(-50%, -50%);
+}
+
+.gridLine {
+  position: absolute;
+  z-index: 0;
+  inset-block: 0;
+  left: var(--mark-position);
+  width: 1px;
+  transform: translateX(-1px);
+  background: #e5eae8;
+  pointer-events: none;
 }
 
 .roadmapRow:hover .bar {
   filter: saturate(1.2) brightness(.98);
-  transform: translateY(-1px);
+  transform: translateY(calc(-50% - 1px));
 }
 
 .todayLine {
@@ -461,7 +506,7 @@
   }
 
   .chart {
-    min-width: 760px;
+    min-width: 1120px;
   }
 
   .timelineHeader,

@@ -9,6 +9,7 @@ import {
   doc,
   deleteDoc,
   deleteField,
+  serverTimestamp,
   Timestamp,
 } from "firebase/firestore";
 import {
@@ -44,6 +45,7 @@ export type Project = ProjectPerformanceData & {
   show_end_date?: string;
   production?: ProductionManagement;
   createdAt?: Timestamp;
+  performanceInfoUpdatedAt?: Timestamp;
 };
 
 export type ProjectPerformanceRecord = {
@@ -53,6 +55,7 @@ export type ProjectPerformanceRecord = {
   endDate?: string;
   showStartDate?: string;
   showEndDate?: string;
+  performanceInfoUpdatedAt?: string;
   data: ProjectPerformanceData;
 };
 
@@ -115,6 +118,7 @@ export async function getProjectPerformanceData(
     endDate: project.end_date,
     showStartDate: project.show_start_date,
     showEndDate: project.show_end_date,
+    performanceInfoUpdatedAt: project.performanceInfoUpdatedAt?.toDate().toISOString(),
     data: pickPerformanceData(project),
   };
 }
@@ -127,7 +131,10 @@ export async function updateProjectPerformanceSection<
   value: PerformanceSectionMap[Section]
 ) {
   const ref = doc(db, "projects", projectId);
-  await updateDoc(ref, { [section]: value });
+  await updateDoc(ref, {
+    [section]: value,
+    performanceInfoUpdatedAt: serverTimestamp(),
+  });
 }
 
 export async function updateProjectVenueSection<

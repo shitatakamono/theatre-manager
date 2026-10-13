@@ -6,6 +6,9 @@ export type PerformanceInfo = {
   coOrganizer?: string;
   support?: string;
   durationMinutes?: number;
+  seatsPerPerformance?: number;
+  /** @deprecated 旧データの読み取り互換用。新規保存では使用しない。 */
+  totalSeats?: number;
   hasIntermission: boolean;
   intermissionMinutes?: number;
   ageRestriction?: string;
@@ -148,16 +151,66 @@ export function formatPerformanceDate(date: string): string {
   }).format(parsed);
 }
 
+export function resolveSeatsPerPerformance(
+  performanceInfo: PerformanceInfo | undefined,
+  performanceCount: number
+): number | undefined {
+  const seatsPerPerformance = performanceInfo?.seatsPerPerformance;
+  if (
+    seatsPerPerformance !== undefined &&
+    Number.isFinite(seatsPerPerformance) &&
+    seatsPerPerformance >= 0
+  ) {
+    return seatsPerPerformance;
+  }
+
+  const legacyTotalSeats = performanceInfo?.totalSeats;
+  if (
+    legacyTotalSeats === undefined ||
+    !Number.isFinite(legacyTotalSeats) ||
+    legacyTotalSeats < 0 ||
+    performanceCount <= 0
+  ) {
+    return undefined;
+  }
+
+  const legacySeatsPerPerformance = legacyTotalSeats / performanceCount;
+  return Number.isInteger(legacySeatsPerPerformance)
+    ? legacySeatsPerPerformance
+    : undefined;
+}
+
+export function calculateTotalSeats(
+  performanceInfo: PerformanceInfo | undefined,
+  performanceCount: number
+): number | undefined {
+  if (performanceCount <= 0) return undefined;
+
+  const seatsPerPerformance = resolveSeatsPerPerformance(
+    performanceInfo,
+    performanceCount
+  );
+  return seatsPerPerformance === undefined
+    ? undefined
+    : seatsPerPerformance * performanceCount;
+}
+
 export function normalizePerformanceData(
   data: ProjectPerformanceData
 ): ProjectPerformanceData {
+  const performances = Array.isArray(data.performances) ? data.performances : [];
+
   return {
     performanceInfo: {
       ...data.performanceInfo,
+      seatsPerPerformance: resolveSeatsPerPerformance(
+        data.performanceInfo,
+        performances.length
+      ),
       hasIntermission: data.performanceInfo?.hasIntermission ?? false,
     },
     venue: data.venue ?? {},
-    performances: Array.isArray(data.performances) ? data.performances : [],
+    performances,
     tickets: {
       ...data.tickets,
       isPaid: data.tickets?.isPaid ?? false,

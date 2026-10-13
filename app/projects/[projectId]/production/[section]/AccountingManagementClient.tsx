@@ -1,54 +1,99 @@
 "use client";
 
+import { useState } from "react";
 import type { ProjectPerformanceRecord } from "@/lib/firestore";
-import { normalizeAccounting, type AccountingItem, type AccountingManagement } from "@/lib/production-management";
-import { CheckboxField, CheckList, DetailList, EditorDrawer, Field, ManagementSection, ProductionHeader, ReferencePanel, SectionNav, TextareaField, createId, displayValue, numberOrUndefined, styles, useProductionEditor } from "./ProductionCommon";
+import {
+  normalizeAccounting,
+  type AccountingManagement,
+  type AccountingTask,
+  type AccountingTaskPhase,
+} from "@/lib/production-management";
+import {
+  CheckboxField,
+  EditorDrawer,
+  Field,
+  ManagementSection,
+  ProductionHeader,
+  ReferencePanel,
+  SectionNav,
+  TextareaField,
+  createId,
+  styles,
+  useProductionEditor,
+} from "./ProductionCommon";
 
-type Block = keyof AccountingManagement & string;
-const labels: Record<Block, string> = { budget: "予算概要", expenses: "支出", incomes: "収入", sales: "公演当日売上", closing: "公演後精算" };
-const links = Object.entries(labels).map(([id, label]) => ({ id, label }));
-const money = (value?: number) => value === undefined ? "未設定" : `${value.toLocaleString()}円`;
+const phaseLabels: Record<AccountingTaskPhase, string> = {
+  before: "公演前",
+  day: "公演当日",
+  after: "公演後",
+};
+const phases = Object.keys(phaseLabels) as AccountingTaskPhase[];
+const links = phases.map((phase) => ({ id: phase, label: phaseLabels[phase] }));
 
 export function AccountingManagementClient({ project, management }: { project: ProjectPerformanceRecord; management?: AccountingManagement }) {
-  const editor = useProductionEditor(project.id, "accounting", normalizeAccounting(management));
+  const editor = useProductionEditor<AccountingManagement, "tasks">(project.id, "accounting", normalizeAccounting(management));
+  const [activePhase, setActivePhase] = useState<AccountingTaskPhase>("before");
   const basic = project.data.performanceInfo;
-  const shows = project.data.performances ?? [];
   const title = basic?.title || project.legacyTitle || "公演タイトル未設定";
-  const patch = <K extends Exclude<Block, "expenses" | "incomes">>(block: K, value: Partial<NonNullable<AccountingManagement[K]>>) => editor.setDraft((current) => ({ ...current, [block]: { ...(current[block] as object), ...value } }));
-  const updateItem = (block: "expenses" | "incomes", index: number, value: Partial<AccountingItem>) => editor.setDraft((current) => ({ ...current, [block]: (current[block] ?? []).map((item, itemIndex) => itemIndex === index ? { ...item, ...value } : item) }));
+
+  function openPhase(phase: AccountingTaskPhase) {
+    setActivePhase(phase);
+    editor.open("tasks");
+  }
+
+  function updateTask(id: string, patch: Partial<AccountingTask>) {
+    editor.setDraft((current) => ({
+      ...current,
+      tasks: (current.tasks ?? []).map((task) => task.id === id ? { ...task, ...patch } : task),
+    }));
+  }
 
   return <main className={styles.page}>
     <ProductionHeader projectId={project.id} title={title} sectionTitle="会計" eyebrow="PRODUCTION / ACCOUNTING" />
-    <ReferencePanel items={[{ label: "公演名称", value: displayValue(basic?.performanceName) }, { label: "公演回数", value: `${shows.length}公演` }, { label: "チケット", value: project.data.tickets ? project.data.tickets.isPaid ? "有料" : "無料" : "未設定" }]} />
-    {editor.message && <p className={styles.successMessage}>{editor.message}</p>}<SectionNav links={links} />
+    <ReferencePanel title="会計管理の方針" items={[
+      { label: "管理対象", value: "徴収・支払・返金・入金確認・報告業務" },
+      { label: "金額・仕訳の正本", value: "会計ソフト／Excel" },
+      { label: "数値入力", value: "SeisakuBoardでは管理しません" },
+    ]} />
+    {editor.message && <p className={styles.successMessage}>{editor.message}</p>}
+    <SectionNav links={links} />
     <div className={styles.content}>
-      <ManagementSection id="budget" title={labels.budget} block="budget" onEdit={editor.open}><DetailList items={[{ label: "総予算", value: money(editor.data.budget?.budgetTotal) }, { label: "見込収入", value: money(editor.data.budget?.expectedIncome) }, { label: "見込支出", value: money(editor.data.budget?.expectedExpense) }]} /></ManagementSection>
-      <ManagementSection id="expenses" title={labels.expenses} block="expenses" onEdit={editor.open}>{renderItems(editor.data.expenses ?? [], true)}</ManagementSection>
-      <ManagementSection id="incomes" title={labels.incomes} block="incomes" onEdit={editor.open}>{renderItems(editor.data.incomes ?? [], false)}</ManagementSection>
-      <ManagementSection id="sales" title={labels.sales} block="sales" onEdit={editor.open}><DetailList items={[{ label: "チケット売上", value: money(editor.data.sales?.ticketSales) }, { label: "物販売上", value: money(editor.data.sales?.merchandiseSales) }, { label: "合計", value: money((editor.data.sales?.ticketSales ?? 0) + (editor.data.sales?.merchandiseSales ?? 0)) }]} /></ManagementSection>
-      <ManagementSection id="closing" title={labels.closing} block="closing" onEdit={editor.open}><CheckList items={[{ label: "現金精算", complete: editor.data.closing?.cashSettled }, { label: "スタッフ支払", complete: editor.data.closing?.staffPaymentsCompleted }, { label: "収支締め", complete: editor.data.closing?.closingCompleted }]} />{editor.data.closing?.note && <p className={styles.note}>{editor.data.closing.note}</p>}</ManagementSection>
+      {phases.map((phase) => {
+        const tasks = (editor.data.tasks ?? []).filter((task) => task.phase === phase);
+        const completed = tasks.filter((task) => task.completed).length;
+        return <ManagementSection key={phase} id={phase} title={`${phaseLabels[phase]}（${completed}/${tasks.length}完了）`} block={phase} onEdit={openPhase}>
+          <AccountingTaskList tasks={tasks} />
+        </ManagementSection>;
+      })}
     </div>
-    {editor.active && <EditorDrawer title={labels[editor.active]} saving={editor.saving} error={editor.error} onClose={editor.close} onSave={() => editor.save(labels[editor.active!])}>{renderEditor()}</EditorDrawer>}
+    {editor.active && <EditorDrawer title={phaseLabels[activePhase]} saving={editor.saving} error={editor.error} onClose={editor.close} onSave={() => editor.save(`${phaseLabels[activePhase]}の会計TODO`)}>
+      <div className={styles.repeater}>
+        {(editor.draft.tasks ?? []).filter((task) => task.phase === activePhase).map((task) => <div className={styles.repeaterItem} key={task.id}>
+          <div className={styles.repeaterHeader}>
+            <strong>{task.label || "項目名未設定"}</strong>
+            {task.custom && <button onClick={() => editor.setDraft((current) => ({ ...current, tasks: (current.tasks ?? []).filter((currentTask) => currentTask.id !== task.id) }))}>削除</button>}
+          </div>
+          <div className={styles.formGrid}>
+            <CheckboxField label="完了" checked={task.completed ?? false} onChange={(completed) => updateTask(task.id, { completed, completedAt: completed ? new Date().toISOString() : undefined })} />
+            {task.custom && <Field label="項目名" value={task.label} onChange={(label) => updateTask(task.id, { label })} />}
+            {task.custom && <label className={styles.field}><span>フェーズ</span><select value={task.phase} onChange={(event) => updateTask(task.id, { phase: event.target.value as AccountingTaskPhase })}>{phases.map((phase) => <option key={phase} value={phase}>{phaseLabels[phase]}</option>)}</select></label>}
+            <Field label="期限" type="date" value={task.dueDate ?? ""} onChange={(dueDate) => updateTask(task.id, { dueDate })} />
+            <Field label="担当" value={task.responsible ?? ""} onChange={(responsible) => updateTask(task.id, { responsible })} />
+            <TextareaField label="備考" value={task.note ?? ""} onChange={(note) => updateTask(task.id, { note })} />
+          </div>
+        </div>)}
+        <button className={styles.addButton} onClick={() => editor.setDraft((current) => ({ ...current, tasks: [...(current.tasks ?? []), { id: createId(), label: "", phase: activePhase, custom: true, completed: false }] }))}>＋会計項目を追加</button>
+      </div>
+    </EditorDrawer>}
   </main>;
+}
 
-  function renderItems(items: AccountingItem[], expense: boolean) {
-    if (items.length === 0) return <p className={styles.empty}>{expense ? "支出" : "収入"}項目はありません。</p>;
-    return <ul className={styles.accountingList}>{items.map((item) => <li key={item.id}><span data-complete={expense ? item.paid : true}>{expense ? item.paid ? "支払済" : "未払い" : "収入"}</span><strong>{item.name || "内容未設定"}</strong><em>{money(item.amount)}</em><small>{[item.category, expense && item.deadline ? `期限 ${item.deadline}` : ""].filter(Boolean).join(" / ")}</small>{item.note && <p>{item.note}</p>}</li>)}</ul>;
-  }
-
-  function renderEditor() {
-    const draft = editor.draft;
-    switch (editor.active) {
-      case "budget": { const value = draft.budget ?? {}; return <div className={styles.formGrid}><Field label="総予算" type="number" min={0} value={value.budgetTotal ?? ""} onChange={(v) => patch("budget", { budgetTotal: numberOrUndefined(v) })} /><Field label="見込収入" type="number" min={0} value={value.expectedIncome ?? ""} onChange={(v) => patch("budget", { expectedIncome: numberOrUndefined(v) })} /><Field label="見込支出" type="number" min={0} value={value.expectedExpense ?? ""} onChange={(v) => patch("budget", { expectedExpense: numberOrUndefined(v) })} /></div>; }
-      case "expenses": return renderRepeater("expenses", draft.expenses ?? [], true);
-      case "incomes": return renderRepeater("incomes", draft.incomes ?? [], false);
-      case "sales": { const value = draft.sales ?? {}; return <div className={styles.formGrid}><Field label="チケット売上" type="number" min={0} value={value.ticketSales ?? ""} onChange={(v) => patch("sales", { ticketSales: numberOrUndefined(v) })} /><Field label="物販売上" type="number" min={0} value={value.merchandiseSales ?? ""} onChange={(v) => patch("sales", { merchandiseSales: numberOrUndefined(v) })} /></div>; }
-      case "closing": { const value = draft.closing ?? {}; return <div className={styles.formGrid}><CheckboxField label="現金精算済" checked={value.cashSettled ?? false} onChange={(checked) => patch("closing", { cashSettled: checked })} /><CheckboxField label="スタッフ支払完了" checked={value.staffPaymentsCompleted ?? false} onChange={(checked) => patch("closing", { staffPaymentsCompleted: checked })} /><CheckboxField label="収支締め完了" checked={value.closingCompleted ?? false} onChange={(checked) => patch("closing", { closingCompleted: checked })} /><TextareaField label="備考" value={value.note ?? ""} onChange={(v) => patch("closing", { note: v })} /></div>; }
-      default: return null;
-    }
-  }
-
-  function renderRepeater(block: "expenses" | "incomes", items: AccountingItem[], expense: boolean) {
-    return <div className={styles.repeater}>{items.map((item, index) => <div className={styles.repeaterItem} key={item.id}><div className={styles.repeaterHeader}><strong>{expense ? "支出" : "収入"} {index + 1}</strong><button onClick={() => editor.setDraft((current) => ({ ...current, [block]: (current[block] ?? []).filter((_, itemIndex) => itemIndex !== index) }))}>削除</button></div><div className={styles.formGrid}><Field label="分類" value={item.category ?? ""} onChange={(v) => updateItem(block, index, { category: v })} /><Field label="内容" value={item.name} onChange={(v) => updateItem(block, index, { name: v })} /><Field label="金額" type="number" min={0} value={item.amount ?? ""} onChange={(v) => updateItem(block, index, { amount: numberOrUndefined(v) })} />{expense && <><Field label="支払期限" type="date" value={item.deadline ?? ""} onChange={(v) => updateItem(block, index, { deadline: v })} /><CheckboxField label="支払済" checked={item.paid ?? false} onChange={(checked) => updateItem(block, index, { paid: checked })} full /></>}<TextareaField label="備考" value={item.note ?? ""} onChange={(v) => updateItem(block, index, { note: v })} /></div></div>)}<button className={styles.addButton} onClick={() => editor.setDraft((current) => ({ ...current, [block]: [...(current[block] ?? []), { id: createId(), name: "", ...(expense ? { paid: false } : {}) }] }))}>＋{expense ? "支出" : "収入"}を追加</button></div>;
-  }
+function AccountingTaskList({ tasks }: { tasks: AccountingTask[] }) {
+  if (tasks.length === 0) return <p className={styles.empty}>会計項目はありません。</p>;
+  return <ul className={styles.accountingList}>{tasks.map((task) => <li key={task.id}>
+    <span data-complete={task.completed}>{task.completed ? "完了" : "未完了"}</span>
+    <strong>{task.label || "項目名未設定"}</strong>
+    <em>{task.dueDate || "期限未設定"}</em>
+    <small>{task.responsible ? `担当 ${task.responsible}` : "担当未設定"}{task.note ? ` / ${task.note}` : ""}</small>
+  </li>)}</ul>;
 }

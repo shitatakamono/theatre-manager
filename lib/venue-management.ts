@@ -15,8 +15,8 @@ export type VenueDocument = {
 };
 
 export type VenueRegisteredPerformance = {
-  checkedAt?: string;
-  needsUpdate?: boolean;
+  finalized?: boolean;
+  finalizedAt?: string;
   note?: string;
 };
 
@@ -27,38 +27,50 @@ export type VenueMaterials = {
   note?: string;
 };
 
+export type ApplicationStatus = "not-required" | "not-applied" | "applied" | "approved";
+export type SubmissionStatus = "not-required" | "not-submitted" | "submitted";
+export type AdjustmentStatus = "not-started" | "adjusting" | "confirmed";
+export type ReductionStatus = "not-applicable" | "not-applied" | "applied" | "approved" | "rejected";
+
+export type VenueLogistics = {
+  dateTime?: string;
+  vehicleType?: string;
+  vehicleCount?: number;
+  note?: string;
+};
+
+export type VenueTechnicalSubmission = {
+  equipment?: string;
+  equipmentApplication?: SubmissionStatus;
+  setupPlan?: SubmissionStatus;
+};
+
 export type VenueMeeting = {
+  adjustmentStatus?: AdjustmentStatus;
   plannedDate?: string;
   completedDate?: string;
   troupeParticipants?: string;
-  loadInOut?: string;
-  audienceCapacity?: string;
-  receptionLocation?: string;
-  doorTicket?: string;
-  dressingRoom?: string;
-  merchLocation?: string;
-  foodDrink?: string;
-  parking?: string;
-  garbage?: string;
-  restoration?: string;
-  prohibitedItems?: string;
-  technicalOverview?: string;
-  timetableConfirmed?: boolean;
+  loadIn?: VenueLogistics;
+  loadOut?: VenueLogistics;
+  merchandiseApplication?: ApplicationStatus;
+  parkingApplication?: ApplicationStatus;
+  audio?: VenueTechnicalSubmission;
+  lighting?: VenueTechnicalSubmission;
+  video?: VenueTechnicalSubmission;
+  /** 旧形式との読み取り互換用 */
+  audioApplication?: ApplicationStatus;
+  lightingApplication?: ApplicationStatus;
+  videoApplication?: ApplicationStatus;
   note?: string;
 };
 
 export type VenueManagement = {
-  useStartDate?: string;
-  useEndDate?: string;
-  useStartTime?: string;
-  useEndTime?: string;
-  applicationDate?: string;
-  venueFee?: number;
-  paymentDeadline?: string;
-  paymentPaid?: boolean;
+  useStartAt?: string;
+  useEndAt?: string;
   venueContactName?: string;
   venueContact?: string;
   reservationNumber?: string;
+  reductionStatus?: ReductionStatus;
   note?: string;
   registeredPerformance?: VenueRegisteredPerformance;
   materials?: VenueMaterials;
@@ -76,17 +88,12 @@ export type ProductionManagement = {
 };
 
 export const VENUE_CONTRACT_FIELDS = [
-  "useStartDate",
-  "useEndDate",
-  "useStartTime",
-  "useEndTime",
-  "applicationDate",
-  "venueFee",
-  "paymentDeadline",
-  "paymentPaid",
+  "useStartAt",
+  "useEndAt",
   "venueContactName",
   "venueContact",
   "reservationNumber",
+  "reductionStatus",
   "note",
 ] as const satisfies readonly (keyof VenueManagement)[];
 
@@ -128,12 +135,43 @@ export function isVenueManagementSection(
 export function normalizeVenueManagement(
   data?: VenueManagement
 ): VenueManagement {
+  const legacy = data as (VenueManagement & {
+    useStartDate?: string;
+    useEndDate?: string;
+    useStartTime?: string;
+    useEndTime?: string;
+    registeredPerformance?: VenueRegisteredPerformance & {
+      checkedAt?: string;
+      needsUpdate?: boolean;
+    };
+    meeting?: VenueMeeting & {
+      loadInOut?: string;
+    };
+  }) | undefined;
+
+  const toSubmissionStatus = (value?: ApplicationStatus): SubmissionStatus =>
+    value === "not-required"
+      ? "not-required"
+      : value === "applied" || value === "approved"
+        ? "submitted"
+        : "not-submitted";
+
   return {
     ...data,
-    paymentPaid: data?.paymentPaid ?? false,
+    useStartAt:
+      data?.useStartAt ??
+      (legacy?.useStartDate
+        ? `${legacy.useStartDate}T${legacy.useStartTime || "00:00"}`
+        : undefined),
+    useEndAt:
+      data?.useEndAt ??
+      (legacy?.useEndDate
+        ? `${legacy.useEndDate}T${legacy.useEndTime || "00:00"}`
+        : undefined),
+    reductionStatus: data?.reductionStatus ?? "not-applicable",
     registeredPerformance: {
       ...data?.registeredPerformance,
-      needsUpdate: data?.registeredPerformance?.needsUpdate ?? false,
+      finalized: data?.registeredPerformance?.finalized ?? false,
     },
     materials: {
       ...data?.materials,
@@ -143,7 +181,27 @@ export function normalizeVenueManagement(
     },
     meeting: {
       ...data?.meeting,
-      timetableConfirmed: data?.meeting?.timetableConfirmed ?? false,
+      adjustmentStatus: data?.meeting?.adjustmentStatus ?? "not-started",
+      loadIn: data?.meeting?.loadIn ??
+        (legacy?.meeting?.loadInOut ? { note: legacy.meeting.loadInOut } : {}),
+      loadOut: data?.meeting?.loadOut ?? {},
+      merchandiseApplication: data?.meeting?.merchandiseApplication ?? "not-required",
+      parkingApplication: data?.meeting?.parkingApplication ?? "not-required",
+      audio: {
+        ...data?.meeting?.audio,
+        equipmentApplication: data?.meeting?.audio?.equipmentApplication ?? toSubmissionStatus(data?.meeting?.audioApplication),
+        setupPlan: data?.meeting?.audio?.setupPlan ?? "not-submitted",
+      },
+      lighting: {
+        ...data?.meeting?.lighting,
+        equipmentApplication: data?.meeting?.lighting?.equipmentApplication ?? toSubmissionStatus(data?.meeting?.lightingApplication),
+        setupPlan: data?.meeting?.lighting?.setupPlan ?? "not-submitted",
+      },
+      video: {
+        ...data?.meeting?.video,
+        equipmentApplication: data?.meeting?.video?.equipmentApplication ?? toSubmissionStatus(data?.meeting?.videoApplication),
+        setupPlan: data?.meeting?.video?.setupPlan ?? "not-submitted",
+      },
     },
     documents: Array.isArray(data?.documents) ? data.documents : [],
   };

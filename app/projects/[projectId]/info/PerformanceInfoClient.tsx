@@ -5,8 +5,10 @@ import { useMemo, useState } from "react";
 import type { ProjectPerformanceRecord } from "@/lib/firestore";
 import {
   calculateEndTime,
+  calculateTotalSeats,
   formatPerformanceDate,
   normalizePerformanceData,
+  resolveSeatsPerPerformance,
   type CastMember,
   type ContactInfo,
   type CreditInfo,
@@ -209,6 +211,8 @@ export function PerformanceInfoClient({
   const basic = data.performanceInfo as PerformanceInfo;
   const venue = data.venue as VenueInfo;
   const shows = data.performances ?? [];
+  const seatsPerPerformance = resolveSeatsPerPerformance(basic, shows.length);
+  const totalSeats = calculateTotalSeats(basic, shows.length);
   const tickets = data.tickets as TicketInfo;
   const cast = useMemo(
     () => [...(data.cast ?? [])].sort((a, b) => a.order - b.order),
@@ -395,6 +399,9 @@ export function PerformanceInfoClient({
             <div><dt>共催</dt><dd>{displayValue(basic.coOrganizer)}</dd></div>
             <div><dt>後援</dt><dd>{displayValue(basic.support)}</dd></div>
             <div><dt>上演時間</dt><dd>{basic.durationMinutes ? `${basic.durationMinutes}分（休憩込み）` : "未設定"}</dd></div>
+            <div><dt>1公演あたりの座席数</dt><dd>{seatsPerPerformance === undefined ? "未設定" : `${seatsPerPerformance.toLocaleString()}席`}</dd></div>
+            <div><dt>公演回数</dt><dd>{shows.length.toLocaleString()}回</dd></div>
+            <div><dt>総席数</dt><dd>{totalSeats === undefined ? "未算出" : `${totalSeats.toLocaleString()}席`}</dd></div>
             <div><dt>休憩</dt><dd>{!configuredSections.has("performanceInfo") ? "未設定" : basic.hasIntermission ? `${basic.intermissionMinutes ?? "時間未設定"}分` : "なし"}</dd></div>
           </dl>
           <div className={styles.longDetails}>
@@ -559,6 +566,7 @@ export function PerformanceInfoClient({
             <Field label="共催" value={draftBasic.coOrganizer ?? ""} onChange={(value) => patchBasic({ coOrganizer: value })} />
             <Field label="後援" value={draftBasic.support ?? ""} onChange={(value) => patchBasic({ support: value })} />
             <Field label="上演時間（分・休憩込み）" type="number" min={1} value={draftBasic.durationMinutes ?? ""} onChange={(value) => patchBasic({ durationMinutes: numberOrUndefined(value) })} />
+            <Field label="1公演あたりの座席数" type="number" min={0} value={draftBasic.seatsPerPerformance ?? ""} onChange={(value) => patchBasic({ seatsPerPerformance: numberOrUndefined(value), totalSeats: undefined })} />
             <Field label="年齢制限" value={draftBasic.ageRestriction ?? ""} onChange={(value) => patchBasic({ ageRestriction: value })} />
             <label className={`${styles.checkboxField} ${styles.fullField}`}><input type="checkbox" checked={draftBasic.hasIntermission} onChange={(event) => patchBasic({ hasIntermission: event.target.checked, intermissionMinutes: event.target.checked ? draftBasic.intermissionMinutes : undefined })} /><span>休憩あり</span></label>
             {draftBasic.hasIntermission && <Field label="休憩時間（分）" type="number" min={1} value={draftBasic.intermissionMinutes ?? ""} onChange={(value) => patchBasic({ intermissionMinutes: numberOrUndefined(value) })} />}

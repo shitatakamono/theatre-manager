@@ -9,32 +9,50 @@ type ProjectPageProps = {
 
 type ProductionStatus = "not-started" | "in-progress" | "complete";
 
-type RoadmapSection = {
+type RoadmapRange = {
+  kind: "range";
   slug: string;
   label: string;
-  startColumn: number;
-  endColumn: number;
+  start: TimelineOffset;
+  end: TimelineOffset;
   status: ProductionStatus;
 };
 
-const timelineLabels = [
-  "6か月前",
-  "5か月前",
-  "4か月前",
-  "3か月前",
-  "2か月前",
-  "1か月前",
-  "本番",
-  "後",
+type RoadmapMilestone = {
+  kind: "milestone";
+  slug: string;
+  label: string;
+  offset: TimelineOffset;
+  status: ProductionStatus;
+};
+
+type RoadmapSection = RoadmapRange | RoadmapMilestone;
+
+type TimelineOffset = { months?: number; weeks?: number };
+
+const timelinePoints: { label?: string; offset: TimelineOffset }[] = [
+  { label: "6か月前", offset: { months: -6 } },
+  { label: "5か月前", offset: { months: -5 } },
+  { label: "4か月前", offset: { months: -4 } },
+  { label: "3か月前", offset: { months: -3 } },
+  { offset: { weeks: -10 } },
+  { label: "2か月前", offset: { months: -2 } },
+  { offset: { weeks: -6 } },
+  { label: "1か月前", offset: { months: -1 } },
+  { offset: { weeks: -3 } },
+  { offset: { weeks: -2 } },
+  { offset: { weeks: -1 } },
+  { label: "本番", offset: {} },
+  { label: "公演後", offset: { weeks: 2 } },
 ];
 
 const roadmapSections: RoadmapSection[] = [
-  { slug: "venue", label: "会場", startColumn: 0, endColumn: 6, status: "not-started" },
-  { slug: "flyer", label: "チラシ・ポスター", startColumn: 2, endColumn: 4, status: "not-started" },
-  { slug: "web", label: "Web・SNS", startColumn: 2, endColumn: 7, status: "not-started" },
-  { slug: "tickets", label: "チケット", startColumn: 4, endColumn: 6, status: "not-started" },
-  { slug: "reception", label: "当日受付", startColumn: 5, endColumn: 6, status: "not-started" },
-  { slug: "accounting", label: "会計", startColumn: 0, endColumn: 7, status: "not-started" },
+  { kind: "range", slug: "venue", label: "会場", start: { months: -6 }, end: {}, status: "not-started" },
+  { kind: "range", slug: "flyer", label: "チラシ・ポスター", start: { months: -4 }, end: { months: -2 }, status: "not-started" },
+  { kind: "range", slug: "web", label: "Web・SNS", start: { months: -4 }, end: { weeks: 2 }, status: "not-started" },
+  { kind: "range", slug: "tickets", label: "チケット", start: { months: -2 }, end: {}, status: "not-started" },
+  { kind: "range", slug: "reception", label: "当日受付", start: { months: -1 }, end: {}, status: "not-started" },
+  { kind: "range", slug: "accounting", label: "会計", start: { months: -6 }, end: { weeks: 2 }, status: "not-started" },
 ];
 
 const statusLabels: Record<ProductionStatus, string> = {
@@ -69,6 +87,15 @@ function addMonths(date: Date, months: number): Date {
   return target;
 }
 
+function addWeeks(date: Date, weeks: number): Date {
+  return new Date(date.getTime() + weeks * 7 * DAY_IN_MILLISECONDS);
+}
+
+function getOffsetDate(date: Date, offset: TimelineOffset): Date {
+  if (offset.months !== undefined) return addMonths(date, offset.months);
+  return addWeeks(date, offset.weeks ?? 0);
+}
+
 function getTodayInJapan(): Date {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "Asia/Tokyo",
@@ -93,6 +120,10 @@ function formatDate(date: Date): string {
   }).format(date);
 }
 
+function formatTimelineDate(date: Date): string {
+  return `${date.getUTCMonth() + 1}月${date.getUTCDate()}日`;
+}
+
 function formatPeriod(firstDate: Date | null, lastDate: Date | null): string {
   if (!firstDate) return "公演日未設定";
   if (!lastDate || firstDate.getTime() === lastDate.getTime()) {
@@ -112,12 +143,12 @@ function getCountdown(firstDate: Date | null, today: Date): string {
   return "本番終了";
 }
 
-function getTodayPosition(firstDate: Date | null, today: Date): number | null {
+function getTimelinePosition(firstDate: Date | null, date: Date): number | null {
   if (!firstDate) return null;
 
   const timelineStart = addMonths(firstDate, -6);
-  const timelineEnd = addMonths(firstDate, 2);
-  const elapsed = today.getTime() - timelineStart.getTime();
+  const timelineEnd = addWeeks(firstDate, 2);
+  const elapsed = date.getTime() - timelineStart.getTime();
   const duration = timelineEnd.getTime() - timelineStart.getTime();
 
   return Math.min(100, Math.max(0, (elapsed / duration) * 100));
@@ -152,7 +183,17 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
     parseDate(project.endDate) ??
     firstDate;
   const today = getTodayInJapan();
-  const todayPosition = getTodayPosition(firstDate, today);
+  const todayPosition = getTimelinePosition(firstDate, today);
+  const marks = timelinePoints.map((point, index) => {
+    const date = firstDate ? getOffsetDate(firstDate, point.offset) : null;
+    return {
+      ...point,
+      date,
+      position: date
+        ? getTimelinePosition(firstDate, date) ?? 0
+        : index / (timelinePoints.length - 1) * 100,
+    };
+  });
   const timelineStyle =
     todayPosition === null
       ? undefined
@@ -218,8 +259,15 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
             <div className={styles.timelineHeader}>
               <div className={styles.sectionHeader}>制作セクション</div>
               <div className={styles.months}>
-                {timelineLabels.map((label) => (
-                  <span key={label}>{label}</span>
+                {marks.map((mark) => (
+                  <span
+                    className={`${styles.timelineMark} ${mark.position === 100 ? styles.timelineMarkEnd : ""}`}
+                    key={`${mark.offset.months ?? "w"}-${mark.offset.weeks ?? 0}`}
+                    style={{ "--mark-position": `${mark.position}%` } as CSSProperties}
+                  >
+                    {mark.label && <strong>{mark.label}</strong>}
+                    <small>{mark.date ? formatTimelineDate(mark.date) : "--月--日"}</small>
+                  </span>
                 ))}
                 {todayPosition !== null && (
                   <span className={styles.todayMarker} aria-label="今日">
@@ -244,11 +292,21 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
                   </div>
                   <div className={styles.timeline}>
                     <span
-                      className={styles.bar}
-                      style={{
-                        gridColumn: `${section.startColumn + 1} / ${section.endColumn + 2}`,
-                      }}
+                      className={section.kind === "range" ? styles.bar : styles.milestone}
+                      style={firstDate ? (section.kind === "range" ? ({
+                        "--bar-start": `${getTimelinePosition(firstDate, getOffsetDate(firstDate, section.start)) ?? 0}%`,
+                        "--bar-end": `${getTimelinePosition(firstDate, getOffsetDate(firstDate, section.end)) ?? 100}%`,
+                      } as CSSProperties) : ({
+                        "--milestone-position": `${getTimelinePosition(firstDate, getOffsetDate(firstDate, section.offset)) ?? 0}%`,
+                      } as CSSProperties)) : undefined}
                     />
+                    {marks.map((mark) => (
+                      <span
+                        className={styles.gridLine}
+                        key={`${mark.offset.months ?? "w"}-${mark.offset.weeks ?? 0}`}
+                        style={{ "--mark-position": `${mark.position}%` } as CSSProperties}
+                      />
+                    ))}
                     {todayPosition !== null && <span className={styles.todayLine} />}
                   </div>
                 </Link>

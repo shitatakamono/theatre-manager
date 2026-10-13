@@ -1,27 +1,29 @@
 "use client";
 
 import type { ProjectPerformanceRecord } from "@/lib/firestore";
-import { formatPerformanceDate } from "@/lib/performance";
+import { calculateTotalSeats, formatPerformanceDate, resolveSeatsPerPerformance } from "@/lib/performance";
 import { normalizeTickets, type TicketManagement } from "@/lib/production-management";
 import { CheckboxField, CheckList, DetailList, EditorDrawer, Field, ManagementSection, ProductionHeader, ReferencePanel, SectionNav, TextareaField, displayValue, numberOrUndefined, styles, useProductionEditor } from "./ProductionCommon";
 
-type Block = keyof TicketManagement & string;
+type Block = Exclude<keyof TicketManagement, "capacities"> & string;
 const labels: Record<Block, string> = { methods: "販売方法", sales: "販売期間", reservations: "予約・招待", handoff: "当日受付への引継ぎ" };
 const links = [{ id: "prices", label: "料金" }, ...Object.entries(labels).map(([id, label]) => ({ id, label }))];
 
 export function TicketManagementClient({ project, management }: { project: ProjectPerformanceRecord; management?: TicketManagement }) {
-  const editor = useProductionEditor(project.id, "tickets", normalizeTickets(management));
+  const editor = useProductionEditor<TicketManagement, Block>(project.id, "tickets", normalizeTickets(management));
   const basic = project.data.performanceInfo;
   const venue = project.data.venue;
   const shows = project.data.performances ?? [];
   const tickets = project.data.tickets;
+  const seatsPerPerformance = resolveSeatsPerPerformance(basic, shows.length);
+  const totalSeats = calculateTotalSeats(basic, shows.length);
   const title = basic?.title || project.legacyTitle || "公演タイトル未設定";
   const patch = <K extends Block>(block: K, value: Partial<NonNullable<TicketManagement[K]>>) => editor.setDraft((current) => ({ ...current, [block]: { ...(current[block] as object), ...value } }));
   const price = (value?: number) => value === undefined ? "未設定" : `${value.toLocaleString()}円`;
 
   return <main className={styles.page}>
     <ProductionHeader projectId={project.id} title={title} sectionTitle="チケット" eyebrow="PRODUCTION / TICKETS" />
-    <ReferencePanel items={[{ label: "会場", value: displayValue(venue?.name) }, { label: "公演回", value: shows.map((show) => `${formatPerformanceDate(show.date)} ${show.startTime || "--:--"}`).join(" / ") || "未設定" }, { label: "料金種別", value: tickets ? tickets.isPaid ? "有料" : "無料" : "未設定" }]} />
+    <ReferencePanel items={[{ label: "会場", value: displayValue(venue?.name) }, { label: "公演回", value: shows.map((show) => `${formatPerformanceDate(show.date)} ${show.startTime || "--:--"}`).join(" / ") || "未設定" }, { label: "1公演あたり", value: seatsPerPerformance === undefined ? "未設定" : `${seatsPerPerformance.toLocaleString()}席` }, { label: `全${shows.length}公演`, value: totalSeats === undefined ? "未算出" : `${totalSeats.toLocaleString()}席` }, { label: "料金種別", value: tickets ? tickets.isPaid ? "有料" : "無料" : "未設定" }]} />
     {editor.message && <p className={styles.successMessage}>{editor.message}</p>}<SectionNav links={links} />
     <div className={styles.content}>
       <ManagementSection id="prices" title="チケット料金（公演情報から参照）" block="methods" onEdit={editor.open} editable={false}><DetailList items={[{ label: "前売一般", value: price(tickets?.advanceGeneral) }, { label: "前売学生", value: price(tickets?.advanceStudent) }, { label: "当日一般", value: price(tickets?.doorGeneral) }, { label: "当日学生", value: price(tickets?.doorStudent) }]} /><p className={styles.description}>料金を変更する場合は「公演情報を見る」から編集してください。</p></ManagementSection>

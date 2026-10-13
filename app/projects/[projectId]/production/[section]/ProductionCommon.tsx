@@ -84,7 +84,7 @@ export function Field({
   label: string;
   value: string | number;
   onChange: (value: string) => void;
-  type?: "text" | "number" | "date" | "time" | "url";
+  type?: "text" | "number" | "date" | "time" | "datetime-local" | "tel" | "url";
   min?: number;
 }) {
   return (

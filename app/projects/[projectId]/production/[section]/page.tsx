@@ -49,6 +49,7 @@ export default async function ProductionSectionPage({
     endDate: project.end_date,
     showStartDate: project.show_start_date,
     showEndDate: project.show_end_date,
+    performanceInfoUpdatedAt: project.performanceInfoUpdatedAt?.toDate().toISOString(),
     data: pickPerformanceData(project),
   };
 
@@ -59,6 +60,7 @@ export default async function ProductionSectionPage({
           project={{
             ...projectRecord,
             venueManagement: project.production?.venue,
+            receptionManagement: project.production?.reception,
           }}
         />
       );
@@ -88,7 +90,7 @@ export default async function ProductionSectionPage({
         <ReceptionManagementClient
           project={projectRecord}
           management={project.production?.reception}
-          ticketManagement={project.production?.tickets}
+          accountingManagement={project.production?.accounting}
         />
       );
     case "accounting":
