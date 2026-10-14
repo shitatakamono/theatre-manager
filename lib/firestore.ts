@@ -34,6 +34,7 @@ import type {
   ProductionSectionDataMap,
 } from "./production-management";
 import type { ProjectMember, ProjectRole, UserProfile } from "./auth";
+import { removeUndefinedValues } from "./firestore-values";
 
 /* ================================
    公演（projects）
@@ -202,7 +203,9 @@ export async function updateProjectVenueSection<
     return;
   }
 
-  await updateDoc(ref, { [`production.venue.${section}`]: value });
+  await updateDoc(ref, {
+    [`production.venue.${section}`]: removeUndefinedValues(value),
+  });
 }
 
 export async function updateProjectProductionBlock<
@@ -215,7 +218,9 @@ export async function updateProjectProductionBlock<
   value: ProductionSectionDataMap[Section][Block]
 ) {
   const ref = doc(db, "projects", projectId);
-  await updateDoc(ref, { [`production.${section}.${block}`]: value });
+  await updateDoc(ref, {
+    [`production.${section}.${block}`]: removeUndefinedValues(value),
+  });
 }
 
 export async function renameProject(projectId: string, title: string) {
