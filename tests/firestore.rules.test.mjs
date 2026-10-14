@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { deepStrictEqual, strictEqual } from "node:assert/strict";
 import { after, before, beforeEach, describe, it } from "node:test";
 import {
   assertFails,
@@ -13,8 +14,10 @@ import {
   doc,
   getDoc,
   getDocs,
+  query,
   setDoc,
   updateDoc,
+  where,
   writeBatch,
 } from "firebase/firestore";
 
@@ -154,6 +157,44 @@ describe("editor role", () => {
 });
 
 describe("owner role", () => {
+  it("lists only the projects available to each owner, editor, and viewer", async () => {
+    const listProjectId = "owner-list-project";
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(projectRef(db, listProjectId), {
+        title: "Owner list performance",
+        memberUids: [ownerUid],
+      });
+      await setDoc(memberRef(db, ownerUid, listProjectId), {
+        uid: ownerUid,
+        role: "owner",
+        email: `${ownerUid}@example.test`,
+      });
+    });
+
+    for (const [uid, expectedIds] of [
+      [ownerUid, [listProjectId, projectId]],
+      [editorUid, [projectId]],
+      [viewerUid, [projectId]],
+    ]) {
+      const db = firestoreFor(uid);
+      const snapshot = await assertSucceeds(getDocs(query(
+        collection(db, "projects"),
+        where("memberUids", "array-contains", uid),
+      )));
+      deepStrictEqual(snapshot.docs.map((project) => project.id).sort(), expectedIds.sort());
+    }
+  });
+
+  it("returns no projects for a non-member using the same memberUids query", async () => {
+    const db = firestoreFor(outsiderUid);
+    const snapshot = await assertSucceeds(getDocs(query(
+      collection(db, "projects"),
+      where("memberUids", "array-contains", outsiderUid),
+    )));
+    strictEqual(snapshot.empty, true);
+  });
+
   it("reads and edits project, production data, and tasks", async () => {
     const db = firestoreFor(ownerUid);
     await assertSucceeds(getDoc(projectRef(db)));

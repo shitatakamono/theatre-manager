@@ -17,6 +17,7 @@ export function ProjectListClient() {
   const { profile } = useAuth();
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [listError, setListError] = useState("");
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [dialog, setDialog] = useState<DialogState>(null);
   const [title, setTitle] = useState("");
@@ -28,7 +29,10 @@ export function ProjectListClient() {
     void getProjectsForUser(profile.uid).then((items) => {
       setProjects(items.map((project) => ({ id: project.id, title: project.title || "名称未設定", role: project.role, legacyAccess: project.legacyAccess })));
       setLoading(false);
-    }).catch(() => { setError("公演一覧を読み込めませんでした"); setLoading(false); });
+    }).catch(() => {
+      setListError("公演一覧を読み込めませんでした。権限または通信状態を確認してください。");
+      setLoading(false);
+    });
   }, [profile]);
 
   useEffect(() => {
@@ -96,7 +100,7 @@ export function ProjectListClient() {
         <div><p>SEISAKU BOARD</p><h1>公演一覧</h1></div>
         <Link className={styles.createButton} href="/projects/new">公演を作成する</Link>
       </header>
-      {loading ? <p className={styles.empty}>公演一覧を読み込んでいます…</p> : projects.length === 0 ? <p className={styles.empty}>参加している公演はありません。</p> : (
+      {loading ? <p className={styles.empty}>公演一覧を読み込んでいます…</p> : listError ? <p className={styles.error} role="alert">{listError}</p> : projects.length === 0 ? <p className={styles.empty}>参加している公演はありません。</p> : (
         <ul className={styles.list}>{projects.map((project) => (
           <li className={styles.card} data-menu-open={openMenuId === project.id} key={project.id}>
             <Link className={styles.cardLink} href={`/projects/${project.id}`}>

@@ -66,7 +66,9 @@ service cloud.firestore {
         && request.resource.data.memberUids.hasAll([request.auth.uid])
         && request.resource.data.memberUids.hasOnly([request.auth.uid])
         && getAfter(projectMemberPath(projectId, request.auth.uid)).data.role == 'owner';
-      allow read: if isMember(projectId);
+      allow get: if isMember(projectId);
+      allow list: if signedIn()
+        && request.auth.uid in resource.data.memberUids;
       allow update: if (isOwner(projectId) && validMemberUidsChange(projectId))
         || (canEdit(projectId)
           && memberUidsUnchanged());
