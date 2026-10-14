@@ -19,6 +19,7 @@
 .menu button { width: 100%; padding: 11px 13px; color: #273730; font-size: 12px; font-weight: 700; text-align: left; }
 .menu button:hover { background: #f3f6f5; }
 .menu .deleteMenuItem { color: #a52f2f; }
+.migrationNote { display: block; border-top: 1px solid #edf1ef; color: #718079; padding: 8px 13px; font-size: 9px; }
 .empty { border: 1px dashed #cbd5d1; border-radius: 10px; background: #fff; color: #687770; padding: 32px; text-align: center; }
 .dialogLayer { position: fixed; z-index: 50; inset: 0; display: grid; place-items: center; background: rgba(18, 29, 25, .46); padding: 20px; }
 .dialog { width: min(440px, 100%); border-radius: 13px; background: #fff; padding: 22px; box-shadow: 0 22px 60px rgba(12, 25, 20, .3); }

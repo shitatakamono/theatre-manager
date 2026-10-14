@@ -1,0 +1,111 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function memberPath(projectId) {
+      return /databases/$(database)/documents/projects/$(projectId)/members/$(request.auth.uid);
+    }
+
+    function isMember(projectId) {
+      return signedIn() && exists(memberPath(projectId));
+    }
+
+    function role(projectId) {
+      return get(memberPath(projectId)).data.role;
+    }
+
+    function canEdit(projectId) {
+      return isMember(projectId) && role(projectId) in ['owner', 'editor'];
+    }
+
+    function isOwner(projectId) {
+      return isMember(projectId) && role(projectId) == 'owner';
+    }
+
+    function validRole(value) {
+      return value in ['owner', 'editor', 'viewer'];
+    }
+
+    function projectPath(projectId) {
+      return /databases/$(database)/documents/projects/$(projectId);
+    }
+
+    function projectMemberPath(projectId, uid) {
+      return /databases/$(database)/documents/projects/$(projectId)/members/$(uid);
+    }
+
+    function memberUidsUnchanged() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['memberUids']);
+    }
+
+    function validMemberUidsChange(projectId) {
+      let before = resource.data.memberUids;
+      let after = request.resource.data.memberUids;
+      let added = after.removeAll(before);
+      let removed = before.removeAll(after);
+      return after is list
+        && after.size() == after.toSet().size()
+        && ((added.size() == 0 && removed.size() == 0)
+          || (added.size() == 1
+            && removed.size() == 0
+            && !exists(projectMemberPath(projectId, added[0]))
+            && existsAfter(projectMemberPath(projectId, added[0])))
+          || (added.size() == 0
+            && removed.size() == 1
+            && exists(projectMemberPath(projectId, removed[0]))
+            && !existsAfter(projectMemberPath(projectId, removed[0]))));
+    }
+
+    match /projects/{projectId} {
+      allow create: if signedIn()
+        && request.resource.data.memberUids is list
+        && request.resource.data.memberUids.hasAll([request.auth.uid])
+        && request.resource.data.memberUids.hasOnly([request.auth.uid])
+        && getAfter(projectMemberPath(projectId, request.auth.uid)).data.role == 'owner';
+      allow read: if isMember(projectId);
+      allow update: if (isOwner(projectId) && validMemberUidsChange(projectId))
+        || (canEdit(projectId)
+          && memberUidsUnchanged());
+      allow delete: if isOwner(projectId);
+
+      match /members/{uid} {
+        allow read: if isMember(projectId);
+        allow create: if (isOwner(projectId)
+            && request.resource.data.uid == uid
+            && validRole(request.resource.data.role)
+            && getAfter(projectPath(projectId)).data.memberUids.hasAny([uid]))
+          || (signedIn()
+            && uid == request.auth.uid
+            && request.resource.data.uid == request.auth.uid
+            && request.resource.data.role == 'owner'
+            && getAfter(projectPath(projectId)).data.memberUids.hasAll([request.auth.uid])
+            && getAfter(projectPath(projectId)).data.memberUids.hasOnly([request.auth.uid]));
+        allow update: if isOwner(projectId)
+          && uid != request.auth.uid
+          && request.resource.data.uid == resource.data.uid
+          && validRole(request.resource.data.role);
+        allow delete: if isOwner(projectId)
+          && uid != request.auth.uid
+          && !getAfter(projectPath(projectId)).data.memberUids.hasAny([uid]);
+      }
+
+      match /tasks/{taskId} {
+        allow read: if isMember(projectId);
+        allow create, update, delete: if canEdit(projectId);
+      }
+    }
+
+    // カテゴリは現行の全公演共通マスタ。Phase 1では認証済みユーザーが管理する。
+    match /categories/{categoryId} {
+      allow read, write: if signedIn();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

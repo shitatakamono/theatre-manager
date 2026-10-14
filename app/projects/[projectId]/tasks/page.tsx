@@ -1,7 +1,12 @@
 "use client";
 
 import { use, useEffect, useState } from "react";
-import type { Task } from "@/lib/firestore";
+import {
+  getCategories,
+  getTasks,
+  toCategoryMap,
+  type Task,
+} from "@/lib/firestore";
 import Link from "next/link";
 import {
   TaskFilters,
@@ -13,14 +18,6 @@ type TasksPageProps = {
   params: Promise<{ projectId: string }>;
 };
 
-type TasksResponse = {
-  tasks: Task[];
-};
-
-type CategoriesResponse = {
-  map: CategoryMap;
-};
-
 export default function TasksPage({ params }: TasksPageProps) {
   const { projectId } = use(params);
 
@@ -29,24 +26,15 @@ export default function TasksPage({ params }: TasksPageProps) {
 
   const [categoryMap, setCategoryMap] = useState<CategoryMap>({});
 
-// Firestore 読み込み（API経由）
 useEffect(() => {
   async function load() {
-    // ▼ タスク取得（API Route）
-    const resTasks = await fetch(`/api/tasks/list?projectId=${projectId}`);
-    const jsonTasks = (await resTasks.json()) as TasksResponse;
-
-    console.log("🔥 page.tsx loaded tasks =", jsonTasks.tasks);
-
-    setTasks(jsonTasks.tasks);
-    setFiltered(jsonTasks.tasks);
-
-    // ▼ カテゴリのロード
-    const res = await fetch("/api/categories/list");
-    const json = (await res.json()) as CategoriesResponse;
-    console.log("🔥 page.tsx json.map =", json.map);
-
-    setCategoryMap(json.map);
+    const [taskList, categories] = await Promise.all([
+      getTasks(projectId),
+      getCategories(),
+    ]);
+    setTasks(taskList);
+    setFiltered(taskList);
+    setCategoryMap(toCategoryMap(categories));
   }
 
   load();

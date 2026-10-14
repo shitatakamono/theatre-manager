@@ -1,16 +1,26 @@
+"use client";
+
 import Link from "next/link";
+import { use, useEffect, useState } from "react";
 import { getProjectPerformanceData } from "@/lib/firestore";
+import type { ProjectPerformanceRecord } from "@/lib/firestore";
 import { PerformanceInfoClient } from "./PerformanceInfoClient";
 
 type PerformanceInfoPageProps = {
   params: Promise<{ projectId: string }>;
 };
 
-export default async function PerformanceInfoPage({
+export default function PerformanceInfoPage({
   params,
 }: PerformanceInfoPageProps) {
-  const { projectId } = await params;
-  const project = await getProjectPerformanceData(projectId);
+  const { projectId } = use(params);
+  const [project, setProject] = useState<ProjectPerformanceRecord | null>();
+
+  useEffect(() => {
+    void getProjectPerformanceData(projectId).then(setProject);
+  }, [projectId]);
+
+  if (project === undefined) return <main className="p-6">読み込み中…</main>;
 
   if (!project) {
     return (

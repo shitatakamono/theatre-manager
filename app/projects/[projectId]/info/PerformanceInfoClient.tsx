@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { ProjectPerformanceRecord } from "@/lib/firestore";
+import { updateProjectPerformanceSection } from "@/lib/firestore";
+import { useProjectAccess } from "../ProjectAccess";
 import {
   calculateEndTime,
   calculateTotalSeats,
@@ -115,13 +117,14 @@ function InfoCard({
   children,
   onEdit,
 }: CardProps) {
+  const { canEdit } = useProjectAccess();
   return (
     <section id={id} className={styles.card}>
       <header className={styles.cardHeader}>
         <h2>{title}</h2>
-        <button className={styles.editButton} onClick={() => onEdit(section)}>
+        {canEdit && <button className={styles.editButton} onClick={() => onEdit(section)}>
           編集
-        </button>
+        </button>}
       </header>
       {children}
     </section>
@@ -184,6 +187,7 @@ export function PerformanceInfoClient({
 }: {
   project: ProjectPerformanceRecord;
 }) {
+  const { canEdit } = useProjectAccess();
   const [data, setData] = useState<ProjectPerformanceData>(() =>
     normalizePerformanceData(project.data)
   );
@@ -224,6 +228,7 @@ export function PerformanceInfoClient({
   const displayTitle = basic.title || project.legacyTitle || "公演タイトル未設定";
 
   function openEditor(section: PerformanceSection) {
+    if (!canEdit) return;
     const nextDraft = structuredClone(data);
 
     if (section === "staff" && !configuredSections.has("staff")) {
@@ -237,7 +242,7 @@ export function PerformanceInfoClient({
   }
 
   async function saveSection() {
-    if (!activeEditor) return;
+    if (!activeEditor || !canEdit) return;
     const value = draft[activeEditor];
     if (value === undefined) return;
 
@@ -245,16 +250,7 @@ export function PerformanceInfoClient({
     setSaveError("");
 
     try {
-      const response = await fetch(`/api/projects/${project.id}/info`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ section: activeEditor, value }),
-      });
-
-      if (!response.ok) {
-        const result = (await response.json()) as { error?: string };
-        throw new Error(result.error || "保存できませんでした");
-      }
+      await updateProjectPerformanceSection(project.id, activeEditor, value);
 
       setData((current) => ({ ...current, [activeEditor]: value }));
       setConfiguredSections((current) => {

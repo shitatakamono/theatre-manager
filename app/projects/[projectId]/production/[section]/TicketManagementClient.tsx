@@ -10,7 +10,7 @@ const labels: Record<Block, string> = { methods: "販売方法", sales: "販売�
 const links = [{ id: "prices", label: "料金" }, ...Object.entries(labels).map(([id, label]) => ({ id, label }))];
 
 export function TicketManagementClient({ project, management }: { project: ProjectPerformanceRecord; management?: TicketManagement }) {
-  const editor = useProductionEditor<TicketManagement, Block>(project.id, "tickets", normalizeTickets(management));
+  const editor = useProductionEditor<"tickets", Block>(project.id, "tickets", normalizeTickets(management));
   const basic = project.data.performanceInfo;
   const venue = project.data.venue;
   const shows = project.data.performances ?? [];

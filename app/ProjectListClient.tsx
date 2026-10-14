@@ -2,21 +2,34 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useAuth } from "./AuthProvider";
+import { canDeleteProject, canEditProject, type ProjectRole } from "@/lib/auth";
+import { deleteProjectWithTasks, getProjectsForUser, renameProject } from "@/lib/firestore";
 import styles from "./project-list.module.css";
 
-type ProjectSummary = { id: string; title: string };
+type ProjectSummary = { id: string; title: string; role: ProjectRole; legacyAccess: boolean };
 type DialogState =
   | { type: "rename"; project: ProjectSummary }
   | { type: "delete"; project: ProjectSummary }
   | null;
 
-export function ProjectListClient({ initialProjects }: { initialProjects: ProjectSummary[] }) {
-  const [projects, setProjects] = useState(initialProjects);
+export function ProjectListClient() {
+  const { profile } = useAuth();
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [loading, setLoading] = useState(true);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [dialog, setDialog] = useState<DialogState>(null);
   const [title, setTitle] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!profile) return;
+    void getProjectsForUser(profile.uid).then((items) => {
+      setProjects(items.map((project) => ({ id: project.id, title: project.title || "名称未設定", role: project.role, legacyAccess: project.legacyAccess })));
+      setLoading(false);
+    }).catch(() => { setError("公演一覧を読み込めませんでした"); setLoading(false); });
+  }, [profile]);
 
   useEffect(() => {
     if (!openMenuId) return;
@@ -48,13 +61,8 @@ export function ProjectListClient({ initialProjects }: { initialProjects: Projec
     setSaving(true);
     setError("");
     try {
-      const response = await fetch(`/api/projects/${dialog.project.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: nextTitle }),
-      });
-      const result = (await response.json()) as { error?: string };
-      if (!response.ok) throw new Error(result.error || "公演名を変更できませんでした");
+      if (!canEditProject(dialog.project.role)) throw new Error("公演名を変更する権限がありません");
+      await renameProject(dialog.project.id, nextTitle);
       setProjects((current) => current.map((project) =>
         project.id === dialog.project.id ? { ...project, title: nextTitle } : project
       ));
@@ -71,9 +79,8 @@ export function ProjectListClient({ initialProjects }: { initialProjects: Projec
     setSaving(true);
     setError("");
     try {
-      const response = await fetch(`/api/projects/${dialog.project.id}`, { method: "DELETE" });
-      const result = (await response.json()) as { error?: string };
-      if (!response.ok) throw new Error(result.error || "公演を削除できませんでした");
+      if (!canDeleteProject(dialog.project.role)) throw new Error("公演を削除する権限がありません");
+      await deleteProjectWithTasks(dialog.project.id);
       setProjects((current) => current.filter((project) => project.id !== dialog.project.id));
       setDialog(null);
     } catch (deleteError) {
@@ -89,19 +96,20 @@ export function ProjectListClient({ initialProjects }: { initialProjects: Projec
         <div><p>SEISAKU BOARD</p><h1>公演一覧</h1></div>
         <Link className={styles.createButton} href="/projects/new">公演を作成する</Link>
       </header>
-      {projects.length === 0 ? <p className={styles.empty}>まだ公演がありません。</p> : (
+      {loading ? <p className={styles.empty}>公演一覧を読み込んでいます…</p> : projects.length === 0 ? <p className={styles.empty}>参加している公演はありません。</p> : (
         <ul className={styles.list}>{projects.map((project) => (
           <li className={styles.card} data-menu-open={openMenuId === project.id} key={project.id}>
             <Link className={styles.cardLink} href={`/projects/${project.id}`}>
               <span>公演</span><strong>{project.title}</strong><small>制作ロードマップを見る →</small>
             </Link>
-            <div className={styles.actionArea}>
+            {canEditProject(project.role) && <div className={styles.actionArea}>
               <button className={styles.menuButton} type="button" aria-label={`${project.title}の操作メニュー`} aria-expanded={openMenuId === project.id} onClick={(event) => { event.stopPropagation(); setOpenMenuId((current) => current === project.id ? null : project.id); }}>…</button>
               {openMenuId === project.id && <div className={styles.menu} role="menu" onClick={(event) => event.stopPropagation()}>
-                <button type="button" role="menuitem" onClick={() => openDialog({ type: "rename", project })}>公演名を変更</button>
-                <button className={styles.deleteMenuItem} type="button" role="menuitem" onClick={() => openDialog({ type: "delete", project })}>削除</button>
+                {canEditProject(project.role) && <button type="button" role="menuitem" onClick={() => openDialog({ type: "rename", project })}>公演名を変更</button>}
+                {canDeleteProject(project.role) && <button className={styles.deleteMenuItem} type="button" role="menuitem" onClick={() => openDialog({ type: "delete", project })}>削除</button>}
+                {project.legacyAccess && <span className={styles.migrationNote}>移行中：Editor権限</span>}
               </div>}
-            </div>
+            </div>}
           </li>
         ))}</ul>
       )}

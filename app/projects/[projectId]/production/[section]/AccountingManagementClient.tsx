@@ -31,7 +31,7 @@ const phases = Object.keys(phaseLabels) as AccountingTaskPhase[];
 const links = phases.map((phase) => ({ id: phase, label: phaseLabels[phase] }));
 
 export function AccountingManagementClient({ project, management }: { project: ProjectPerformanceRecord; management?: AccountingManagement }) {
-  const editor = useProductionEditor<AccountingManagement, "tasks">(project.id, "accounting", normalizeAccounting(management));
+  const editor = useProductionEditor(project.id, "accounting", normalizeAccounting(management));
   const [activePhase, setActivePhase] = useState<AccountingTaskPhase>("before");
   const basic = project.data.performanceInfo;
   const title = basic?.title || project.legacyTitle || "公演タイトル未設定";

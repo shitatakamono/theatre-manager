@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getCategories, type Category } from "@/lib/firestore";
+import {
+  addChildCategory,
+  addParentCategory,
+  getCategories,
+  type Category,
+} from "@/lib/firestore";
 
 export default function CategoryManagerPage() {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -52,11 +57,7 @@ function ChildAddForm({ parentId }: { parentId: string }) {
   async function submit() {
     if (!value.trim()) return;
 
-    // Firestore へ追加
-    await fetch("/api/categories/add-child", {
-      method: "POST",
-      body: JSON.stringify({ parentId, name: value }),
-    });
+    await addChildCategory(parentId, value);
 
     location.reload();
   }
@@ -86,10 +87,7 @@ function ParentAddForm() {
   async function submit() {
     if (!value.trim()) return;
 
-    await fetch("/api/categories/add-parent", {
-      method: "POST",
-      body: JSON.stringify({ name: value }),
-    });
+    await addParentCategory(value);
 
     location.reload();
   }

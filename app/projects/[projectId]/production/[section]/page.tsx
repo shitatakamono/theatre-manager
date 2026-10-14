@@ -1,5 +1,9 @@
+"use client";
+
 import Link from "next/link";
+import { use, useEffect, useState } from "react";
 import { getProject } from "@/lib/firestore";
+import type { Project } from "@/lib/firestore";
 import { pickPerformanceData } from "@/lib/performance";
 import { AccountingManagementClient } from "./AccountingManagementClient";
 import { FlyerManagementClient } from "./FlyerManagementClient";
@@ -21,11 +25,17 @@ const sectionNames: Record<string, string> = {
   accounting: "会計",
 };
 
-export default async function ProductionSectionPage({
+export default function ProductionSectionPage({
   params,
 }: ProductionSectionPageProps) {
-  const { projectId, section } = await params;
-  const project = await getProject(projectId);
+  const { projectId, section } = use(params);
+  const [project, setProject] = useState<(Project & { id: string }) | null>();
+
+  useEffect(() => {
+    void getProject(projectId).then(setProject);
+  }, [projectId]);
+
+  if (project === undefined) return <main className="grid min-h-screen place-content-center p-6">読み込み中…</main>;
   const sectionName = sectionNames[section];
 
   if (!project || !sectionName) {

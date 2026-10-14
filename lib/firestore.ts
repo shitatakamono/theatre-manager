@@ -12,6 +12,10 @@ import {
   serverTimestamp,
   Timestamp,
   writeBatch,
+  arrayUnion,
+  arrayRemove,
+  query,
+  where,
 } from "firebase/firestore";
 import {
   pickPerformanceData,
@@ -29,6 +33,7 @@ import type {
   ManagedProductionSection,
   ProductionSectionDataMap,
 } from "./production-management";
+import type { ProjectMember, ProjectRole, UserProfile } from "./auth";
 
 /* ================================
    公演（projects）
@@ -47,6 +52,7 @@ export type Project = ProjectPerformanceData & {
   production?: ProductionManagement;
   createdAt?: Timestamp;
   performanceInfoUpdatedAt?: Timestamp;
+  memberUids?: string[];
 };
 
 export type ProjectPerformanceRecord = {
@@ -59,6 +65,7 @@ export type ProjectPerformanceRecord = {
   performanceInfoUpdatedAt?: string;
   data: ProjectPerformanceData;
   production?: ProductionManagement;
+  memberUids?: string[];
 };
 
 export type Task = {
@@ -77,11 +84,18 @@ export type Category = {
 };
 
 // 公演追加
-export async function addProject(data: Project) {
-  const ref = await addDoc(projectsRef, {
-    ...data,
-    createdAt: Timestamp.now(),
-  });
+export async function addProject(data: Project, owner: UserProfile) {
+  const ref = doc(projectsRef);
+  const batch = writeBatch(db);
+  const now = Timestamp.now();
+  batch.set(ref, { ...data, memberUids: [owner.uid], createdAt: now });
+  batch.set(doc(ref, "members", owner.uid), {
+    ...owner,
+    role: "owner",
+    createdAt: now,
+    updatedAt: now,
+  } satisfies ProjectMember);
+  await batch.commit();
   return ref.id;
 }
 
@@ -92,6 +106,30 @@ export async function getProjects(): Promise<(Project & { id: string })[]> {
     id: doc.id,
     ...(doc.data() as Project),
   }));
+}
+
+export type AccessibleProject = Project & { id: string; role: ProjectRole; legacyAccess: boolean };
+
+export async function getProjectsForUser(uid: string): Promise<AccessibleProject[]> {
+  const legacyAccess = process.env.NEXT_PUBLIC_PROJECT_ACCESS_MODE === "legacy";
+  const snapshot = await getDocs(
+    legacyAccess ? projectsRef : query(projectsRef, where("memberUids", "array-contains", uid))
+  );
+  const projects = snapshot.docs.map((projectDoc) => ({
+    id: projectDoc.id,
+    ...(projectDoc.data() as Project),
+  }));
+  const result: AccessibleProject[] = [];
+  for (const project of projects) {
+    if (legacyAccess && !project.memberUids?.length) {
+      result.push({ ...project, role: "editor", legacyAccess: true });
+      continue;
+    }
+    if (!project.memberUids?.includes(uid)) continue;
+    const member = await getProjectMember(project.id, uid);
+    if (member) result.push({ ...project, role: member.role, legacyAccess: false });
+  }
+  return result;
 }
 
 // 公演1件取得
@@ -123,6 +161,7 @@ export async function getProjectPerformanceData(
     performanceInfoUpdatedAt: project.performanceInfoUpdatedAt?.toDate().toISOString(),
     data: pickPerformanceData(project),
     production: project.production,
+    memberUids: project.memberUids,
   };
 }
 
@@ -207,6 +246,34 @@ export async function deleteProjectWithTasks(projectId: string) {
   await deleteDoc(projectRef);
 }
 
+export async function getProjectMember(projectId: string, uid: string): Promise<ProjectMember | null> {
+  const snapshot = await getDoc(doc(db, "projects", projectId, "members", uid));
+  return snapshot.exists() ? snapshot.data() as ProjectMember : null;
+}
+
+export async function getProjectMembers(projectId: string): Promise<ProjectMember[]> {
+  const snapshot = await getDocs(collection(db, "projects", projectId, "members"));
+  return snapshot.docs.map((member) => member.data() as ProjectMember);
+}
+
+export async function updateProjectMemberRole(projectId: string, member: ProjectMember, role: ProjectRole) {
+  const batch = writeBatch(db);
+  batch.set(doc(db, "projects", projectId, "members", member.uid), {
+    ...member,
+    role,
+    updatedAt: Timestamp.now(),
+  });
+  batch.update(doc(db, "projects", projectId), { memberUids: arrayUnion(member.uid) });
+  await batch.commit();
+}
+
+export async function removeProjectMember(projectId: string, uid: string) {
+  const batch = writeBatch(db);
+  batch.delete(doc(db, "projects", projectId, "members", uid));
+  batch.update(doc(db, "projects", projectId), { memberUids: arrayRemove(uid) });
+  await batch.commit();
+}
+
 /* ================================
    タスク（projects/{id}/tasks）
 ================================ */
@@ -269,6 +336,19 @@ export async function getCategories(): Promise<Category[]> {
     id: doc.id,
     ...(doc.data() as Omit<Category, "id">),
   }));
+}
+
+export async function addParentCategory(name: string) {
+  await addDoc(collection(db, "categories"), {
+    name: name.trim(),
+    children: [],
+  });
+}
+
+export async function addChildCategory(parentId: string, name: string) {
+  await updateDoc(doc(db, "categories", parentId), {
+    children: arrayUnion(name.trim()),
+  });
 }
 
 // Firestore のカテゴリを { 親名: 子リスト } に変換する

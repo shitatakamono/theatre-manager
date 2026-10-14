@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { ManagedProductionSection } from "@/lib/production-management";
+import { updateProjectProductionBlock } from "@/lib/firestore";
+import { useProjectAccess } from "../../ProjectAccess";
 import styles from "./venue-management.module.css";
 
 export { styles };
@@ -20,13 +22,14 @@ export function createId(): string {
 }
 
 export function useProductionEditor<
-  Data extends object,
-  Block extends keyof Data & string,
+  Section extends ManagedProductionSection,
+  Block extends keyof import("@/lib/production-management").ProductionSectionDataMap[Section] & string = keyof import("@/lib/production-management").ProductionSectionDataMap[Section] & string,
 >(
   projectId: string,
-  section: ManagedProductionSection,
-  initialData: Data
+  section: Section,
+  initialData: import("@/lib/production-management").ProductionSectionDataMap[Section]
 ) {
+  const { canEdit } = useProjectAccess();
   const [data, setData] = useState(initialData);
   const [draft, setDraft] = useState(initialData);
   const [active, setActive] = useState<Block | null>(null);
@@ -35,6 +38,7 @@ export function useProductionEditor<
   const [message, setMessage] = useState("");
 
   function open(block: Block) {
+    if (!canEdit) return;
     setDraft(structuredClone(data));
     setError("");
     setMessage("");
@@ -47,20 +51,12 @@ export function useProductionEditor<
   }
 
   async function save(label: string) {
-    if (!active) return;
+    if (!active || !canEdit) return;
     setSaving(true);
     setError("");
 
     try {
-      const response = await fetch(`/api/projects/${projectId}/production/${section}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ block: active, value: draft[active] }),
-      });
-      if (!response.ok) {
-        const result = (await response.json()) as { error?: string };
-        throw new Error(result.error || "保存できませんでした");
-      }
+      await updateProjectProductionBlock(projectId, section, active, draft[active]);
       setData((current) => ({ ...current, [active]: draft[active] }));
       setMessage(`${label}を保存しました`);
       setActive(null);
@@ -197,11 +193,12 @@ export function ManagementSection<Block extends string>({
   editable?: boolean;
   children: React.ReactNode;
 }) {
+  const { canEdit } = useProjectAccess();
   return (
     <section className={styles.section} id={id}>
       <header className={styles.sectionHeader}>
         <h2>{title}</h2>
-        {editable && <button onClick={() => onEdit(block)}>編集</button>}
+        {editable && canEdit && <button onClick={() => onEdit(block)}>編集</button>}
       </header>
       {children}
     </section>

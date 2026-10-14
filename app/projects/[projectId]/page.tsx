@@ -1,6 +1,8 @@
-import type { CSSProperties } from "react";
+"use client";
+
+import { use, useEffect, useState, type CSSProperties } from "react";
 import Link from "next/link";
-import { getProjectPerformanceData } from "@/lib/firestore";
+import { getProjectPerformanceData, type ProjectPerformanceRecord } from "@/lib/firestore";
 import { resolveSeatsPerPerformance } from "@/lib/performance";
 import {
   getAccountingProgress,
@@ -12,6 +14,7 @@ import {
   type SectionProgress,
 } from "@/lib/production-progress";
 import styles from "./project-roadmap.module.css";
+import { MembersLink } from "./ProjectAccess";
 
 type ProjectPageProps = {
   params: Promise<{ projectId: string }>;
@@ -162,9 +165,15 @@ function getTimelinePosition(firstDate: Date | null, date: Date): number | null 
   return Math.min(100, Math.max(0, (elapsed / duration) * 100));
 }
 
-export default async function ProjectPage({ params }: ProjectPageProps) {
-  const { projectId } = await params;
-  const project = await getProjectPerformanceData(projectId);
+export default function ProjectPage({ params }: ProjectPageProps) {
+  const { projectId } = use(params);
+  const [project, setProject] = useState<ProjectPerformanceRecord | null>();
+
+  useEffect(() => {
+    void getProjectPerformanceData(projectId).then(setProject);
+  }, [projectId]);
+
+  if (project === undefined) return <main className={styles.notFound}>読み込み中…</main>;
 
   if (!project) {
     return (
@@ -253,6 +262,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
                 </ol>
               </div>
             </details>
+            <MembersLink projectId={projectId} />
             <Link className={styles.tasksLink} href={`/projects/${projectId}/tasks`}>タスク一覧</Link>
             <Link className={styles.infoLink} href={`/projects/${projectId}/info`}>
               公演情報を見る

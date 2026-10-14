@@ -3,16 +3,19 @@
 import { useState } from "react";
 import { addProject } from "@/lib/firestore";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/app/AuthProvider";
 
 export default function NewProjectPage() {
   const router = useRouter();
+  const { profile } = useAuth();
 
   const [title, setTitle] = useState("");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    const id = await addProject({ title });
+    if (!profile) return;
+    const id = await addProject({ title }, profile);
     router.push(`/projects/${id}`);
   }
 

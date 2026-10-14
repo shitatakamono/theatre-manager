@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { ProjectPerformanceRecord } from "@/lib/firestore";
+import { updateProjectVenueSection } from "@/lib/firestore";
+import { useProjectAccess } from "../../ProjectAccess";
 import { formatPerformanceDate } from "@/lib/performance";
 import type { ReceptionManagement } from "@/lib/production-management";
 import {
@@ -145,6 +147,7 @@ function SelectField<T extends string>({
 }
 
 export function VenueManagementClient({ project }: { project: VenueManagementProject }) {
+  const { canEdit } = useProjectAccess();
   const initial = normalizeVenueManagement(project.venueManagement);
   const [data, setData] = useState(initial);
   const [draft, setDraft] = useState(initial);
@@ -168,6 +171,7 @@ export function VenueManagementClient({ project }: { project: VenueManagementPro
   );
 
   function open(section: VenueManagementSection) {
+    if (!canEdit) return;
     setDraft(structuredClone(data));
     setError("");
     setMessage("");
@@ -180,17 +184,12 @@ export function VenueManagementClient({ project }: { project: VenueManagementPro
   }
 
   async function save() {
-    if (!active) return;
+    if (!active || !canEdit) return;
     const value = getSectionValue(draft, active);
     setSaving(true);
     setError("");
     try {
-      const response = await fetch(`/api/projects/${project.id}/production/venue`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ section: active, value }),
-      });
-      if (!response.ok) throw new Error("保存できませんでした");
+      await updateProjectVenueSection(project.id, active, value);
       setData((current) => active === "contract"
         ? { ...current, ...(value as VenueContract) }
         : { ...current, [active]: value });
@@ -230,7 +229,7 @@ export function VenueManagementClient({ project }: { project: VenueManagementPro
       <SectionNav links={links} />
       <div className={styles.content}>
         <section className={styles.section} id="contract">
-          <header className={styles.sectionHeader}><h2>{labels.contract}</h2><button onClick={() => open("contract")}>編集</button></header>
+          <header className={styles.sectionHeader}><h2>{labels.contract}</h2>{canEdit && <button onClick={() => open("contract")}>編集</button>}</header>
           <DetailList items={[
             { label: "利用開始", value: formatDateTime(data.useStartAt) },
             { label: "利用終了", value: formatDateTime(data.useEndAt) },
@@ -243,7 +242,7 @@ export function VenueManagementClient({ project }: { project: VenueManagementPro
         </section>
 
         <section className={styles.section} id="registered">
-          <header className={styles.sectionHeader}><h2>{labels.registeredPerformance}</h2><button onClick={() => open("registeredPerformance")}>編集</button></header>
+          <header className={styles.sectionHeader}><h2>{labels.registeredPerformance}</h2>{canEdit && <button onClick={() => open("registeredPerformance")}>編集</button>}</header>
           <div className={styles.referenceDetails}>
             <DetailList items={[
               { label: "公演名称", value: displayValue(basic?.performanceName) },
@@ -258,7 +257,7 @@ export function VenueManagementClient({ project }: { project: VenueManagementPro
         </section>
 
         <section className={styles.section} id="materials">
-          <header className={styles.sectionHeader}><h2>{labels.materials}</h2><button onClick={() => open("materials")}>編集</button></header>
+          <header className={styles.sectionHeader}><h2>{labels.materials}</h2>{canEdit && <button onClick={() => open("materials")}>編集</button>}</header>
           <CheckList items={[
             { label: "チラシ提出済", complete: data.materials?.flyerSubmitted },
             { label: "ポスター提出済", complete: data.materials?.posterSubmitted },
@@ -268,7 +267,7 @@ export function VenueManagementClient({ project }: { project: VenueManagementPro
         </section>
 
         <section className={styles.section} id="meeting">
-          <header className={styles.sectionHeader}><h2>{labels.meeting}</h2><button onClick={() => open("meeting")}>編集</button></header>
+          <header className={styles.sectionHeader}><h2>{labels.meeting}</h2>{canEdit && <button onClick={() => open("meeting")}>編集</button>}</header>
           <DetailList items={[
             { label: "劇場との日程調整", value: adjustmentLabels[data.meeting?.adjustmentStatus ?? "not-started"] },
             { label: "打ち合わせ予定日", value: displayValue(data.meeting?.plannedDate) },
@@ -297,7 +296,7 @@ export function VenueManagementClient({ project }: { project: VenueManagementPro
         </section>
 
         <section className={styles.section} id="documents">
-          <header className={styles.sectionHeader}><h2>{labels.documents}</h2><button onClick={() => open("documents")}>編集</button></header>
+          <header className={styles.sectionHeader}><h2>{labels.documents}</h2>{canEdit && <button onClick={() => open("documents")}>編集</button>}</header>
           {(data.documents ?? []).length === 0 ? <p className={styles.empty}>提出書類は登録されていません。</p> : (
             <ul className={styles.documentList}>{(data.documents ?? []).map((document) => (
               <li key={document.id}><span data-submitted={document.submitted}>{document.submitted ? "提出済" : "未提出"}</span><strong>{document.name || "書類名未設定"}</strong><small>期限 {document.deadline || "未設定"}</small>{document.note && <p>{document.note}</p>}</li>

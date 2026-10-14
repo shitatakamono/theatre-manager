@@ -61,7 +61,7 @@ const merchandiseLabels = {
 
 export function ReceptionManagementClient({ project, management, accountingManagement }: { project: ProjectPerformanceRecord; management?: ReceptionManagement; accountingManagement?: AccountingManagement }) {
   const shows = project.data.performances ?? [];
-  const editor = useProductionEditor<ReceptionManagement, Block>(project.id, "reception", normalizeReception(management, shows.map((show) => show.id)));
+  const editor = useProductionEditor<"reception", Block>(project.id, "reception", normalizeReception(management, shows.map((show) => show.id)));
   const title = project.data.performanceInfo?.title || project.legacyTitle || "公演タイトル未設定";
   const seatsPerPerformance = resolveSeatsPerPerformance(project.data.performanceInfo, shows.length);
   const totalSeats = calculateTotalSeats(project.data.performanceInfo, shows.length);
