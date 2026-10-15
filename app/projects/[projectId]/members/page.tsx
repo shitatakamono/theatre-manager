@@ -5,6 +5,7 @@ import { use, useEffect, useState } from "react";
 import { useAuth } from "@/app/AuthProvider";
 import type { ProjectMember, ProjectRole } from "@/lib/auth";
 import type { InviteRole, ProjectMemberInvite } from "@/lib/member-invites";
+import { requestMemberInviteEmail } from "@/lib/member-invite-email-client";
 import {
   createProjectMemberInvite, getProject, getProjectMemberInvites, getProjectMembers,
   removeProjectMember, revokeProjectMemberInvite, updateProjectMemberRole,
@@ -26,6 +27,7 @@ export default function MembersPage({ params }: { params: Promise<{ projectId: s
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<InviteRole>("editor");
   const [inviting, setInviting] = useState(false);
+  const [sendingInviteId, setSendingInviteId] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -69,10 +71,42 @@ export default function MembersPage({ params }: { params: Promise<{ projectId: s
       const created = await createProjectMemberInvite({ projectId, projectName, email: inviteEmail, role: inviteRole, invitedBy: profile });
       setInvites((current) => [created, ...current]);
       setInviteEmail("");
-      setMessage(`${created.email} を${roleLabels[created.role]}として招待しました。このメールアドレスのGoogleアカウントでSeisakuBoardにログインすると参加できます。`);
+      try {
+        await requestMemberInviteEmail(projectId, created.email);
+        setInvites((current) => current.map((item) => item.id === created.id
+          ? { ...item, emailStatus: "sent", emailLastError: null }
+          : item));
+        setMessage(`${created.email} に招待メールを送信しました`);
+      } catch {
+        setInvites((current) => current.map((item) => item.id === created.id
+          ? { ...item, emailStatus: "failed" }
+          : item));
+        setMessage("招待は登録しましたが、メール送信に失敗しました。招待一覧から再送できます。");
+      }
     } catch (inviteError) {
       setError(inviteError instanceof Error ? inviteError.message : "招待を登録できませんでした");
     } finally { setInviting(false); }
+  }
+
+  async function resend(inviteItem: ProjectMemberInvite) {
+    if (!canManageMembers || inviteItem.status !== "pending" || sendingInviteId) return;
+    setSendingInviteId(inviteItem.id); setError(""); setMessage("");
+    try {
+      await requestMemberInviteEmail(projectId, inviteItem.email);
+      setInvites((current) => current.map((item) => item.id === inviteItem.id
+        ? { ...item, emailStatus: "sent", emailLastError: null }
+        : item));
+      setMessage(`${inviteItem.email} に招待メールを再送しました`);
+    } catch (sendError) {
+      const errorMessage = sendError instanceof Error ? sendError.message : "招待メールを再送できませんでした";
+      setError(errorMessage);
+      const failed = (sendError as Error & { emailStatus?: string }).emailStatus === "failed";
+      if (failed) {
+        setInvites((current) => current.map((item) => item.id === inviteItem.id
+          ? { ...item, emailStatus: "failed" }
+          : item));
+      }
+    } finally { setSendingInviteId(""); }
   }
 
   async function revoke(inviteItem: ProjectMemberInvite) {
@@ -108,7 +142,7 @@ export default function MembersPage({ params }: { params: Promise<{ projectId: s
     {canManageMembers && !legacyAccess ? <>
       <section className="rounded-lg border bg-white p-4">
         <h2 className="font-bold">新しいメンバーを招待</h2>
-        <p className="mt-1 text-sm text-gray-600">招待メールは送信されません。このメールアドレスのGoogleアカウントでログインすると自動参加します。</p>
+        <p className="mt-1 text-sm text-gray-600">招待メールを送信します。受信したGoogleアカウントでログインすると自動参加します。</p>
         <form className="mt-4 grid gap-3 sm:grid-cols-[1fr_130px_auto]" onSubmit={(event) => void invite(event)}>
           <label className="grid gap-1"><span className="text-xs font-bold">メールアドレス</span><input className="min-h-11 rounded border px-3" type="email" required maxLength={254} value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} /></label>
           <label className="grid gap-1"><span className="text-xs font-bold">Role</span><select className="min-h-11 rounded border px-3" value={inviteRole} onChange={(event) => setInviteRole(event.target.value as InviteRole)}><option value="editor">Editor</option><option value="viewer">Viewer</option></select></label>
@@ -119,7 +153,8 @@ export default function MembersPage({ params }: { params: Promise<{ projectId: s
       <section className="space-y-3">
         <h2 className="font-bold">招待中</h2>
         {pendingInvites.length === 0 ? <p className="rounded border bg-white p-4 text-sm text-gray-500">招待中のメンバーはいません。</p> : <ul className="space-y-2">{pendingInvites.map((inviteItem) => <li className="flex flex-wrap items-center gap-3 rounded-lg border bg-white p-4" key={inviteItem.id}>
-          <div className="min-w-0 flex-1"><strong className="block truncate">{inviteItem.email}</strong><span className="text-xs text-gray-500">{roleLabels[inviteItem.role]}・未参加</span></div>
+          <div className="min-w-0 flex-1"><strong className="block truncate">{inviteItem.email}</strong><span className="text-xs text-gray-500">{roleLabels[inviteItem.role]}・招待中</span><span className={`mt-1 block text-xs font-bold ${inviteItem.emailStatus === "failed" ? "text-red-700" : "text-gray-500"}`}>{inviteItem.emailStatus === "sent" ? "メール送信済み" : inviteItem.emailStatus === "failed" ? "メール送信失敗" : "メール未送信"}</span></div>
+          <button className="min-h-10 rounded border border-emerald-700 px-3 text-sm font-bold text-emerald-800 disabled:opacity-60" disabled={Boolean(sendingInviteId)} onClick={() => void resend(inviteItem)}>{sendingInviteId === inviteItem.id ? "送信中…" : "招待メールを再送"}</button>
           <button className="min-h-10 rounded border border-red-300 px-3 text-sm font-bold text-red-700" onClick={() => void revoke(inviteItem)}>招待を取り消す</button>
         </li>)}</ul>}
       </section>

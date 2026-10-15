@@ -89,6 +89,11 @@ function inviteData(email = invitedEmail, role = "editor") {
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
     acceptedAt: null,
+    emailStatus: "not_sent",
+    emailSentAt: null,
+    emailLastError: null,
+    emailSendCount: 0,
+    emailLastAttemptAt: null,
   };
 }
 
@@ -562,6 +567,16 @@ describe("member invites", () => {
     const ref = inviteRef(firestoreFor(ownerUid));
     await assertSucceeds(setDoc(ref, inviteData()));
     await assertFails(setDoc(ref, inviteData()));
+  });
+
+  it("prevents a client from forging the initial email delivery state", async () => {
+    await assertFails(setDoc(inviteRef(firestoreFor(ownerUid)), {
+      ...inviteData(),
+      emailStatus: "sent",
+      emailSentAt: serverTimestamp(),
+      emailSendCount: 1,
+      emailLastAttemptAt: serverTimestamp(),
+    }));
   });
 
   it("allows an invitee to query only their own invites and an owner to list project invites", async () => {

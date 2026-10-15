@@ -43,6 +43,11 @@ describe("member invite payload", () => {
     strictEqual(payload.projectName, "第61回公演");
     strictEqual(payload.status, "pending");
     strictEqual(payload.acceptedAt, null);
+    strictEqual(payload.emailStatus, "not_sent");
+    strictEqual(payload.emailSentAt, null);
+    strictEqual(payload.emailLastError, null);
+    strictEqual(payload.emailSendCount, 0);
+    strictEqual(payload.emailLastAttemptAt, null);
   });
 
   it("rejects an owner invitation", () => {

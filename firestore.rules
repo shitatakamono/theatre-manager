@@ -186,11 +186,15 @@ service cloud.firestore {
     function validMemberInviteCreate(projectId, email) {
       return request.resource.data.keys().hasOnly([
           'projectId', 'projectName', 'email', 'role', 'invitedByUid',
-          'invitedByName', 'status', 'createdAt', 'updatedAt', 'acceptedAt'
+          'invitedByName', 'status', 'createdAt', 'updatedAt', 'acceptedAt',
+          'emailStatus', 'emailSentAt', 'emailLastError', 'emailSendCount',
+          'emailLastAttemptAt'
         ])
         && request.resource.data.keys().hasAll([
           'projectId', 'projectName', 'email', 'role', 'invitedByUid',
-          'invitedByName', 'status', 'createdAt', 'updatedAt', 'acceptedAt'
+          'invitedByName', 'status', 'createdAt', 'updatedAt', 'acceptedAt',
+          'emailStatus', 'emailSentAt', 'emailLastError', 'emailSendCount',
+          'emailLastAttemptAt'
         ])
         && request.resource.data.projectId == projectId
         && request.resource.data.email == email
@@ -207,6 +211,11 @@ service cloud.firestore {
         && request.resource.data.projectName.size() <= 200
         && request.resource.data.status == 'pending'
         && request.resource.data.acceptedAt == null
+        && request.resource.data.emailStatus == 'not_sent'
+        && request.resource.data.emailSentAt == null
+        && request.resource.data.emailLastError == null
+        && request.resource.data.emailSendCount == 0
+        && request.resource.data.emailLastAttemptAt == null
         && request.resource.data.createdAt == request.time
         && request.resource.data.updatedAt == request.time;
     }

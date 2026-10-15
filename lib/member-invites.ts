@@ -2,6 +2,7 @@ import type { ProjectMember, ProjectRole, UserProfile } from "./auth.ts";
 
 export type InviteRole = Extract<ProjectRole, "editor" | "viewer">;
 export type MemberInviteStatus = "pending" | "accepted" | "revoked";
+export type InviteEmailStatus = "not_sent" | "sent" | "failed";
 
 export type ProjectMemberInvite = {
   id: string;
@@ -15,6 +16,11 @@ export type ProjectMemberInvite = {
   createdAt?: unknown;
   updatedAt?: unknown;
   acceptedAt?: unknown | null;
+  emailStatus: InviteEmailStatus;
+  emailSentAt: unknown | null;
+  emailLastError: string | null;
+  emailSendCount: number;
+  emailLastAttemptAt: unknown | null;
 };
 
 export const MEMBER_NAME_FALLBACK = "名前未設定のユーザー";
@@ -64,5 +70,10 @@ export function buildMemberInvitePayload<TimestampValue>(input: {
     createdAt: timestamp,
     updatedAt: timestamp,
     acceptedAt: null,
+    emailStatus: "not_sent" as const,
+    emailSentAt: null,
+    emailLastError: null,
+    emailSendCount: 0,
+    emailLastAttemptAt: null,
   };
 }
