@@ -187,7 +187,7 @@ export function PerformanceInfoClient({
 }: {
   project: ProjectPerformanceRecord;
 }) {
-  const { canEdit } = useProjectAccess();
+  const { canEdit, actor } = useProjectAccess();
   const [data, setData] = useState<ProjectPerformanceData>(() =>
     normalizePerformanceData(project.data)
   );
@@ -250,7 +250,10 @@ export function PerformanceInfoClient({
     setSaveError("");
 
     try {
-      await updateProjectPerformanceSection(project.id, activeEditor, value);
+      await updateProjectPerformanceSection(project.id, activeEditor, value, {
+        actor,
+        before: data[activeEditor],
+      });
 
       setData((current) => ({ ...current, [activeEditor]: value }));
       setConfiguredSections((current) => {

@@ -16,6 +16,8 @@ import {
   arrayRemove,
   query,
   where,
+  orderBy,
+  limit,
 } from "firebase/firestore";
 import {
   pickPerformanceData,
@@ -35,6 +37,16 @@ import type {
 } from "./production-management";
 import type { ProjectMember, ProjectRole, UserProfile } from "./auth";
 import { removeUndefinedValues } from "./firestore-values";
+import {
+  getActivityActorName,
+  getChangedFields,
+  getPerformanceActivityDefinition,
+  getProductionActivityDefinition,
+  getVenueActivityDefinition,
+  type ActivityActor,
+  type ActivityDefinition,
+  type ActivityLog,
+} from "./activity";
 
 /* ================================
    公演（projects）
@@ -83,6 +95,42 @@ export type Category = {
   name: string;
   children?: string[];
 };
+
+export type ActivityWriteContext<T> = {
+  actor: ActivityActor;
+  before: T | undefined;
+};
+
+function venueContractForComparison(value: VenueManagementSectionMap["contract"] | undefined) {
+  if (!value) return {};
+  return Object.fromEntries(VENUE_CONTRACT_FIELDS.flatMap((field) => {
+    const fieldValue = value[field];
+    return fieldValue === undefined || fieldValue === "" ? [] : [[field, fieldValue]];
+  }));
+}
+
+function addActivityToBatch(
+  batch: ReturnType<typeof writeBatch>,
+  projectId: string,
+  actor: ActivityActor,
+  definition: ActivityDefinition,
+  before: unknown,
+  after: unknown
+) {
+  const changedFields = getChangedFields(before, after, definition.fields);
+  if (changedFields.length === 0) return;
+
+  const activityRef = doc(collection(db, "projects", projectId, "activityLogs"));
+  batch.set(activityRef, {
+    actorUid: actor.uid,
+    actorName: getActivityActorName(actor),
+    action: "update",
+    section: definition.section,
+    sectionLabel: definition.sectionLabel,
+    changedFields,
+    createdAt: serverTimestamp(),
+  });
+}
 
 // 公演追加
 export async function addProject(data: Project, owner: UserProfile) {
@@ -171,13 +219,20 @@ export async function updateProjectPerformanceSection<
 >(
   projectId: string,
   section: Section,
-  value: PerformanceSectionMap[Section]
+  value: PerformanceSectionMap[Section],
+  activity?: ActivityWriteContext<PerformanceSectionMap[Section]>
 ) {
   const ref = doc(db, "projects", projectId);
-  await updateDoc(ref, {
-    [section]: value,
+  const batch = writeBatch(db);
+  const cleanValue = removeUndefinedValues(value);
+  batch.update(ref, {
+    [section]: cleanValue,
     performanceInfoUpdatedAt: serverTimestamp(),
   });
+  if (activity) {
+    addActivityToBatch(batch, projectId, activity.actor, getPerformanceActivityDefinition(section), activity.before, cleanValue);
+  }
+  await batch.commit();
 }
 
 export async function updateProjectVenueSection<
@@ -185,12 +240,15 @@ export async function updateProjectVenueSection<
 >(
   projectId: string,
   section: Section,
-  value: VenueManagementSectionMap[Section]
+  value: VenueManagementSectionMap[Section],
+  activity?: ActivityWriteContext<VenueManagementSectionMap[Section]>
 ) {
   const ref = doc(db, "projects", projectId);
+  const batch = writeBatch(db);
+  const cleanValue = removeUndefinedValues(value);
 
   if (section === "contract") {
-    const contract = value as VenueManagementSectionMap["contract"];
+    const contract = cleanValue as VenueManagementSectionMap["contract"];
     const updates: Record<string, unknown> = {};
 
     for (const field of VENUE_CONTRACT_FIELDS) {
@@ -199,13 +257,23 @@ export async function updateProjectVenueSection<
         fieldValue === undefined || fieldValue === "" ? deleteField() : fieldValue;
     }
 
-    await updateDoc(ref, updates);
-    return;
+    batch.update(ref, updates);
+  } else {
+    batch.update(ref, {
+      [`production.venue.${section}`]: cleanValue,
+    });
   }
 
-  await updateDoc(ref, {
-    [`production.venue.${section}`]: removeUndefinedValues(value),
-  });
+  if (activity) {
+    const before = section === "contract"
+      ? venueContractForComparison(activity.before as VenueManagementSectionMap["contract"] | undefined)
+      : activity.before;
+    const after = section === "contract"
+      ? venueContractForComparison(cleanValue as VenueManagementSectionMap["contract"])
+      : cleanValue;
+    addActivityToBatch(batch, projectId, activity.actor, getVenueActivityDefinition(section), before, after);
+  }
+  await batch.commit();
 }
 
 export async function updateProjectProductionBlock<
@@ -215,12 +283,31 @@ export async function updateProjectProductionBlock<
   projectId: string,
   section: Section,
   block: Block,
-  value: ProductionSectionDataMap[Section][Block]
+  value: ProductionSectionDataMap[Section][Block],
+  activity?: ActivityWriteContext<ProductionSectionDataMap[Section][Block]>
 ) {
   const ref = doc(db, "projects", projectId);
-  await updateDoc(ref, {
-    [`production.${section}.${block}`]: removeUndefinedValues(value),
+  const batch = writeBatch(db);
+  const cleanValue = removeUndefinedValues(value);
+  batch.update(ref, {
+    [`production.${section}.${block}`]: cleanValue,
   });
+  if (activity) {
+    addActivityToBatch(batch, projectId, activity.actor, getProductionActivityDefinition(section, block), activity.before, cleanValue);
+  }
+  await batch.commit();
+}
+
+export async function getProjectActivityLogs(projectId: string): Promise<ActivityLog[]> {
+  const snapshot = await getDocs(query(
+    collection(db, "projects", projectId, "activityLogs"),
+    orderBy("createdAt", "desc"),
+    limit(100)
+  ));
+  return snapshot.docs.map((activity) => ({
+    id: activity.id,
+    ...(activity.data() as Omit<ActivityLog, "id">),
+  }));
 }
 
 export async function renameProject(projectId: string, title: string) {

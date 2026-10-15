@@ -263,6 +263,7 @@ export default function ProjectPage({ params }: ProjectPageProps) {
               </div>
             </details>
             <MembersLink projectId={projectId} />
+            <Link href={`/projects/${projectId}/activity`}>更新履歴</Link>
             <Link className={styles.tasksLink} href={`/projects/${projectId}/tasks`}>タスク一覧</Link>
             <Link className={styles.infoLink} href={`/projects/${projectId}/info`}>
               公演情報を見る

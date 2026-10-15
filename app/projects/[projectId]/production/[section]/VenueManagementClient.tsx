@@ -147,7 +147,7 @@ function SelectField<T extends string>({
 }
 
 export function VenueManagementClient({ project }: { project: VenueManagementProject }) {
-  const { canEdit } = useProjectAccess();
+  const { canEdit, actor } = useProjectAccess();
   const initial = normalizeVenueManagement(project.venueManagement);
   const [data, setData] = useState(initial);
   const [draft, setDraft] = useState(initial);
@@ -189,7 +189,10 @@ export function VenueManagementClient({ project }: { project: VenueManagementPro
     setSaving(true);
     setError("");
     try {
-      await updateProjectVenueSection(project.id, active, value);
+      await updateProjectVenueSection(project.id, active, value, {
+        actor,
+        before: getSectionValue(data, active),
+      });
       setData((current) => active === "contract"
         ? { ...current, ...(value as VenueContract) }
         : { ...current, [active]: value });

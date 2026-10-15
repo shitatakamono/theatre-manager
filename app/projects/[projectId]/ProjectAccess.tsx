@@ -5,6 +5,7 @@ import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/app/AuthProvider";
 import { canDeleteProject, canEditProject, canManageMembers, canViewProject, type ProjectRole } from "@/lib/auth";
 import { getProject, getProjectMember } from "@/lib/firestore";
+import type { ActivityActor } from "@/lib/activity";
 
 type ProjectAccessValue = {
   role?: ProjectRole;
@@ -13,6 +14,7 @@ type ProjectAccessValue = {
   canEdit: boolean;
   canManageMembers: boolean;
   canDelete: boolean;
+  actor: ActivityActor;
 };
 
 const ProjectAccessContext = createContext<ProjectAccessValue | null>(null);
@@ -54,7 +56,11 @@ export function ProjectAccessBoundary({ projectId, children }: { projectId: stri
     canEdit: canEditProject(role),
     canManageMembers: canManageMembers(role),
     canDelete: canDeleteProject(role),
-  }), [legacyAccess, role]);
+    actor: {
+      uid: profile?.uid ?? "",
+      displayName: profile?.displayName,
+    },
+  }), [legacyAccess, profile?.displayName, profile?.uid, role]);
 
   if (loading) return <main className="grid min-h-[60vh] place-content-center p-6">権限を確認しています…</main>;
   if (!value.canView) return <main className="grid min-h-[60vh] place-content-center gap-3 p-6 text-center"><h1 className="text-xl font-bold">この公演を閲覧する権限がありません。</h1><Link className="underline" href="/">公演一覧へ戻る</Link></main>;

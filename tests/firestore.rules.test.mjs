@@ -15,6 +15,7 @@ import {
   getDoc,
   getDocs,
   query,
+  serverTimestamp,
   setDoc,
   updateDoc,
   where,
@@ -46,6 +47,22 @@ function memberRef(db, uid, id = projectId) {
 
 function taskRef(db, id = "task-a", targetProjectId = projectId) {
   return doc(db, "projects", targetProjectId, "tasks", id);
+}
+
+function activityRef(db, id = "activity-a", targetProjectId = projectId) {
+  return doc(db, "projects", targetProjectId, "activityLogs", id);
+}
+
+function activityData(actorUid) {
+  return {
+    actorUid,
+    actorName: "テストユーザー",
+    action: "update",
+    section: "production.flyer",
+    sectionLabel: "チラシ・ポスター",
+    changedFields: ["部数"],
+    createdAt: serverTimestamp(),
+  };
 }
 
 async function seedProject() {
@@ -278,5 +295,47 @@ describe("new project bootstrap", () => {
     batch.set(projectRef(db, id), { title: "No", memberUids: [ownerUid] });
     batch.set(memberRef(db, ownerUid, id), { uid: ownerUid, role: "editor" });
     await assertFails(batch.commit());
+  });
+});
+
+describe("activity logs", () => {
+  it("allows owners and editors to create a log for themselves", async () => {
+    await assertSucceeds(setDoc(activityRef(firestoreFor(ownerUid), "owner-log"), activityData(ownerUid)));
+    await assertSucceeds(setDoc(activityRef(firestoreFor(editorUid), "editor-log"), activityData(editorUid)));
+  });
+
+  it("denies viewers from creating a log", async () => {
+    await assertFails(setDoc(activityRef(firestoreFor(viewerUid)), activityData(viewerUid)));
+  });
+
+  it("allows members to read logs", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(activityRef(context.firestore()), {
+        ...activityData(ownerUid),
+        createdAt: new Date(),
+      });
+    });
+    await assertSucceeds(getDoc(activityRef(firestoreFor(ownerUid))));
+    await assertSucceeds(getDocs(collection(firestoreFor(viewerUid), "projects", projectId, "activityLogs")));
+  });
+
+  it("denies non-members from reading logs", async () => {
+    await assertFails(getDocs(collection(firestoreFor(outsiderUid), "projects", projectId, "activityLogs")));
+  });
+
+  it("denies updates and deletes even by owners", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(activityRef(context.firestore()), {
+        ...activityData(ownerUid),
+        createdAt: new Date(),
+      });
+    });
+    const ref = activityRef(firestoreFor(ownerUid));
+    await assertFails(updateDoc(ref, { sectionLabel: "改ざん" }));
+    await assertFails(deleteDoc(ref));
+  });
+
+  it("denies actorUid impersonation", async () => {
+    await assertFails(setDoc(activityRef(firestoreFor(editorUid)), activityData(ownerUid)));
   });
 });

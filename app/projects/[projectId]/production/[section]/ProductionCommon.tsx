@@ -29,7 +29,7 @@ export function useProductionEditor<
   section: Section,
   initialData: import("@/lib/production-management").ProductionSectionDataMap[Section]
 ) {
-  const { canEdit } = useProjectAccess();
+  const { canEdit, actor } = useProjectAccess();
   const [data, setData] = useState(initialData);
   const [draft, setDraft] = useState(initialData);
   const [active, setActive] = useState<Block | null>(null);
@@ -56,7 +56,10 @@ export function useProductionEditor<
     setError("");
 
     try {
-      await updateProjectProductionBlock(projectId, section, active, draft[active]);
+      await updateProjectProductionBlock(projectId, section, active, draft[active], {
+        actor,
+        before: data[active],
+      });
       setData((current) => ({ ...current, [active]: draft[active] }));
       setMessage(`${label}を保存しました`);
       setActive(null);

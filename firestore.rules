@@ -30,6 +30,28 @@ service cloud.firestore {
       return value in ['owner', 'editor', 'viewer'];
     }
 
+    function validActivityLog() {
+      return request.resource.data.keys().hasOnly([
+          'actorUid', 'actorName', 'action', 'section', 'sectionLabel',
+          'changedFields', 'createdAt'
+        ])
+        && request.resource.data.keys().hasAll([
+          'actorUid', 'actorName', 'action', 'section', 'sectionLabel',
+          'changedFields', 'createdAt'
+        ])
+        && request.resource.data.actorUid == request.auth.uid
+        && request.resource.data.actorName is string
+        && request.resource.data.actorName.size() > 0
+        && request.resource.data.actorName.size() <= 100
+        && request.resource.data.action == 'update'
+        && request.resource.data.section is string
+        && request.resource.data.sectionLabel is string
+        && request.resource.data.changedFields is list
+        && request.resource.data.changedFields.size() > 0
+        && request.resource.data.changedFields.size() <= 50
+        && request.resource.data.createdAt == request.time;
+    }
+
     function projectPath(projectId) {
       return /databases/$(database)/documents/projects/$(projectId);
     }
@@ -98,6 +120,12 @@ service cloud.firestore {
       match /tasks/{taskId} {
         allow read: if isMember(projectId);
         allow create, update, delete: if canEdit(projectId);
+      }
+
+      match /activityLogs/{logId} {
+        allow read: if isMember(projectId);
+        allow create: if canEdit(projectId) && validActivityLog();
+        allow update, delete: if false;
       }
     }
 
