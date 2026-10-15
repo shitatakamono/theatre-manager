@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:unit": "node --no-warnings --test tests/activity.test.mjs tests/feedback.test.mjs tests/firestore-values.test.mjs tests/project-revisions.test.mjs",
+    "test:unit": "node --no-warnings --test tests/activity.test.mjs tests/feedback.test.mjs tests/firestore-values.test.mjs tests/member-invites.test.mjs tests/project-revisions.test.mjs",
     "test:conflict": "firebase emulators:exec --only firestore --project seisakuboard-conflict-test \"node --no-warnings --test tests/conflict.integration.test.mjs\"",
     "test:rules": "firebase emulators:exec --only firestore --project seisakuboard-rules-test \"node --test tests/firestore.rules.test.mjs\""
   },

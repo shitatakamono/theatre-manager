@@ -11,6 +11,7 @@ import {
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { auth, googleAuthProvider } from "@/lib/firebase";
 import type { UserProfile } from "@/lib/auth";
+import { claimPendingProjectInvites, syncCurrentUserMemberProfiles } from "@/lib/firestore";
 import styles from "./auth.module.css";
 
 type AuthContextValue = {
@@ -18,6 +19,7 @@ type AuthContextValue = {
   profile: UserProfile | null;
   login: () => Promise<void>;
   logout: () => Promise<void>;
+  membershipNotice: string;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -26,18 +28,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [error, setError] = useState("");
+  const [membershipNotice, setMembershipNotice] = useState("");
 
   useEffect(() => {
+    let active = true;
     void getRedirectResult(auth).catch(() => setError("Googleログインを完了できませんでした"));
-    return onAuthStateChanged(auth, (user) => {
-      setProfile(user ? {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        if (active) {
+          setProfile(null);
+          setMembershipNotice("");
+          setLoading(false);
+        }
+        return;
+      }
+      const nextProfile: UserProfile = {
         uid: user.uid,
         displayName: user.displayName ?? undefined,
         email: user.email ?? undefined,
         photoURL: user.photoURL ?? undefined,
-      } : null);
-      setLoading(false);
+      };
+      void (async () => {
+        let joinedProjects: string[] = [];
+        try { joinedProjects = await claimPendingProjectInvites(nextProfile); } catch { /* ログイン自体は継続する */ }
+        try { await syncCurrentUserMemberProfiles(nextProfile); } catch { /* 既存データの表示を優先する */ }
+        if (!active) return;
+        setProfile(nextProfile);
+        setMembershipNotice(joinedProjects.length > 0
+          ? `${joinedProjects.join("、")}に招待されている公演へ参加しました`
+          : "");
+        setLoading(false);
+      })();
     });
+    return () => { active = false; unsubscribe(); };
   }, []);
 
   async function login() {
@@ -54,7 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  const value = useMemo<AuthContextValue>(() => ({ loading, profile, login, logout: () => signOut(auth) }), [loading, profile]);
+  const value = useMemo<AuthContextValue>(() => ({ loading, profile, login, logout: () => signOut(auth), membershipNotice }), [loading, membershipNotice, profile]);
 
   if (loading) return <div className={styles.loading}>認証状態を確認しています…</div>;
   if (!profile) return <main className={styles.login}><section><p>SEISAKU BOARD</p><h1>SeisakuBoard</h1><h2>公演制作をチームで管理</h2><button onClick={() => void login()}>Googleでログイン</button>{error && <span role="alert">{error}</span>}</section></main>;

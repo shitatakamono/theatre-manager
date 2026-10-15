@@ -10,11 +10,13 @@ import {
   arrayRemove,
   arrayUnion,
   collection,
+  collectionGroup,
   deleteDoc,
   doc,
   getDoc,
   getDocs,
   query,
+  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -28,13 +30,19 @@ const ownerUid = "owner-a";
 const editorUid = "editor-a";
 const viewerUid = "viewer-a";
 const outsiderUid = "outsider-a";
+const invitedUid = "invitee-a";
+const invitedEmail = "invitee-a@example.test";
 
 let testEnv;
 
 function firestoreFor(uid) {
   return uid
-    ? testEnv.authenticatedContext(uid, { email: `${uid}@example.test` }).firestore()
+    ? testEnv.authenticatedContext(uid, { email: `${uid}@example.test`, email_verified: true }).firestore()
     : testEnv.unauthenticatedContext().firestore();
+}
+
+function firestoreForEmail(uid, email) {
+  return testEnv.authenticatedContext(uid, { email, email_verified: true }).firestore();
 }
 
 function projectRef(db, id = projectId) {
@@ -63,6 +71,49 @@ function activityData(actorUid) {
     changedFields: ["部数"],
     createdAt: serverTimestamp(),
   };
+}
+
+function inviteRef(db, email = invitedEmail, targetProjectId = projectId) {
+  return doc(db, "projects", targetProjectId, "memberInvites", email);
+}
+
+function inviteData(email = invitedEmail, role = "editor") {
+  return {
+    projectId,
+    projectName: "Test performance",
+    email,
+    role,
+    invitedByUid: ownerUid,
+    invitedByName: "Owner",
+    status: "pending",
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    acceptedAt: null,
+  };
+}
+
+async function claimInvite(db, uid = invitedUid, email = invitedEmail, role = "editor", mutateProject = undefined, requirePending = true) {
+  const invitation = inviteRef(db, email);
+  const project = projectRef(db);
+  const member = memberRef(db, uid);
+  return runTransaction(db, async (transaction) => {
+    const inviteSnapshot = await transaction.get(invitation);
+    if (!inviteSnapshot.exists() || (requirePending && inviteSnapshot.data().status !== "pending")) throw new Error("invite not pending");
+    transaction.update(project, mutateProject ?? { memberUids: arrayUnion(uid) });
+    transaction.set(member, {
+      uid,
+      role,
+      displayName: "Invited User",
+      email,
+      joinedAt: serverTimestamp(),
+      profileUpdatedAt: serverTimestamp(),
+    });
+    transaction.update(invitation, {
+      status: "accepted",
+      acceptedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  });
 }
 
 function feedbackRef(db, id = "feedback-a", targetProjectId = projectId) {
@@ -246,7 +297,7 @@ describe("owner role", () => {
     addBatch.set(memberRef(db, outsiderUid), { uid: outsiderUid, role: "viewer" });
     addBatch.update(projectRef(db), { memberUids: arrayUnion(outsiderUid) });
     await assertSucceeds(addBatch.commit());
-    await assertSucceeds(updateDoc(memberRef(db, outsiderUid), { role: "editor" }));
+    await assertSucceeds(updateDoc(memberRef(db, outsiderUid), { role: "editor", updatedAt: serverTimestamp() }));
     const removeBatch = writeBatch(db);
     removeBatch.delete(memberRef(db, outsiderUid));
     removeBatch.update(projectRef(db), { memberUids: arrayRemove(outsiderUid) });
@@ -466,5 +517,101 @@ describe("feedback", () => {
     await assertFails(deleteDoc(feedbackRef(firestoreFor(ownerUid))));
     await assertFails(deleteDoc(feedbackRef(firestoreFor(editorUid))));
     await assertFails(deleteDoc(feedbackRef(firestoreFor(viewerUid))));
+  });
+});
+
+describe("member profile sync", () => {
+  it("allows a member to synchronize only their own display name and email", async () => {
+    const db = firestoreFor(editorUid);
+    await assertSucceeds(updateDoc(memberRef(db, editorUid), {
+      displayName: "Editor Name",
+      email: `${editorUid}@example.test`,
+      profileUpdatedAt: serverTimestamp(),
+    }));
+    const member = await getDoc(memberRef(db, editorUid));
+    strictEqual(member.data()?.displayName, "Editor Name");
+    strictEqual(member.data()?.role, "editor");
+  });
+
+  it("denies self role changes and changes to another member profile", async () => {
+    const editorDb = firestoreFor(editorUid);
+    await assertFails(updateDoc(memberRef(editorDb, editorUid), { role: "owner", profileUpdatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(memberRef(editorDb, viewerUid), {
+      displayName: "Changed",
+      email: `${editorUid}@example.test`,
+      profileUpdatedAt: serverTimestamp(),
+    }));
+    await assertFails(updateDoc(memberRef(firestoreFor(ownerUid), viewerUid), {
+      displayName: "Owner changed this",
+      email: `${viewerUid}@example.test`,
+      profileUpdatedAt: serverTimestamp(),
+    }));
+  });
+});
+
+describe("member invites", () => {
+  it("allows only an owner to create editor or viewer invites", async () => {
+    await assertSucceeds(setDoc(inviteRef(firestoreFor(ownerUid)), inviteData()));
+    await assertFails(setDoc(inviteRef(firestoreFor(editorUid), "editor-target@example.test"), inviteData("editor-target@example.test")));
+    await assertFails(setDoc(inviteRef(firestoreFor(viewerUid), "viewer-target@example.test"), inviteData("viewer-target@example.test")));
+    await assertFails(setDoc(inviteRef(firestoreFor(outsiderUid), "outsider-target@example.test"), inviteData("outsider-target@example.test")));
+    await assertFails(setDoc(inviteRef(firestoreFor(ownerUid), "owner-target@example.test"), inviteData("owner-target@example.test", "owner")));
+  });
+
+  it("prevents duplicate pending invites at the deterministic email path", async () => {
+    const ref = inviteRef(firestoreFor(ownerUid));
+    await assertSucceeds(setDoc(ref, inviteData()));
+    await assertFails(setDoc(ref, inviteData()));
+  });
+
+  it("allows an invitee to query only their own invites and an owner to list project invites", async () => {
+    await assertSucceeds(setDoc(inviteRef(firestoreFor(ownerUid)), inviteData()));
+    const invitedDb = firestoreForEmail(invitedUid, invitedEmail);
+    await assertSucceeds(getDocs(query(collectionGroup(invitedDb, "memberInvites"), where("email", "==", invitedEmail))));
+    await assertSucceeds(getDocs(collection(firestoreFor(ownerUid), "projects", projectId, "memberInvites")));
+    await assertFails(getDoc(inviteRef(firestoreForEmail("other-invitee", "other@example.test"))));
+  });
+
+  it("allows an owner to revoke a pending invite without rewriting its content", async () => {
+    const ref = inviteRef(firestoreFor(ownerUid));
+    await assertSucceeds(setDoc(ref, inviteData()));
+    await assertSucceeds(updateDoc(ref, { status: "revoked", updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(ref, { status: "pending", role: "viewer", updatedAt: serverTimestamp() }));
+  });
+
+  it("atomically claims a pending invite with the invited role and profile", async () => {
+    await assertSucceeds(setDoc(inviteRef(firestoreFor(ownerUid)), inviteData()));
+    const invitedDb = firestoreForEmail(invitedUid, invitedEmail);
+    await assertSucceeds(claimInvite(invitedDb));
+    const project = await getDoc(projectRef(invitedDb));
+    const member = await getDoc(memberRef(invitedDb, invitedUid));
+    const invite = await getDoc(inviteRef(invitedDb));
+    strictEqual(project.data()?.memberUids.includes(invitedUid), true);
+    strictEqual(member.data()?.role, "editor");
+    strictEqual(member.data()?.displayName, "Invited User");
+    strictEqual(member.data()?.email, invitedEmail);
+    strictEqual(invite.data()?.status, "accepted");
+  });
+
+  it("denies another email and a revoked invite from being claimed", async () => {
+    await assertSucceeds(setDoc(inviteRef(firestoreFor(ownerUid)), inviteData()));
+    await assertFails(claimInvite(firestoreForEmail("wrong-user", "wrong@example.test"), "wrong-user", invitedEmail));
+    await assertSucceeds(updateDoc(inviteRef(firestoreFor(ownerUid)), { status: "revoked", updatedAt: serverTimestamp() }));
+    await assertFails(claimInvite(firestoreForEmail(invitedUid, invitedEmail), invitedUid, invitedEmail, "editor", undefined, false));
+  });
+
+  it("denies role escalation and other memberUids changes during claim", async () => {
+    await assertSucceeds(setDoc(inviteRef(firestoreFor(ownerUid)), inviteData()));
+    const invitedDb = firestoreForEmail(invitedUid, invitedEmail);
+    await assertFails(claimInvite(invitedDb, invitedUid, invitedEmail, "owner"));
+    await assertFails(claimInvite(invitedDb, invitedUid, invitedEmail, "viewer"));
+    await assertFails(claimInvite(invitedDb, invitedUid, invitedEmail, "editor", { memberUids: [invitedUid] }));
+  });
+
+  it("denies claiming the same invitation twice", async () => {
+    await assertSucceeds(setDoc(inviteRef(firestoreFor(ownerUid)), inviteData()));
+    const invitedDb = firestoreForEmail(invitedUid, invitedEmail);
+    await assertSucceeds(claimInvite(invitedDb));
+    await assertFails(claimInvite(invitedDb, invitedUid, invitedEmail, "editor", undefined, false));
   });
 });

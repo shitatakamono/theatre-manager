@@ -14,7 +14,7 @@ type DialogState =
   | null;
 
 export function ProjectListClient() {
-  const { profile } = useAuth();
+  const { profile, membershipNotice } = useAuth();
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState("");
@@ -100,6 +100,7 @@ export function ProjectListClient() {
         <div><p>SEISAKU BOARD</p><h1>公演一覧</h1></div>
         <Link className={styles.createButton} href="/projects/new">公演を作成する</Link>
       </header>
+      {membershipNotice ? <p className={styles.success} role="status">{membershipNotice}</p> : null}
       {loading ? <p className={styles.empty}>公演一覧を読み込んでいます…</p> : listError ? <p className={styles.error} role="alert">{listError}</p> : projects.length === 0 ? <p className={styles.empty}>参加している公演はありません。</p> : (
         <ul className={styles.list}>{projects.map((project) => (
           <li className={styles.card} data-menu-open={openMenuId === project.id} key={project.id}>

@@ -11,6 +11,8 @@ export type ProjectMember = UserProfile & {
   role: ProjectRole;
   createdAt?: unknown;
   updatedAt?: unknown;
+  joinedAt?: unknown;
+  profileUpdatedAt?: unknown;
 };
 
 export function canViewProject(role?: ProjectRole): boolean {

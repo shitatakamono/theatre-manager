@@ -2,6 +2,7 @@
 import { db } from "./firebase";
 import {
   collection,
+  collectionGroup,
   addDoc,
   getDocs,
   getDoc,
@@ -18,6 +19,7 @@ import {
   where,
   orderBy,
   limit,
+  runTransaction,
 } from "firebase/firestore";
 import {
   pickPerformanceData,
@@ -55,6 +57,15 @@ import {
   type ProjectRevisions,
   type RevisionKey,
 } from "./project-revisions";
+import {
+  buildMemberInvitePayload,
+  getMemberDisplayName,
+  isExistingMemberEmail,
+  isValidInviteEmail,
+  normalizeInviteEmail,
+  type InviteRole,
+  type ProjectMemberInvite,
+} from "./member-invites";
 
 /* ================================
    公演（projects）
@@ -134,9 +145,13 @@ export async function addProject(data: Project, owner: UserProfile) {
   batch.set(ref, { ...data, memberUids: [owner.uid], createdAt: now });
   batch.set(doc(ref, "members", owner.uid), {
     ...owner,
+    displayName: getMemberDisplayName(owner),
+    email: normalizeInviteEmail(owner.email ?? ""),
     role: "owner",
     createdAt: now,
     updatedAt: now,
+    joinedAt: now,
+    profileUpdatedAt: now,
   } satisfies ProjectMember);
   await batch.commit();
   return ref.id;
@@ -397,13 +412,108 @@ export async function getProjectMembers(projectId: string): Promise<ProjectMembe
 
 export async function updateProjectMemberRole(projectId: string, member: ProjectMember, role: ProjectRole) {
   const batch = writeBatch(db);
-  batch.set(doc(db, "projects", projectId, "members", member.uid), {
-    ...member,
+  batch.update(doc(db, "projects", projectId, "members", member.uid), {
     role,
-    updatedAt: Timestamp.now(),
+    updatedAt: serverTimestamp(),
   });
   batch.update(doc(db, "projects", projectId), { memberUids: arrayUnion(member.uid) });
   await batch.commit();
+}
+
+export async function syncCurrentUserMemberProfiles(profile: UserProfile): Promise<void> {
+  if (!profile.email) return;
+  const projects = await getDocs(query(projectsRef, where("memberUids", "array-contains", profile.uid)));
+  await Promise.all(projects.docs.map((project) => updateDoc(
+    doc(db, "projects", project.id, "members", profile.uid),
+    {
+      displayName: getMemberDisplayName(profile),
+      email: normalizeInviteEmail(profile.email ?? ""),
+      profileUpdatedAt: serverTimestamp(),
+    }
+  )));
+}
+
+export async function createProjectMemberInvite(input: {
+  projectId: string;
+  projectName: string;
+  email: string;
+  role: InviteRole;
+  invitedBy: UserProfile;
+}): Promise<ProjectMemberInvite> {
+  const email = normalizeInviteEmail(input.email);
+  if (!isValidInviteEmail(email)) throw new Error("有効なメールアドレスを入力してください");
+  if (normalizeInviteEmail(input.invitedBy.email ?? "") === email) throw new Error("自分自身を招待する必要はありません");
+  const members = await getProjectMembers(input.projectId);
+  if (isExistingMemberEmail(members, email)) throw new Error("このメールアドレスは既にメンバーです");
+
+  const inviteRef = doc(db, "projects", input.projectId, "memberInvites", email);
+  const payload = buildMemberInvitePayload({ ...input, email }, serverTimestamp());
+  await runTransaction(db, async (transaction) => {
+    const existing = await transaction.get(inviteRef);
+    if (existing.exists()) {
+      const status = existing.data().status;
+      throw new Error(status === "pending" ? "このメールアドレスは既に招待中です" : "このメールアドレスへの招待履歴が既にあります");
+    }
+    transaction.set(inviteRef, payload);
+  });
+  return { id: email, ...payload };
+}
+
+export async function getProjectMemberInvites(projectId: string): Promise<ProjectMemberInvite[]> {
+  const snapshot = await getDocs(query(
+    collection(db, "projects", projectId, "memberInvites"),
+    orderBy("createdAt", "desc")
+  ));
+  return snapshot.docs.map((invite) => ({ id: invite.id, ...(invite.data() as Omit<ProjectMemberInvite, "id">) }));
+}
+
+export async function revokeProjectMemberInvite(projectId: string, email: string): Promise<void> {
+  await updateDoc(doc(db, "projects", projectId, "memberInvites", normalizeInviteEmail(email)), {
+    status: "revoked",
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function claimPendingProjectInvites(profile: UserProfile): Promise<string[]> {
+  if (!profile.email || !isValidInviteEmail(profile.email)) return [];
+  const email = normalizeInviteEmail(profile.email);
+  const snapshot = await getDocs(query(collectionGroup(db, "memberInvites"), where("email", "==", email)));
+  const pending = snapshot.docs.filter((invite) => invite.data().status === "pending");
+  const joinedProjects: string[] = [];
+
+  for (const inviteSnapshot of pending) {
+    const inviteRef = inviteSnapshot.ref;
+    const projectId = inviteRef.parent.parent?.id;
+    if (!projectId) continue;
+    const projectRef = doc(db, "projects", projectId);
+    const memberRef = doc(projectRef, "members", profile.uid);
+
+    const projectName = await runTransaction(db, async (transaction) => {
+      const invite = await transaction.get(inviteRef);
+      if (!invite.exists()) throw new Error("招待された公演が見つかりません");
+      const inviteData = invite.data() as Omit<ProjectMemberInvite, "id">;
+      if (inviteData.status !== "pending") return null;
+      if (normalizeInviteEmail(inviteData.email) !== email) throw new Error("招待メールアドレスが一致しません");
+      if (inviteData.role !== "editor" && inviteData.role !== "viewer") throw new Error("招待Roleが不正です");
+      transaction.update(projectRef, { memberUids: arrayUnion(profile.uid) });
+      transaction.set(memberRef, {
+        uid: profile.uid,
+        role: inviteData.role,
+        displayName: getMemberDisplayName(profile),
+        email,
+        joinedAt: serverTimestamp(),
+        profileUpdatedAt: serverTimestamp(),
+      } satisfies ProjectMember);
+      transaction.update(inviteRef, {
+        status: "accepted",
+        acceptedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      return inviteData.projectName;
+    });
+    if (projectName) joinedProjects.push(projectName);
+  }
+  return joinedProjects;
 }
 
 export async function removeProjectMember(projectId: string, uid: string) {
