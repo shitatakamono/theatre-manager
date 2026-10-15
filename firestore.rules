@@ -52,6 +52,51 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time;
     }
 
+    function validFeedbackStatus(value) {
+      return value in ['unreviewed', 'planned', 'resolved', 'wontfix'];
+    }
+
+    function validFeedbackCreate(projectId) {
+      return request.resource.data.keys().hasOnly([
+          'type', 'body', 'status', 'reporterUid', 'reporterName',
+          'reporterRole', 'currentPath', 'pageLabel', 'adminNote',
+          'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.keys().hasAll([
+          'type', 'body', 'status', 'reporterUid', 'reporterName',
+          'reporterRole', 'currentPath', 'pageLabel', 'adminNote',
+          'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.type in ['bug', 'improvement', 'confusing', 'other']
+        && request.resource.data.body is string
+        && request.resource.data.body.size() > 0
+        && request.resource.data.body.size() <= 5000
+        && request.resource.data.status == 'unreviewed'
+        && request.resource.data.reporterUid == request.auth.uid
+        && request.resource.data.reporterName is string
+        && request.resource.data.reporterName.size() > 0
+        && request.resource.data.reporterName.size() <= 100
+        && request.resource.data.reporterRole == role(projectId)
+        && request.resource.data.currentPath is string
+        && request.resource.data.currentPath.size() > 0
+        && request.resource.data.currentPath.size() <= 500
+        && request.resource.data.pageLabel is string
+        && request.resource.data.pageLabel.size() > 0
+        && request.resource.data.pageLabel.size() <= 100
+        && request.resource.data.adminNote == ''
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function validFeedbackUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'adminNote', 'updatedAt'])
+        && validFeedbackStatus(request.resource.data.status)
+        && request.resource.data.adminNote is string
+        && request.resource.data.adminNote.size() <= 5000
+        && request.resource.data.updatedAt == request.time;
+    }
+
     function projectPath(projectId) {
       return /databases/$(database)/documents/projects/$(projectId);
     }
@@ -159,6 +204,13 @@ service cloud.firestore {
         allow read: if isMember(projectId);
         allow create: if canEdit(projectId) && validActivityLog();
         allow update, delete: if false;
+      }
+
+      match /feedback/{feedbackId} {
+        allow read: if isMember(projectId);
+        allow create: if isMember(projectId) && validFeedbackCreate(projectId);
+        allow update: if isOwner(projectId) && validFeedbackUpdate();
+        allow delete: if false;
       }
     }
 

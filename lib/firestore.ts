@@ -45,6 +45,12 @@ import {
   type ActivityLog,
 } from "./activity";
 import {
+  buildFeedbackPayload,
+  type Feedback,
+  type FeedbackCreateInput,
+  type FeedbackStatus,
+} from "./feedback";
+import {
   runProjectRevisionTransaction,
   type ProjectRevisions,
   type RevisionKey,
@@ -315,6 +321,40 @@ export async function getProjectActivityLogs(projectId: string): Promise<Activit
     id: activity.id,
     ...(activity.data() as Omit<ActivityLog, "id">),
   }));
+}
+
+export async function createProjectFeedback(
+  projectId: string,
+  input: FeedbackCreateInput
+) {
+  return addDoc(
+    collection(db, "projects", projectId, "feedback"),
+    buildFeedbackPayload(input, serverTimestamp())
+  );
+}
+
+export async function getProjectFeedback(projectId: string): Promise<Feedback[]> {
+  const snapshot = await getDocs(query(
+    collection(db, "projects", projectId, "feedback"),
+    orderBy("createdAt", "desc"),
+    limit(100)
+  ));
+  return snapshot.docs.map((feedback) => ({
+    id: feedback.id,
+    ...(feedback.data() as Omit<Feedback, "id">),
+  }));
+}
+
+export async function updateProjectFeedbackReview(
+  projectId: string,
+  feedbackId: string,
+  review: { status: FeedbackStatus; adminNote: string }
+) {
+  await updateDoc(doc(db, "projects", projectId, "feedback", feedbackId), {
+    status: review.status,
+    adminNote: review.adminNote,
+    updatedAt: serverTimestamp(),
+  });
 }
 
 export async function renameProject(projectId: string, title: string) {

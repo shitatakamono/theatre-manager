@@ -65,6 +65,26 @@ function activityData(actorUid) {
   };
 }
 
+function feedbackRef(db, id = "feedback-a", targetProjectId = projectId) {
+  return doc(db, "projects", targetProjectId, "feedback", id);
+}
+
+function feedbackData(reporterUid, reporterRole) {
+  return {
+    type: "bug",
+    body: "保存時にエラーが出ました",
+    status: "unreviewed",
+    reporterUid,
+    reporterName: "テストユーザー",
+    reporterRole,
+    currentPath: `/projects/${projectId}/production/flyer`,
+    pageLabel: "チラシ・ポスター",
+    adminNote: "",
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+}
+
 async function seedProject() {
   await testEnv.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
@@ -378,5 +398,73 @@ describe("activity logs", () => {
 
   it("denies actorUid impersonation", async () => {
     await assertFails(setDoc(activityRef(firestoreFor(editorUid)), activityData(ownerUid)));
+  });
+});
+
+describe("feedback", () => {
+  it("allows owners, editors, and viewers to create their own feedback", async () => {
+    await assertSucceeds(setDoc(feedbackRef(firestoreFor(ownerUid), "owner-feedback"), feedbackData(ownerUid, "owner")));
+    await assertSucceeds(setDoc(feedbackRef(firestoreFor(editorUid), "editor-feedback"), feedbackData(editorUid, "editor")));
+    await assertSucceeds(setDoc(feedbackRef(firestoreFor(viewerUid), "viewer-feedback"), feedbackData(viewerUid, "viewer")));
+  });
+
+  it("denies feedback creation by a non-member", async () => {
+    await assertFails(setDoc(feedbackRef(firestoreFor(outsiderUid)), feedbackData(outsiderUid, "viewer")));
+  });
+
+  it("allows members to read feedback and denies non-members", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(feedbackRef(context.firestore()), { ...feedbackData(ownerUid, "owner"), createdAt: new Date(), updatedAt: new Date() });
+    });
+    await assertSucceeds(getDoc(feedbackRef(firestoreFor(ownerUid))));
+    await assertSucceeds(getDocs(collection(firestoreFor(editorUid), "projects", projectId, "feedback")));
+    await assertSucceeds(getDocs(collection(firestoreFor(viewerUid), "projects", projectId, "feedback")));
+    await assertFails(getDoc(feedbackRef(firestoreFor(outsiderUid))));
+  });
+
+  it("denies reporter UID and role impersonation", async () => {
+    await assertFails(setDoc(feedbackRef(firestoreFor(editorUid), "uid-spoof"), feedbackData(ownerUid, "editor")));
+    await assertFails(setDoc(feedbackRef(firestoreFor(editorUid), "role-spoof"), feedbackData(editorUid, "owner")));
+  });
+
+  it("requires the initial status, empty admin note, and server timestamps", async () => {
+    await assertFails(setDoc(feedbackRef(firestoreFor(viewerUid), "status-spoof"), { ...feedbackData(viewerUid, "viewer"), status: "resolved" }));
+    await assertFails(setDoc(feedbackRef(firestoreFor(viewerUid), "note-spoof"), { ...feedbackData(viewerUid, "viewer"), adminNote: "事前メモ" }));
+    await assertFails(setDoc(feedbackRef(firestoreFor(viewerUid), "time-spoof"), { ...feedbackData(viewerUid, "viewer"), createdAt: new Date(0) }));
+  });
+
+  it("allows an owner to update only status, admin note, and updatedAt", async () => {
+    const ref = feedbackRef(firestoreFor(ownerUid));
+    await assertSucceeds(setDoc(ref, feedbackData(ownerUid, "owner")));
+    await assertSucceeds(updateDoc(ref, { status: "planned", adminNote: "次回対応", updatedAt: serverTimestamp() }));
+    const feedback = await getDoc(ref);
+    strictEqual(feedback.data()?.status, "planned");
+    strictEqual(feedback.data()?.adminNote, "次回対応");
+  });
+
+  it("denies feedback updates by editors and viewers", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(feedbackRef(context.firestore()), { ...feedbackData(viewerUid, "viewer"), createdAt: new Date(), updatedAt: new Date() });
+    });
+    const update = { status: "resolved", adminNote: "対応済み", updatedAt: serverTimestamp() };
+    await assertFails(updateDoc(feedbackRef(firestoreFor(editorUid)), update));
+    await assertFails(updateDoc(feedbackRef(firestoreFor(viewerUid)), update));
+  });
+
+  it("denies body and reporter metadata changes even by an owner", async () => {
+    const ref = feedbackRef(firestoreFor(ownerUid));
+    await assertSucceeds(setDoc(ref, feedbackData(ownerUid, "owner")));
+    await assertFails(updateDoc(ref, { body: "改ざん", updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(ref, { reporterName: "別人", updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(ref, { reporterUid: editorUid, updatedAt: serverTimestamp() }));
+  });
+
+  it("denies feedback deletion for every role", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(feedbackRef(context.firestore()), { ...feedbackData(ownerUid, "owner"), createdAt: new Date(), updatedAt: new Date() });
+    });
+    await assertFails(deleteDoc(feedbackRef(firestoreFor(ownerUid))));
+    await assertFails(deleteDoc(feedbackRef(firestoreFor(editorUid))));
+    await assertFails(deleteDoc(feedbackRef(firestoreFor(viewerUid))));
   });
 });
