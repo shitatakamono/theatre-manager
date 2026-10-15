@@ -6,6 +6,7 @@ import type { ProjectPerformanceRecord } from "@/lib/firestore";
 import { updateProjectVenueSection } from "@/lib/firestore";
 import { useProjectAccess } from "../../ProjectAccess";
 import { formatPerformanceDate } from "@/lib/performance";
+import { getProjectRevision, isConflictError } from "@/lib/project-revisions";
 import type { ReceptionManagement } from "@/lib/production-management";
 import {
   normalizeVenueManagement,
@@ -155,6 +156,9 @@ export function VenueManagementClient({ project }: { project: VenueManagementPro
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [revision, setRevision] = useState(() => getProjectRevision(project.revisions, "venue"));
+  const [expectedRevision, setExpectedRevision] = useState(revision);
+  const [conflict, setConflict] = useState(false);
 
   const basic = project.data.performanceInfo;
   const venue = project.data.venue;
@@ -175,12 +179,15 @@ export function VenueManagementClient({ project }: { project: VenueManagementPro
     setDraft(structuredClone(data));
     setError("");
     setMessage("");
+    setConflict(false);
+    setExpectedRevision(revision);
     setActive(section);
   }
 
   function close() {
     setActive(null);
     setError("");
+    setConflict(false);
   }
 
   async function save() {
@@ -188,20 +195,32 @@ export function VenueManagementClient({ project }: { project: VenueManagementPro
     const value = getSectionValue(draft, active);
     setSaving(true);
     setError("");
+    setConflict(false);
     try {
-      await updateProjectVenueSection(project.id, active, value, {
+      const result = await updateProjectVenueSection(project.id, active, value, {
         actor,
-        before: getSectionValue(data, active),
+        expectedRevision,
       });
-      setData((current) => active === "contract"
-        ? { ...current, ...(value as VenueContract) }
-        : { ...current, [active]: value });
-      setMessage(`${labels[active]}を保存しました`);
+      if (result.changed) {
+        setData((current) => active === "contract"
+          ? { ...current, ...(value as VenueContract) }
+          : { ...current, [active]: value });
+        setRevision(result.revision);
+        setExpectedRevision(result.revision);
+      }
+      setMessage(result.changed ? `${labels[active]}を保存しました` : "変更はありません");
       setActive(null);
     } catch (saveError) {
+      if (isConflictError(saveError)) setConflict(true);
       setError(saveError instanceof Error ? saveError.message : "保存できませんでした");
     } finally {
       setSaving(false);
+    }
+  }
+
+  function reloadLatest() {
+    if (confirm("最新の内容を読み込むと、現在入力中の未保存内容は失われます。読み込みますか？")) {
+      window.location.reload();
     }
   }
 
@@ -313,7 +332,7 @@ export function VenueManagementClient({ project }: { project: VenueManagementPro
         <aside className={styles.drawer} aria-label={`${labels[active]}を編集`}>
           <header className={styles.drawerHeader}><div><p>会場管理</p><h2>{labels[active]}を編集</h2></div><button aria-label="閉じる" onClick={close}>×</button></header>
           <div className={styles.drawerBody}>{renderEditor()}</div>
-          <footer className={styles.drawerFooter}>{error && <p>{error}</p>}<button className={styles.cancelButton} onClick={close} disabled={saving}>キャンセル</button><button className={styles.saveButton} onClick={save} disabled={saving}>{saving ? "保存中…" : "保存"}</button></footer>
+          <footer className={styles.drawerFooter}>{error && (conflict ? <div className={styles.conflictNotice} role="alert"><p>{error}</p><button onClick={reloadLatest}>最新の内容を読み込む</button></div> : <p>{error}</p>)}<button className={styles.cancelButton} onClick={close} disabled={saving}>キャンセル</button><button className={styles.saveButton} onClick={save} disabled={saving}>{saving ? "保存中…" : "保存"}</button></footer>
         </aside>
       </div>}
     </main>

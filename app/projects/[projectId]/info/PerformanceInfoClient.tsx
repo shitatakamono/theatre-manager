@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { ProjectPerformanceRecord } from "@/lib/firestore";
 import { updateProjectPerformanceSection } from "@/lib/firestore";
+import { getProjectRevision, isConflictError } from "@/lib/project-revisions";
 import { useProjectAccess } from "../ProjectAccess";
 import {
   calculateEndTime,
@@ -200,6 +201,9 @@ export function PerformanceInfoClient({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [savedMessage, setSavedMessage] = useState("");
+  const [revision, setRevision] = useState(() => getProjectRevision(project.revisions, "performanceInfo"));
+  const [expectedRevision, setExpectedRevision] = useState(revision);
+  const [conflict, setConflict] = useState(false);
   const [configuredSections, setConfiguredSections] = useState<
     Set<PerformanceSection>
   >(
@@ -238,6 +242,8 @@ export function PerformanceInfoClient({
     setDraft(nextDraft);
     setSaveError("");
     setSavedMessage("");
+    setConflict(false);
+    setExpectedRevision(revision);
     setActiveEditor(section);
   }
 
@@ -248,27 +254,39 @@ export function PerformanceInfoClient({
 
     setSaving(true);
     setSaveError("");
+    setConflict(false);
 
     try {
-      await updateProjectPerformanceSection(project.id, activeEditor, value, {
+      const result = await updateProjectPerformanceSection(project.id, activeEditor, value, {
         actor,
-        before: data[activeEditor],
+        expectedRevision,
       });
 
-      setData((current) => ({ ...current, [activeEditor]: value }));
-      setConfiguredSections((current) => {
-        const next = new Set(current);
-        next.add(activeEditor);
-        return next;
-      });
-      setSavedMessage(`${editorLabels[activeEditor]}を保存しました`);
+      if (result.changed) {
+        setData((current) => ({ ...current, [activeEditor]: value }));
+        setRevision(result.revision);
+        setExpectedRevision(result.revision);
+        setConfiguredSections((current) => {
+          const next = new Set(current);
+          next.add(activeEditor);
+          return next;
+        });
+      }
+      setSavedMessage(result.changed ? `${editorLabels[activeEditor]}を保存しました` : "変更はありません");
       setActiveEditor(null);
     } catch (error) {
+      if (isConflictError(error)) setConflict(true);
       setSaveError(
         error instanceof Error ? error.message : "保存できませんでした"
       );
     } finally {
       setSaving(false);
+    }
+  }
+
+  function reloadLatest() {
+    if (confirm("最新の内容を読み込むと、現在入力中の未保存内容は失われます。読み込みますか？")) {
+      window.location.reload();
     }
   }
 
@@ -538,7 +556,7 @@ export function PerformanceInfoClient({
             </header>
             <div className={styles.drawerBody}>{renderEditor()}</div>
             <footer className={styles.drawerFooter}>
-              {saveError && <p>{saveError}</p>}
+              {saveError && (conflict ? <div className={styles.conflictNotice} role="alert"><p>{saveError}</p><button onClick={reloadLatest}>最新の内容を読み込む</button></div> : <p>{saveError}</p>)}
               <button className={styles.cancelButton} onClick={() => setActiveEditor(null)} disabled={saving}>キャンセル</button>
               <button className={styles.saveButton} onClick={saveSection} disabled={saving}>{saving ? "保存中…" : "保存"}</button>
             </footer>

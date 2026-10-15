@@ -82,6 +82,39 @@ service cloud.firestore {
             && !existsAfter(projectMemberPath(projectId, removed[0]))));
     }
 
+    function revisionIncremented(key) {
+      let before = resource.data.get('revisions', {}).get(key, 0);
+      let afterRevisions = request.resource.data.get('revisions', {});
+      return afterRevisions.get(key, -1) is int
+        && afterRevisions.get(key, -1) == before + 1
+        && afterRevisions.diff(resource.data.get('revisions', {})).affectedKeys().hasOnly([key]);
+    }
+
+    function validSectionRevisionChange() {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      let performanceChanged = changed.hasAny([
+        'performanceInfo', 'venue', 'performances', 'tickets',
+        'cast', 'staff', 'contact', 'credits'
+      ]);
+      let productionChanged = changed.hasAny(['production']);
+      let productionSections = request.resource.data.get('production', {})
+        .diff(resource.data.get('production', {})).affectedKeys();
+      return (!performanceChanged
+          && !productionChanged
+          && !changed.hasAny(['revisions']))
+        || (performanceChanged
+          && !productionChanged
+          && revisionIncremented('performanceInfo'))
+        || (!performanceChanged
+          && productionChanged
+          && ((productionSections.hasOnly(['venue']) && revisionIncremented('venue'))
+            || (productionSections.hasOnly(['flyer']) && revisionIncremented('flyer'))
+            || (productionSections.hasOnly(['web']) && revisionIncremented('web'))
+            || (productionSections.hasOnly(['tickets']) && revisionIncremented('ticket'))
+            || (productionSections.hasOnly(['reception']) && revisionIncremented('reception'))
+            || (productionSections.hasOnly(['accounting']) && revisionIncremented('accounting'))));
+    }
+
     match /projects/{projectId} {
       allow create: if signedIn()
         && request.resource.data.memberUids is list
@@ -91,9 +124,9 @@ service cloud.firestore {
       allow get: if isMember(projectId);
       allow list: if signedIn()
         && request.auth.uid in resource.data.memberUids;
-      allow update: if (isOwner(projectId) && validMemberUidsChange(projectId))
-        || (canEdit(projectId)
-          && memberUidsUnchanged());
+      allow update: if ((isOwner(projectId) && validMemberUidsChange(projectId))
+          || (canEdit(projectId) && memberUidsUnchanged()))
+        && validSectionRevisionChange();
       allow delete: if isOwner(projectId);
 
       match /members/{uid} {

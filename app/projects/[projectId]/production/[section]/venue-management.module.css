@@ -548,6 +548,22 @@
   font-size: 11px;
 }
 
+.conflictNotice {
+  margin-right: auto;
+  max-width: 270px;
+  color: #8a4b12;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.conflictNotice button {
+  margin-top: 5px;
+  color: #7a3d0b;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .formGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

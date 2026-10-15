@@ -127,7 +127,7 @@ describe("non-member access", () => {
   it("denies edits and member management", async () => {
     const db = firestoreFor(outsiderUid);
     await assertFails(updateDoc(projectRef(db), { title: "No" }));
-    await assertFails(updateDoc(projectRef(db), { "production.venue.note": "No" }));
+    await assertFails(updateDoc(projectRef(db), { "production.venue.note": "No", "revisions.venue": 1 }));
     await assertFails(updateDoc(taskRef(db), { done: true }));
     await assertFails(setDoc(memberRef(db, outsiderUid), { uid: outsiderUid, role: "viewer" }));
   });
@@ -147,7 +147,7 @@ describe("viewer role", () => {
   it("cannot edit project, production data, tasks, members, or delete the project", async () => {
     const db = firestoreFor(viewerUid);
     await assertFails(updateDoc(projectRef(db), { title: "No" }));
-    await assertFails(updateDoc(projectRef(db), { "production.venue.note": "No" }));
+    await assertFails(updateDoc(projectRef(db), { "production.venue.note": "No", "revisions.venue": 1 }));
     await assertFails(updateDoc(taskRef(db), { done: true }));
     await assertFails(setDoc(memberRef(db, outsiderUid), { uid: outsiderUid, role: "viewer" }));
     await assertFails(deleteDoc(projectRef(db)));
@@ -159,7 +159,7 @@ describe("editor role", () => {
     const db = firestoreFor(editorUid);
     await assertSucceeds(getDoc(projectRef(db)));
     await assertSucceeds(updateDoc(projectRef(db), { title: "Edited" }));
-    await assertSucceeds(updateDoc(projectRef(db), { "production.venue.note": "Edited" }));
+    await assertSucceeds(updateDoc(projectRef(db), { "production.venue.note": "Edited", "revisions.venue": 1 }));
     await assertSucceeds(updateDoc(taskRef(db), { done: true }));
   });
 
@@ -216,7 +216,7 @@ describe("owner role", () => {
     const db = firestoreFor(ownerUid);
     await assertSucceeds(getDoc(projectRef(db)));
     await assertSucceeds(updateDoc(projectRef(db), { title: "Owner edit" }));
-    await assertSucceeds(updateDoc(projectRef(db), { "production.venue.note": "Owner edit" }));
+    await assertSucceeds(updateDoc(projectRef(db), { "production.venue.note": "Owner edit", "revisions.venue": 1 }));
     await assertSucceeds(updateDoc(taskRef(db), { done: true }));
   });
 
@@ -295,6 +295,47 @@ describe("new project bootstrap", () => {
     batch.set(projectRef(db, id), { title: "No", memberUids: [ownerUid] });
     batch.set(memberRef(db, ownerUid, id), { uid: ownerUid, role: "editor" });
     await assertFails(batch.commit());
+  });
+});
+
+describe("section revisions", () => {
+  it("treats a missing revision as zero and permits exactly one matching increment", async () => {
+    const db = firestoreFor(editorUid);
+    await assertSucceeds(updateDoc(projectRef(db), {
+      "production.flyer.flyer.quantity": 100,
+      "revisions.flyer": 1,
+    }));
+    const project = await getDoc(projectRef(db));
+    strictEqual(project.data()?.revisions?.flyer, 1);
+  });
+
+  it("accepts the matching independent revision for all seven protected sections", async () => {
+    const db = firestoreFor(ownerUid);
+    for (const update of [
+      { performanceInfo: { title: "Title" }, "revisions.performanceInfo": 1 },
+      { "production.venue.note": "Venue", "revisions.venue": 1 },
+      { "production.flyer.flyer.quantity": 100, "revisions.flyer": 1 },
+      { "production.web.channels.website": true, "revisions.web": 1 },
+      { "production.tickets.methods.online": true, "revisions.ticket": 1 },
+      { "production.reception.basic.gatheringTime": "17:00", "revisions.reception": 1 },
+      { "production.accounting.tasks": [], "revisions.accounting": 1 },
+    ]) {
+      await assertSucceeds(updateDoc(projectRef(db), update));
+    }
+  });
+
+  it("rejects missing, skipped, unrelated, and multi-section revision changes", async () => {
+    const db = firestoreFor(ownerUid);
+    await assertFails(updateDoc(projectRef(db), { "production.flyer.flyer.quantity": 100 }));
+    await assertFails(updateDoc(projectRef(db), { "production.flyer.flyer.quantity": 100, "revisions.flyer": 2 }));
+    await assertFails(updateDoc(projectRef(db), { "production.flyer.flyer.quantity": 100, "revisions.accounting": 1 }));
+    await assertFails(updateDoc(projectRef(db), {
+      "production.flyer.flyer.quantity": 100,
+      "production.accounting.tasks": [],
+      "revisions.flyer": 1,
+      "revisions.accounting": 1,
+    }));
+    await assertFails(updateDoc(projectRef(db), { "revisions.flyer": 1 }));
   });
 });
 

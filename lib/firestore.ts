@@ -38,15 +38,17 @@ import type {
 import type { ProjectMember, ProjectRole, UserProfile } from "./auth";
 import { removeUndefinedValues } from "./firestore-values";
 import {
-  getActivityActorName,
-  getChangedFields,
   getPerformanceActivityDefinition,
   getProductionActivityDefinition,
   getVenueActivityDefinition,
   type ActivityActor,
-  type ActivityDefinition,
   type ActivityLog,
 } from "./activity";
+import {
+  runProjectRevisionTransaction,
+  type ProjectRevisions,
+  type RevisionKey,
+} from "./project-revisions";
 
 /* ================================
    公演（projects）
@@ -66,6 +68,7 @@ export type Project = ProjectPerformanceData & {
   createdAt?: Timestamp;
   performanceInfoUpdatedAt?: Timestamp;
   memberUids?: string[];
+  revisions?: ProjectRevisions;
 };
 
 export type ProjectPerformanceRecord = {
@@ -79,6 +82,7 @@ export type ProjectPerformanceRecord = {
   data: ProjectPerformanceData;
   production?: ProductionManagement;
   memberUids?: string[];
+  revisions?: ProjectRevisions;
 };
 
 export type Task = {
@@ -96,9 +100,9 @@ export type Category = {
   children?: string[];
 };
 
-export type ActivityWriteContext<T> = {
+export type ActivityWriteContext = {
   actor: ActivityActor;
-  before: T | undefined;
+  expectedRevision: number;
 };
 
 function venueContractForComparison(value: VenueManagementSectionMap["contract"] | undefined) {
@@ -109,27 +113,11 @@ function venueContractForComparison(value: VenueManagementSectionMap["contract"]
   }));
 }
 
-function addActivityToBatch(
-  batch: ReturnType<typeof writeBatch>,
-  projectId: string,
-  actor: ActivityActor,
-  definition: ActivityDefinition,
-  before: unknown,
-  after: unknown
-) {
-  const changedFields = getChangedFields(before, after, definition.fields);
-  if (changedFields.length === 0) return;
-
-  const activityRef = doc(collection(db, "projects", projectId, "activityLogs"));
-  batch.set(activityRef, {
-    actorUid: actor.uid,
-    actorName: getActivityActorName(actor),
-    action: "update",
-    section: definition.section,
-    sectionLabel: definition.sectionLabel,
-    changedFields,
-    createdAt: serverTimestamp(),
-  });
+function requireActivityContext(activity?: ActivityWriteContext): ActivityWriteContext {
+  if (!activity) {
+    throw new Error("競合検知に必要なrevision情報がありません");
+  }
+  return activity;
 }
 
 // 公演追加
@@ -211,6 +199,7 @@ export async function getProjectPerformanceData(
     data: pickPerformanceData(project),
     production: project.production,
     memberUids: project.memberUids,
+    revisions: project.revisions,
   };
 }
 
@@ -220,19 +209,24 @@ export async function updateProjectPerformanceSection<
   projectId: string,
   section: Section,
   value: PerformanceSectionMap[Section],
-  activity?: ActivityWriteContext<PerformanceSectionMap[Section]>
+  activity?: ActivityWriteContext
 ) {
-  const ref = doc(db, "projects", projectId);
-  const batch = writeBatch(db);
+  const context = requireActivityContext(activity);
   const cleanValue = removeUndefinedValues(value);
-  batch.update(ref, {
-    [section]: cleanValue,
-    performanceInfoUpdatedAt: serverTimestamp(),
+  return runProjectRevisionTransaction({
+    firestore: db,
+    projectId,
+    revisionKey: "performanceInfo",
+    expectedRevision: context.expectedRevision,
+    updates: {
+      [section]: cleanValue,
+      performanceInfoUpdatedAt: serverTimestamp(),
+    },
+    nextValue: cleanValue,
+    readCurrentValue: (project) => project[section],
+    actor: context.actor,
+    activity: getPerformanceActivityDefinition(section),
   });
-  if (activity) {
-    addActivityToBatch(batch, projectId, activity.actor, getPerformanceActivityDefinition(section), activity.before, cleanValue);
-  }
-  await batch.commit();
 }
 
 export async function updateProjectVenueSection<
@@ -241,39 +235,42 @@ export async function updateProjectVenueSection<
   projectId: string,
   section: Section,
   value: VenueManagementSectionMap[Section],
-  activity?: ActivityWriteContext<VenueManagementSectionMap[Section]>
+  activity?: ActivityWriteContext
 ) {
-  const ref = doc(db, "projects", projectId);
-  const batch = writeBatch(db);
+  const context = requireActivityContext(activity);
   const cleanValue = removeUndefinedValues(value);
+  const updates: Record<string, unknown> = {};
+  let comparisonValue: unknown = cleanValue;
 
   if (section === "contract") {
     const contract = cleanValue as VenueManagementSectionMap["contract"];
-    const updates: Record<string, unknown> = {};
-
     for (const field of VENUE_CONTRACT_FIELDS) {
       const fieldValue = contract[field];
       updates[`production.venue.${field}`] =
         fieldValue === undefined || fieldValue === "" ? deleteField() : fieldValue;
     }
 
-    batch.update(ref, updates);
+    comparisonValue = venueContractForComparison(contract);
   } else {
-    batch.update(ref, {
-      [`production.venue.${section}`]: cleanValue,
-    });
+    updates[`production.venue.${section}`] = cleanValue;
   }
 
-  if (activity) {
-    const before = section === "contract"
-      ? venueContractForComparison(activity.before as VenueManagementSectionMap["contract"] | undefined)
-      : activity.before;
-    const after = section === "contract"
-      ? venueContractForComparison(cleanValue as VenueManagementSectionMap["contract"])
-      : cleanValue;
-    addActivityToBatch(batch, projectId, activity.actor, getVenueActivityDefinition(section), before, after);
-  }
-  await batch.commit();
+  return runProjectRevisionTransaction({
+    firestore: db,
+    projectId,
+    revisionKey: "venue",
+    expectedRevision: context.expectedRevision,
+    updates,
+    nextValue: comparisonValue,
+    readCurrentValue: (project) => {
+      const venue = (project.production as Record<string, unknown> | undefined)?.venue as Record<string, unknown> | undefined;
+      return section === "contract"
+        ? venueContractForComparison(venue as VenueManagementSectionMap["contract"] | undefined)
+        : venue?.[section];
+    },
+    actor: context.actor,
+    activity: getVenueActivityDefinition(section),
+  });
 }
 
 export async function updateProjectProductionBlock<
@@ -284,18 +281,28 @@ export async function updateProjectProductionBlock<
   section: Section,
   block: Block,
   value: ProductionSectionDataMap[Section][Block],
-  activity?: ActivityWriteContext<ProductionSectionDataMap[Section][Block]>
+  activity?: ActivityWriteContext
 ) {
-  const ref = doc(db, "projects", projectId);
-  const batch = writeBatch(db);
+  const context = requireActivityContext(activity);
   const cleanValue = removeUndefinedValues(value);
-  batch.update(ref, {
-    [`production.${section}.${block}`]: cleanValue,
+  const revisionKey: RevisionKey = section === "tickets" ? "ticket" : section;
+  return runProjectRevisionTransaction({
+    firestore: db,
+    projectId,
+    revisionKey,
+    expectedRevision: context.expectedRevision,
+    updates: {
+      [`production.${section}.${block}`]: cleanValue,
+    },
+    nextValue: cleanValue,
+    readCurrentValue: (project) => {
+      const production = project.production as Record<string, unknown> | undefined;
+      const sectionData = production?.[section] as Record<string, unknown> | undefined;
+      return sectionData?.[block];
+    },
+    actor: context.actor,
+    activity: getProductionActivityDefinition(section, block),
   });
-  if (activity) {
-    addActivityToBatch(batch, projectId, activity.actor, getProductionActivityDefinition(section, block), activity.before, cleanValue);
-  }
-  await batch.commit();
 }
 
 export async function getProjectActivityLogs(projectId: string): Promise<ActivityLog[]> {

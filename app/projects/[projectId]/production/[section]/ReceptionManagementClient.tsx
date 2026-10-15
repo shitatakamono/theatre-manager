@@ -12,6 +12,7 @@ import {
   type ReceptionScheduleItem,
   type ReceptionStaff,
 } from "@/lib/production-management";
+import { getProjectRevision } from "@/lib/project-revisions";
 import {
   CheckboxField,
   CheckList,
@@ -61,7 +62,7 @@ const merchandiseLabels = {
 
 export function ReceptionManagementClient({ project, management, accountingManagement }: { project: ProjectPerformanceRecord; management?: ReceptionManagement; accountingManagement?: AccountingManagement }) {
   const shows = project.data.performances ?? [];
-  const editor = useProductionEditor<"reception", Block>(project.id, "reception", normalizeReception(management, shows.map((show) => show.id)));
+  const editor = useProductionEditor<"reception", Block>(project.id, "reception", normalizeReception(management, shows.map((show) => show.id)), getProjectRevision(project.revisions, "reception"));
   const title = project.data.performanceInfo?.title || project.legacyTitle || "公演タイトル未設定";
   const seatsPerPerformance = resolveSeatsPerPerformance(project.data.performanceInfo, shows.length);
   const totalSeats = calculateTotalSeats(project.data.performanceInfo, shows.length);
@@ -106,7 +107,7 @@ export function ReceptionManagementClient({ project, management, accountingManag
       <ManagementSection id="opening" title={labels.opening} block="opening" onEdit={editor.open}><CheckList items={[{ label: "開場前確認完了", complete: editor.data.opening?.openingCheckCompleted }]} />{editor.data.opening?.note && <p className={styles.note}>{editor.data.opening.note}</p>}</ManagementSection>
       <ManagementSection id="closingByPerformance" title={labels.closingByPerformance} block="closingByPerformance" onEdit={editor.open}>{shows.length === 0 ? <p className={styles.empty}>公演回が設定されていません。</p> : <div className={styles.repeater}>{shows.map((show) => { const value = editor.data.closingByPerformance?.find((entry) => entry.performanceId === show.id); return <div className={styles.subForm} key={show.id}><strong>{formatPerformanceDate(show.date)} {show.startTime || "--:--"}</strong><CheckList items={closingItems(value, operation, editor.data.merchandise?.enabled)} /></div>; })}</div>}</ManagementSection>
     </div>
-    {editor.active && <EditorDrawer title={labels[editor.active]} saving={editor.saving} error={editor.error} onClose={editor.close} onSave={() => editor.save(labels[editor.active!])}>{renderEditor()}</EditorDrawer>}
+    {editor.active && <EditorDrawer title={labels[editor.active]} saving={editor.saving} error={editor.error} conflict={editor.conflict} onReload={editor.reloadLatest} onClose={editor.close} onSave={() => editor.save(labels[editor.active!])}>{renderEditor()}</EditorDrawer>}
   </main>;
 
   function renderEditor() {

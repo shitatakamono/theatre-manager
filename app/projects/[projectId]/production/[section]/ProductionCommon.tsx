@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import type { ManagedProductionSection } from "@/lib/production-management";
 import { updateProjectProductionBlock } from "@/lib/firestore";
+import { isConflictError } from "@/lib/project-revisions";
 import { useProjectAccess } from "../../ProjectAccess";
 import styles from "./venue-management.module.css";
 
@@ -27,7 +28,8 @@ export function useProductionEditor<
 >(
   projectId: string,
   section: Section,
-  initialData: import("@/lib/production-management").ProductionSectionDataMap[Section]
+  initialData: import("@/lib/production-management").ProductionSectionDataMap[Section],
+  initialRevision: number
 ) {
   const { canEdit, actor } = useProjectAccess();
   const [data, setData] = useState(initialData);
@@ -36,41 +38,59 @@ export function useProductionEditor<
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [revision, setRevision] = useState(initialRevision);
+  const [expectedRevision, setExpectedRevision] = useState(initialRevision);
+  const [conflict, setConflict] = useState(false);
 
   function open(block: Block) {
     if (!canEdit) return;
     setDraft(structuredClone(data));
     setError("");
     setMessage("");
+    setConflict(false);
+    setExpectedRevision(revision);
     setActive(block);
   }
 
   function close() {
     setActive(null);
     setError("");
+    setConflict(false);
   }
 
   async function save(label: string) {
     if (!active || !canEdit) return;
     setSaving(true);
     setError("");
+    setConflict(false);
 
     try {
-      await updateProjectProductionBlock(projectId, section, active, draft[active], {
+      const result = await updateProjectProductionBlock(projectId, section, active, draft[active], {
         actor,
-        before: data[active],
+        expectedRevision,
       });
-      setData((current) => ({ ...current, [active]: draft[active] }));
-      setMessage(`${label}を保存しました`);
+      if (result.changed) {
+        setData((current) => ({ ...current, [active]: draft[active] }));
+        setRevision(result.revision);
+        setExpectedRevision(result.revision);
+      }
+      setMessage(result.changed ? `${label}を保存しました` : "変更はありません");
       setActive(null);
     } catch (saveError) {
+      if (isConflictError(saveError)) setConflict(true);
       setError(saveError instanceof Error ? saveError.message : "保存できませんでした");
     } finally {
       setSaving(false);
     }
   }
 
-  return { data, draft, setDraft, active, open, close, save, saving, error, message };
+  function reloadLatest() {
+    if (confirm("最新の内容を読み込むと、現在入力中の未保存内容は失われます。読み込みますか？")) {
+      window.location.reload();
+    }
+  }
+
+  return { data, draft, setDraft, active, open, close, save, saving, error, conflict, reloadLatest, message };
 }
 
 export function Field({
@@ -212,6 +232,8 @@ export function EditorDrawer({
   title,
   saving,
   error,
+  conflict = false,
+  onReload,
   onClose,
   onSave,
   children,
@@ -219,6 +241,8 @@ export function EditorDrawer({
   title: string;
   saving: boolean;
   error: string;
+  conflict?: boolean;
+  onReload?: () => void;
   onClose: () => void;
   onSave: () => void;
   children: React.ReactNode;
@@ -233,7 +257,7 @@ export function EditorDrawer({
         </header>
         <div className={styles.drawerBody}>{children}</div>
         <footer className={styles.drawerFooter}>
-          {error && <p>{error}</p>}
+          {error && (conflict ? <div className={styles.conflictNotice} role="alert"><p>{error}</p>{onReload && <button onClick={onReload}>最新の内容を読み込む</button>}</div> : <p>{error}</p>)}
           <button className={styles.cancelButton} onClick={onClose} disabled={saving}>キャンセル</button>
           <button className={styles.saveButton} onClick={onSave} disabled={saving}>{saving ? "保存中…" : "保存"}</button>
         </footer>

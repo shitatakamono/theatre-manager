@@ -8,6 +8,7 @@ import {
   type AccountingTask,
   type AccountingTaskPhase,
 } from "@/lib/production-management";
+import { getProjectRevision } from "@/lib/project-revisions";
 import {
   CheckboxField,
   EditorDrawer,
@@ -31,7 +32,7 @@ const phases = Object.keys(phaseLabels) as AccountingTaskPhase[];
 const links = phases.map((phase) => ({ id: phase, label: phaseLabels[phase] }));
 
 export function AccountingManagementClient({ project, management }: { project: ProjectPerformanceRecord; management?: AccountingManagement }) {
-  const editor = useProductionEditor(project.id, "accounting", normalizeAccounting(management));
+  const editor = useProductionEditor(project.id, "accounting", normalizeAccounting(management), getProjectRevision(project.revisions, "accounting"));
   const [activePhase, setActivePhase] = useState<AccountingTaskPhase>("before");
   const basic = project.data.performanceInfo;
   const title = basic?.title || project.legacyTitle || "公演タイトル未設定";
@@ -66,7 +67,7 @@ export function AccountingManagementClient({ project, management }: { project: P
         </ManagementSection>;
       })}
     </div>
-    {editor.active && <EditorDrawer title={phaseLabels[activePhase]} saving={editor.saving} error={editor.error} onClose={editor.close} onSave={() => editor.save(`${phaseLabels[activePhase]}の会計TODO`)}>
+    {editor.active && <EditorDrawer title={phaseLabels[activePhase]} saving={editor.saving} error={editor.error} conflict={editor.conflict} onReload={editor.reloadLatest} onClose={editor.close} onSave={() => editor.save(`${phaseLabels[activePhase]}の会計TODO`)}>
       <div className={styles.repeater}>
         {(editor.draft.tasks ?? []).filter((task) => task.phase === activePhase).map((task) => <div className={styles.repeaterItem} key={task.id}>
           <div className={styles.repeaterHeader}>

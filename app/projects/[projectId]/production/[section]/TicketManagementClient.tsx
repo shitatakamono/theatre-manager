@@ -3,6 +3,7 @@
 import type { ProjectPerformanceRecord } from "@/lib/firestore";
 import { calculateTotalSeats, formatPerformanceDate, resolveSeatsPerPerformance } from "@/lib/performance";
 import { normalizeTickets, type TicketManagement } from "@/lib/production-management";
+import { getProjectRevision } from "@/lib/project-revisions";
 import { CheckboxField, CheckList, DetailList, EditorDrawer, Field, ManagementSection, ProductionHeader, ReferencePanel, SectionNav, TextareaField, displayValue, numberOrUndefined, styles, useProductionEditor } from "./ProductionCommon";
 
 type Block = Exclude<keyof TicketManagement, "capacities"> & string;
@@ -10,7 +11,7 @@ const labels: Record<Block, string> = { methods: "販売方法", sales: "販売�
 const links = [{ id: "prices", label: "料金" }, ...Object.entries(labels).map(([id, label]) => ({ id, label }))];
 
 export function TicketManagementClient({ project, management }: { project: ProjectPerformanceRecord; management?: TicketManagement }) {
-  const editor = useProductionEditor<"tickets", Block>(project.id, "tickets", normalizeTickets(management));
+  const editor = useProductionEditor<"tickets", Block>(project.id, "tickets", normalizeTickets(management), getProjectRevision(project.revisions, "ticket"));
   const basic = project.data.performanceInfo;
   const venue = project.data.venue;
   const shows = project.data.performances ?? [];
@@ -32,7 +33,7 @@ export function TicketManagementClient({ project, management }: { project: Proje
       <ManagementSection id="reservations" title={labels.reservations} block="reservations" onEdit={editor.open}><CheckList items={[{ label: "取り置き", complete: editor.data.reservations?.holdsAvailable }, { label: "招待", complete: editor.data.reservations?.invitationsAvailable }, { label: "関係者席", complete: editor.data.reservations?.stakeholderSeatsAvailable }, { label: "ゲストリスト", complete: editor.data.reservations?.guestListUsed }]} /><DetailList items={[{ label: "紙チケット枚数", value: editor.data.reservations?.physicalTicketQuantity === undefined ? "未設定" : `${editor.data.reservations.physicalTicketQuantity}枚` }, { label: "紙チケット担当", value: displayValue(editor.data.reservations?.physicalTicketResponsible) }]} /></ManagementSection>
       <ManagementSection id="handoff" title={labels.handoff} block="handoff" onEdit={editor.open}><CheckList items={[{ label: "受付への引継ぎ確認", complete: editor.data.handoff?.receptionHandoffConfirmed }]} />{editor.data.handoff?.note && <p className={styles.note}>{editor.data.handoff.note}</p>}</ManagementSection>
     </div>
-    {editor.active && <EditorDrawer title={labels[editor.active]} saving={editor.saving} error={editor.error} onClose={editor.close} onSave={() => editor.save(labels[editor.active!])}>{renderEditor()}</EditorDrawer>}
+    {editor.active && <EditorDrawer title={labels[editor.active]} saving={editor.saving} error={editor.error} conflict={editor.conflict} onReload={editor.reloadLatest} onClose={editor.close} onSave={() => editor.save(labels[editor.active!])}>{renderEditor()}</EditorDrawer>}
   </main>;
 
   function renderEditor() {

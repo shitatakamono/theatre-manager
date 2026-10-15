@@ -2,6 +2,7 @@
 
 import type { ProjectPerformanceRecord } from "@/lib/firestore";
 import { formatPerformanceDate } from "@/lib/performance";
+import { getProjectRevision } from "@/lib/project-revisions";
 import {
   normalizeFlyer,
   type FlyerManagement,
@@ -35,7 +36,7 @@ const labels: Record<Block, string> = {
 const links = Object.entries(labels).map(([id, label]) => ({ id, label }));
 
 export function FlyerManagementClient({ project, management }: { project: ProjectPerformanceRecord; management?: FlyerManagement }) {
-  const editor = useProductionEditor(project.id, "flyer", normalizeFlyer(management));
+  const editor = useProductionEditor(project.id, "flyer", normalizeFlyer(management), getProjectRevision(project.revisions, "flyer"));
   const basic = project.data.performanceInfo;
   const shows = project.data.performances ?? [];
   const title = basic?.title || project.legacyTitle || "公演タイトル未設定";
@@ -84,7 +85,7 @@ export function FlyerManagementClient({ project, management }: { project: Projec
           {(editor.data.distribution?.other || editor.data.distribution?.note) && <p className={styles.note}>{[editor.data.distribution.other, editor.data.distribution.note].filter(Boolean).join("\n")}</p>}
         </ManagementSection>
       </div>
-      {editor.active && <EditorDrawer title={labels[editor.active]} saving={editor.saving} error={editor.error} onClose={editor.close} onSave={() => editor.save(labels[editor.active!])}>{renderEditor()}</EditorDrawer>}
+      {editor.active && <EditorDrawer title={labels[editor.active]} saving={editor.saving} error={editor.error} conflict={editor.conflict} onReload={editor.reloadLatest} onClose={editor.close} onSave={() => editor.save(labels[editor.active!])}>{renderEditor()}</EditorDrawer>}
     </main>
   );
 

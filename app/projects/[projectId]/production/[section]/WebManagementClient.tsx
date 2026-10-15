@@ -2,6 +2,7 @@
 
 import type { ProjectPerformanceRecord } from "@/lib/firestore";
 import { normalizeWeb, type WebManagement } from "@/lib/production-management";
+import { getProjectRevision } from "@/lib/project-revisions";
 import { CheckboxField, CheckList, DetailList, EditorDrawer, Field, ManagementSection, ProductionHeader, ReferencePanel, SectionNav, TextareaField, displayValue, styles, useProductionEditor } from "./ProductionCommon";
 
 type Block = keyof WebManagement & string;
@@ -9,7 +10,7 @@ const labels: Record<Block, string> = { channels: "使用媒体", page: "公演�
 const links = Object.entries(labels).map(([id, label]) => ({ id, label }));
 
 export function WebManagementClient({ project, management }: { project: ProjectPerformanceRecord; management?: WebManagement }) {
-  const editor = useProductionEditor(project.id, "web", normalizeWeb(management));
+  const editor = useProductionEditor(project.id, "web", normalizeWeb(management), getProjectRevision(project.revisions, "web"));
   const basic = project.data.performanceInfo;
   const contact = project.data.contact;
   const title = basic?.title || project.legacyTitle || "公演タイトル未設定";
@@ -29,7 +30,7 @@ export function WebManagementClient({ project, management }: { project: ProjectP
       <ManagementSection id="consistency" title={labels.consistency} block="consistency" onEdit={editor.open}><DetailList items={[{ label: "公演情報確認日", value: displayValue(editor.data.consistency?.performanceInfoCheckedAt) }]} />{editor.data.consistency?.note && <p className={styles.note}>{editor.data.consistency.note}</p>}</ManagementSection>
       <ManagementSection id="postShow" title={labels.postShow} block="postShow" onEdit={editor.open}><CheckList items={[{ label: "終演報告", complete: editor.data.postShow?.postShowReport }, { label: "チケットリンク終了", complete: editor.data.postShow?.ticketLinkClosed }, { label: "公演ページ更新", complete: editor.data.postShow?.performancePageUpdated }]} />{editor.data.postShow?.note && <p className={styles.note}>{editor.data.postShow.note}</p>}</ManagementSection>
     </div>
-    {editor.active && <EditorDrawer title={labels[editor.active]} saving={editor.saving} error={editor.error} onClose={editor.close} onSave={() => editor.save(labels[editor.active!])}>{renderEditor()}</EditorDrawer>}
+    {editor.active && <EditorDrawer title={labels[editor.active]} saving={editor.saving} error={editor.error} conflict={editor.conflict} onReload={editor.reloadLatest} onClose={editor.close} onSave={() => editor.save(labels[editor.active!])}>{renderEditor()}</EditorDrawer>}
   </main>;
 
   function renderEditor() {
