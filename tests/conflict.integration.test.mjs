@@ -6,6 +6,7 @@ import { collection, doc, getDoc, getDocs, setDoc } from "firebase/firestore";
 import { getProductionActivityDefinition } from "../lib/activity.ts";
 import { removeUndefinedValues } from "../lib/firestore-values.ts";
 import {
+  getProjectRevision,
   isConflictError,
   runProjectRevisionTransaction,
 } from "../lib/project-revisions.ts";
@@ -93,6 +94,56 @@ describe("revision transactions", () => {
     strictEqual(first.revision, 1);
 
     await rejectsConflict(() => saveFlyer(editorDb, editorUid, 0, { enabled: true, quantity: 200 }));
+
+    const project = await getDoc(projectRef(ownerDb));
+    strictEqual(project.data()?.production?.flyer?.flyer?.quantity, 100);
+    strictEqual(project.data()?.revisions?.flyer, 1);
+    strictEqual((await getDocs(collection(ownerDb, "projects", projectId, "activityLogs"))).size, 1);
+  });
+
+  it("allows the conflicted editor to reload the latest revision and save next", async () => {
+    const ownerDb = firestoreFor(ownerUid);
+    const editorDb = firestoreFor(editorUid);
+
+    const ownerSave = await saveFlyer(ownerDb, ownerUid, 0, { enabled: true, quantity: 100 });
+    strictEqual(ownerSave.revision, 1);
+    await rejectsConflict(() => saveFlyer(editorDb, editorUid, 0, { enabled: true, quantity: 200 }));
+
+    const reloadedProject = await getDoc(projectRef(editorDb));
+    const reloadedRevision = getProjectRevision(reloadedProject.data()?.revisions, "flyer");
+    strictEqual(reloadedRevision, 1);
+
+    const editorSave = await saveFlyer(editorDb, editorUid, reloadedRevision, { enabled: true, quantity: 200 });
+    strictEqual(editorSave.revision, 2);
+
+    const project = await getDoc(projectRef(ownerDb));
+    strictEqual(project.data()?.production?.flyer?.flyer?.quantity, 200);
+    strictEqual(project.data()?.revisions?.flyer, 2);
+    const logs = await getDocs(collection(ownerDb, "projects", projectId, "activityLogs"));
+    strictEqual(logs.size, 2);
+    deepStrictEqual(new Set(logs.docs.map((entry) => entry.data().actorUid)), new Set([ownerUid, editorUid]));
+  });
+
+  it("uses the returned revision for consecutive saves", async () => {
+    const db = firestoreFor(editorUid);
+    const first = await saveFlyer(db, editorUid, 0, { enabled: true, quantity: 100 });
+    const second = await saveFlyer(db, editorUid, first.revision, { enabled: true, quantity: 120 });
+
+    strictEqual(first.revision, 1);
+    strictEqual(second.revision, 2);
+    const project = await getDoc(projectRef(db));
+    strictEqual(project.data()?.production?.flyer?.flyer?.quantity, 120);
+    strictEqual(project.data()?.revisions?.flyer, 2);
+    strictEqual((await getDocs(collection(db, "projects", projectId, "activityLogs"))).size, 2);
+  });
+
+  it("continues to reject a stale expected revision until the latest revision is loaded", async () => {
+    const ownerDb = firestoreFor(ownerUid);
+    const editorDb = firestoreFor(editorUid);
+    await saveFlyer(ownerDb, ownerUid, 0, { enabled: true, quantity: 100 });
+
+    await rejectsConflict(() => saveFlyer(editorDb, editorUid, 0, { enabled: true, quantity: 200 }));
+    await rejectsConflict(() => saveFlyer(editorDb, editorUid, 0, { enabled: true, quantity: 220 }));
 
     const project = await getDoc(projectRef(ownerDb));
     strictEqual(project.data()?.production?.flyer?.flyer?.quantity, 100);

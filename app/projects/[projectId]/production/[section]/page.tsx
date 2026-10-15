@@ -61,6 +61,7 @@ export default function ProductionSectionPage({
     showEndDate: project.show_end_date,
     performanceInfoUpdatedAt: project.performanceInfoUpdatedAt?.toDate().toISOString(),
     data: pickPerformanceData(project),
+    revisions: project.revisions,
   };
 
   switch (section) {
