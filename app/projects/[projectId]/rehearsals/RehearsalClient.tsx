@@ -19,9 +19,11 @@ import {
   updateProjectRehearsal,
   type Rehearsal,
   type RehearsalInput,
+  type RehearsalType,
 } from "@/lib/rehearsals";
 import { CONFLICT_MESSAGE, isConflictError } from "@/lib/project-revisions";
 import { useProjectAccess } from "../ProjectAccess";
+import { RehearsalImportDialog } from "./RehearsalImportDialog";
 import styles from "./rehearsals.module.css";
 
 type EditorMode = "single" | "bulk" | "edit" | null;
@@ -42,6 +44,14 @@ function formatTime(rehearsal: Rehearsal): string {
   return end ? `${start}–${end}` : `${start}–`;
 }
 
+const typeChipClasses: Record<RehearsalType, string> = {
+  acting: styles.typeActing,
+  stage_combat: styles.typeStageCombat,
+  japanese_dance: styles.typeJapaneseDance,
+  meeting: styles.typeMeeting,
+  other: styles.typeOther,
+};
+
 function RehearsalRows({ items, canEdit, onEdit, onDelete }: {
   items: Rehearsal[];
   canEdit: boolean;
@@ -56,7 +66,7 @@ function RehearsalRows({ items, canEdit, onEdit, onDelete }: {
           <tr key={item.id}>
             <td data-label="日付">{formatDate(item)}</td>
             <td data-label="時間" className={styles.time}>{formatTime(item)}</td>
-            <td data-label="種別">{getRehearsalTypeLabel(item.type, item.customType)}</td>
+            <td data-label="種別"><span className={`${styles.typeChip} ${typeChipClasses[item.type]}`}>{getRehearsalTypeLabel(item.type, item.customType)}</span></td>
             <td data-label="場所">{item.venue || "—"}</td>
             <td data-label="内容" className={styles.longText}>{item.content || "—"}</td>
             <td data-label="備考" className={styles.longText}>{item.note || "—"}</td>
@@ -211,7 +221,7 @@ export function RehearsalClient({ projectId }: { projectId: string }) {
     <main className={styles.page}>
       <header className={styles.header}>
         <div><Link href={`/projects/${projectId}`}>← 公演トップ</Link><p>REHEARSAL SCHEDULE</p><h1>稽古スケジュール</h1></div>
-        {canEdit && <div className={styles.headerActions}><button type="button" onClick={openSingle}>稽古を追加</button><button className={styles.secondaryButton} type="button" onClick={openBulk}>複数日追加</button></div>}
+        {canEdit && <div className={styles.headerActions}><button type="button" onClick={openSingle}>稽古を追加</button><button className={styles.secondaryButton} type="button" onClick={openBulk}>複数日追加</button><RehearsalImportDialog projectId={projectId} existingRehearsals={[...upcoming, ...past]} onImported={async (count) => { setNotice(`${count}件の稽古予定を追加しました`); await load(); }} /></div>}
       </header>
 
       {notice && <p className={styles.success} role="status">{notice}</p>}
