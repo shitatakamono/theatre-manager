@@ -12,7 +12,7 @@ export type ActivityLog = {
   id: string;
   actorUid: string;
   actorName: string;
-  action: "update";
+  action: "create" | "update" | "delete";
   section: string;
   sectionLabel: string;
   changedFields: string[];

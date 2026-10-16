@@ -43,7 +43,7 @@ service cloud.firestore {
         && request.resource.data.actorName is string
         && request.resource.data.actorName.size() > 0
         && request.resource.data.actorName.size() <= 100
-        && request.resource.data.action == 'update'
+        && request.resource.data.action in ['create', 'update', 'delete']
         && request.resource.data.section is string
         && request.resource.data.sectionLabel is string
         && request.resource.data.changedFields is list
@@ -94,6 +94,58 @@ service cloud.firestore {
         && validFeedbackStatus(request.resource.data.status)
         && request.resource.data.adminNote is string
         && request.resource.data.adminNote.size() <= 5000
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function validRehearsalType(value) {
+      return value in ['acting', 'stage_combat', 'japanese_dance', 'meeting', 'other'];
+    }
+
+    function validRehearsalData() {
+      return request.resource.data.keys().hasOnly([
+          'startAt', 'endAt', 'type', 'customType', 'venue', 'content', 'note',
+          'revision', 'createdAt', 'updatedAt', 'createdByUid', 'updatedByUid'
+        ])
+        && request.resource.data.keys().hasAll([
+          'startAt', 'endAt', 'type', 'customType', 'venue', 'content', 'note',
+          'revision', 'createdAt', 'updatedAt', 'createdByUid', 'updatedByUid'
+        ])
+        && request.resource.data.startAt is timestamp
+        && (request.resource.data.endAt == null
+          || (request.resource.data.endAt is timestamp
+            && request.resource.data.endAt > request.resource.data.startAt))
+        && validRehearsalType(request.resource.data.type)
+        && request.resource.data.customType is string
+        && request.resource.data.customType.size() <= 100
+        && ((request.resource.data.type == 'other' && request.resource.data.customType.size() > 0)
+          || (request.resource.data.type != 'other' && request.resource.data.customType == ''))
+        && request.resource.data.venue is string
+        && request.resource.data.venue.size() <= 200
+        && request.resource.data.content is string
+        && request.resource.data.content.size() <= 2000
+        && request.resource.data.note is string
+        && request.resource.data.note.size() <= 5000
+        && request.resource.data.revision is int
+        && request.resource.data.revision >= 0
+        && request.resource.data.createdByUid is string
+        && request.resource.data.updatedByUid is string;
+    }
+
+    function validRehearsalCreate() {
+      return validRehearsalData()
+        && request.resource.data.revision == 0
+        && request.resource.data.createdByUid == request.auth.uid
+        && request.resource.data.updatedByUid == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function validRehearsalUpdate() {
+      return validRehearsalData()
+        && request.resource.data.revision == resource.data.revision + 1
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.createdByUid == resource.data.createdByUid
+        && request.resource.data.updatedByUid == request.auth.uid
         && request.resource.data.updatedAt == request.time;
     }
 
@@ -334,6 +386,13 @@ service cloud.firestore {
       match /tasks/{taskId} {
         allow read: if isMember(projectId);
         allow create, update, delete: if canEdit(projectId);
+      }
+
+      match /rehearsals/{rehearsalId} {
+        allow read: if isMember(projectId);
+        allow create: if canEdit(projectId) && validRehearsalCreate();
+        allow update: if canEdit(projectId) && validRehearsalUpdate();
+        allow delete: if canEdit(projectId);
       }
 
       match /activityLogs/{logId} {

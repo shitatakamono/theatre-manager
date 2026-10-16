@@ -264,7 +264,14 @@ export default function ProjectPage({ params }: ProjectPageProps) {
             </details>
             <MembersLink projectId={projectId} />
             <Link href={`/projects/${projectId}/activity`}>更新履歴</Link>
-            <Link className={styles.tasksLink} href={`/projects/${projectId}/tasks`}>タスク一覧</Link>
+            <Link className={styles.purposeLink} href={`/projects/${projectId}/rehearsals`}>
+              <strong>稽古スケジュール</strong>
+              <span>稽古の日程・場所・内容を確認</span>
+            </Link>
+            <Link className={`${styles.tasksLink} ${styles.purposeLink}`} href={`/projects/${projectId}/tasks`}>
+              <strong>タスク一覧（開発中）</strong>
+              <span>制作作業の担当・期限・進捗を管理</span>
+            </Link>
             <Link className={styles.infoLink} href={`/projects/${projectId}/info`}>
               公演情報を見る
             </Link>

@@ -138,6 +138,28 @@
   color: #fff;
 }
 
+.actions .purposeLink {
+  min-height: 46px;
+  align-items: flex-start;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  padding-block: 5px;
+}
+
+.purposeLink strong {
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.purposeLink span {
+  color: #708078;
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
 .hero {
   align-items: flex-end;
   border-bottom: 1px solid #d7dedb;

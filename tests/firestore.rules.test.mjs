@@ -57,15 +57,37 @@ function taskRef(db, id = "task-a", targetProjectId = projectId) {
   return doc(db, "projects", targetProjectId, "tasks", id);
 }
 
+function rehearsalRef(db, id = "rehearsal-a", targetProjectId = projectId) {
+  return doc(db, "projects", targetProjectId, "rehearsals", id);
+}
+
+function rehearsalData(uid, overrides = {}) {
+  return {
+    startAt: new Date("2026-11-15T04:00:00Z"),
+    endAt: new Date("2026-11-15T07:00:00Z"),
+    type: "acting",
+    customType: "",
+    venue: "会議室A",
+    content: "立ち稽古",
+    note: "",
+    revision: 0,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    createdByUid: uid,
+    updatedByUid: uid,
+    ...overrides,
+  };
+}
+
 function activityRef(db, id = "activity-a", targetProjectId = projectId) {
   return doc(db, "projects", targetProjectId, "activityLogs", id);
 }
 
-function activityData(actorUid) {
+function activityData(actorUid, action = "update") {
   return {
     actorUid,
     actorName: "テストユーザー",
-    action: "update",
+    action,
     section: "production.flyer",
     sectionLabel: "チラシ・ポスター",
     changedFields: ["部数"],
@@ -415,10 +437,107 @@ describe("section revisions", () => {
   });
 });
 
+describe("rehearsals", () => {
+  it("allows owners and editors to read, create, update, and delete", async () => {
+    for (const [uid, id] of [[ownerUid, "owner-rehearsal"], [editorUid, "editor-rehearsal"]]) {
+      const db = firestoreFor(uid);
+      const ref = rehearsalRef(db, id);
+      await assertSucceeds(setDoc(ref, rehearsalData(uid)));
+      await assertSucceeds(getDoc(ref));
+      await assertSucceeds(updateDoc(ref, { venue: "和室", revision: 1, updatedAt: serverTimestamp(), updatedByUid: uid }));
+      await assertSucceeds(deleteDoc(ref));
+    }
+  });
+
+  it("allows viewers to read but denies all writes", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(rehearsalRef(context.firestore()), { ...rehearsalData(ownerUid), createdAt: new Date(), updatedAt: new Date() });
+    });
+    const db = firestoreFor(viewerUid);
+    await assertSucceeds(getDoc(rehearsalRef(db)));
+    await assertSucceeds(getDocs(collection(db, "projects", projectId, "rehearsals")));
+    await assertFails(setDoc(rehearsalRef(db, "viewer-create"), rehearsalData(viewerUid)));
+    await assertFails(updateDoc(rehearsalRef(db), { venue: "改ざん", revision: 1, updatedAt: serverTimestamp(), updatedByUid: viewerUid }));
+    await assertFails(deleteDoc(rehearsalRef(db)));
+  });
+
+  it("denies every operation to non-members", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(rehearsalRef(context.firestore()), { ...rehearsalData(ownerUid), createdAt: new Date(), updatedAt: new Date() });
+    });
+    const db = firestoreFor(outsiderUid);
+    await assertFails(getDoc(rehearsalRef(db)));
+    await assertFails(getDocs(collection(db, "projects", projectId, "rehearsals")));
+    await assertFails(setDoc(rehearsalRef(db, "outsider-create"), rehearsalData(outsiderUid)));
+    await assertFails(updateDoc(rehearsalRef(db), { venue: "改ざん", revision: 1, updatedAt: serverTimestamp(), updatedByUid: outsiderUid }));
+    await assertFails(deleteDoc(rehearsalRef(db)));
+  });
+
+  it("rejects invalid types and custom type combinations", async () => {
+    const db = firestoreFor(ownerUid);
+    await assertFails(setDoc(rehearsalRef(db, "invalid-type"), rehearsalData(ownerUid, { type: "dance" })));
+    await assertFails(setDoc(rehearsalRef(db, "removed-reading"), rehearsalData(ownerUid, { type: "reading" })));
+    await assertFails(setDoc(rehearsalRef(db, "removed-run-through"), rehearsalData(ownerUid, { type: "run_through" })));
+    await assertFails(setDoc(rehearsalRef(db, "other-empty"), rehearsalData(ownerUid, { type: "other", customType: "" })));
+    await assertFails(setDoc(rehearsalRef(db, "acting-custom"), rehearsalData(ownerUid, { type: "acting", customType: "自主稽古" })));
+    await assertSucceeds(setDoc(rehearsalRef(db, "meeting-valid"), rehearsalData(ownerUid, { type: "meeting" })));
+    await assertSucceeds(setDoc(rehearsalRef(db, "other-valid"), rehearsalData(ownerUid, { type: "other", customType: "自主稽古" })));
+  });
+
+  it("rejects endAt at or before startAt and oversized text", async () => {
+    const db = firestoreFor(editorUid);
+    await assertFails(setDoc(rehearsalRef(db, "equal-time"), rehearsalData(editorUid, { endAt: new Date("2026-11-15T04:00:00Z") })));
+    await assertFails(setDoc(rehearsalRef(db, "before-time"), rehearsalData(editorUid, { endAt: new Date("2026-11-15T03:59:00Z") })));
+    await assertFails(setDoc(rehearsalRef(db, "long-venue"), rehearsalData(editorUid, { venue: "a".repeat(201) })));
+  });
+
+  it("rejects revision skipping, UID impersonation, and non-server timestamps", async () => {
+    const db = firestoreFor(editorUid);
+    await assertFails(setDoc(rehearsalRef(db, "bad-revision"), rehearsalData(editorUid, { revision: 1 })));
+    await assertFails(setDoc(rehearsalRef(db, "uid-spoof"), rehearsalData(ownerUid)));
+    await assertFails(setDoc(rehearsalRef(db, "bad-created-time"), rehearsalData(editorUid, { createdAt: new Date(0) })));
+    await assertFails(setDoc(rehearsalRef(db, "bad-updated-time"), rehearsalData(editorUid, { updatedAt: new Date(0) })));
+  });
+
+  it("rejects revision jumps, creator metadata changes, and extra fields on update", async () => {
+    const db = firestoreFor(ownerUid);
+    const ref = rehearsalRef(db, "protected-update");
+    await assertSucceeds(setDoc(ref, rehearsalData(ownerUid)));
+    await assertFails(updateDoc(ref, { revision: 2, updatedAt: serverTimestamp(), updatedByUid: ownerUid }));
+    await assertFails(updateDoc(ref, { revision: 1, createdByUid: editorUid, updatedAt: serverTimestamp(), updatedByUid: ownerUid }));
+    await assertFails(updateDoc(ref, { revision: 1, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), updatedByUid: ownerUid }));
+    await assertFails(updateDoc(ref, { revision: 1, unexpected: true, updatedAt: serverTimestamp(), updatedByUid: ownerUid }));
+  });
+
+  it("rejects fields outside the rehearsal schema on create", async () => {
+    await assertFails(setDoc(rehearsalRef(firestoreFor(ownerUid), "extra-field"), rehearsalData(ownerUid, { date: "2026-11-15" })));
+  });
+
+  it("keeps legacy removed types readable and allows an editor to convert them to acting", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(rehearsalRef(context.firestore(), "legacy-reading"), {
+        ...rehearsalData(ownerUid, { type: "reading" }),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    });
+    const db = firestoreFor(editorUid);
+    await assertSucceeds(getDoc(rehearsalRef(db, "legacy-reading")));
+    await assertSucceeds(updateDoc(rehearsalRef(db, "legacy-reading"), {
+      type: "acting",
+      revision: 1,
+      updatedAt: serverTimestamp(),
+      updatedByUid: editorUid,
+    }));
+  });
+});
+
 describe("activity logs", () => {
   it("allows owners and editors to create a log for themselves", async () => {
     await assertSucceeds(setDoc(activityRef(firestoreFor(ownerUid), "owner-log"), activityData(ownerUid)));
     await assertSucceeds(setDoc(activityRef(firestoreFor(editorUid), "editor-log"), activityData(editorUid)));
+    await assertSucceeds(setDoc(activityRef(firestoreFor(ownerUid), "create-log"), activityData(ownerUid, "create")));
+    await assertSucceeds(setDoc(activityRef(firestoreFor(editorUid), "delete-log"), activityData(editorUid, "delete")));
   });
 
   it("denies viewers from creating a log", async () => {
