@@ -5,6 +5,7 @@ import {
   RehearsalImportProviderError,
   RehearsalImportSchemaError,
   RehearsalImportTimeoutError,
+  canUseRehearsalScreenshotImport,
   detectImageMimeType,
   parseRehearsalImportResponse,
   revalidateRehearsalImportResponse,
@@ -47,7 +48,7 @@ export function createRehearsalImportPostHandler(dependencies: RehearsalImportHa
     } catch {
       return json({ error: "この公演の権限を確認できませんでした" }, 403);
     }
-    if (role !== "owner" && role !== "editor") {
+    if (!canUseRehearsalScreenshotImport(role)) {
       return json({ error: "スクリーンショットを解析する権限がありません" }, 403);
     }
 

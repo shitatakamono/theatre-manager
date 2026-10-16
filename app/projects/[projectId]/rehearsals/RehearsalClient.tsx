@@ -22,6 +22,7 @@ import {
   type RehearsalType,
 } from "@/lib/rehearsals";
 import { CONFLICT_MESSAGE, isConflictError } from "@/lib/project-revisions";
+import { canUseRehearsalScreenshotImport } from "@/lib/rehearsal-import";
 import { useProjectAccess } from "../ProjectAccess";
 import { RehearsalImportDialog } from "./RehearsalImportDialog";
 import styles from "./rehearsals.module.css";
@@ -98,7 +99,7 @@ function RehearsalFields({ value, onChange, hideDate = false }: { value: Rehears
 }
 
 export function RehearsalClient({ projectId }: { projectId: string }) {
-  const { canEdit, actor } = useProjectAccess();
+  const { role, canEdit, actor } = useProjectAccess();
   const [upcoming, setUpcoming] = useState<Rehearsal[]>([]);
   const [past, setPast] = useState<Rehearsal[]>([]);
   const [loading, setLoading] = useState(true);
@@ -221,7 +222,7 @@ export function RehearsalClient({ projectId }: { projectId: string }) {
     <main className={styles.page}>
       <header className={styles.header}>
         <div><Link href={`/projects/${projectId}`}>← 公演トップ</Link><p>REHEARSAL SCHEDULE</p><h1>稽古スケジュール</h1></div>
-        {canEdit && <div className={styles.headerActions}><button type="button" onClick={openSingle}>稽古を追加</button><button className={styles.secondaryButton} type="button" onClick={openBulk}>複数日追加</button><RehearsalImportDialog projectId={projectId} existingRehearsals={[...upcoming, ...past]} onImported={async (count) => { setNotice(`${count}件の稽古予定を追加しました`); await load(); }} /></div>}
+        {canEdit && <div className={styles.headerActions}><button type="button" onClick={openSingle}>稽古を追加</button><button className={styles.secondaryButton} type="button" onClick={openBulk}>複数日追加</button>{canUseRehearsalScreenshotImport(role) && <RehearsalImportDialog projectId={projectId} existingRehearsals={[...upcoming, ...past]} onImported={async (count) => { setNotice(`${count}件の稽古予定を追加しました`); await load(); }} />}</div>}
       </header>
 
       {notice && <p className={styles.success} role="status">{notice}</p>}

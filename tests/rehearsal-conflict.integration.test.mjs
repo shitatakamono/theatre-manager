@@ -59,13 +59,13 @@ describe("rehearsal document transactions", () => {
     deepStrictEqual(logDocs.docs[0].data().changedFields, ["スクリーンショットから稽古予定を1件追加"]);
   });
 
-  it("imports multiple reservations for an editor in one batch with one activity log", async () => {
+  it("keeps normal batch creation available to an editor through the shared rehearsal function", async () => {
     const db = firestoreFor(editorUid);
     const inputs = ["2026-11-20", "2026-11-21"].map((date) => ({
       date, startTime: "13:00", endTime: "16:00", type: "acting", customType: "",
       venue: "会議室A", content: "", note: "",
     }));
-    const ids = await createProjectRehearsalBatch(projectId, inputs, context(editorUid, 0).actor, "スクリーンショットから稽古予定を2件追加", db);
+    const ids = await createProjectRehearsalBatch(projectId, inputs, context(editorUid, 0).actor, "稽古予定を2件追加", db);
     strictEqual(ids.length, 2);
     strictEqual((await logs(db)).size, 1);
   });

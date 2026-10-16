@@ -52,15 +52,13 @@ function requestFor(bytes = png, type = "image/png", authorization = true) {
 }
 
 describe("rehearsal screenshot import authorization", () => {
-  for (const role of ["owner", "editor"]) {
-    it(`allows ${role}`, async () => {
-      const handler = createRehearsalImportPostHandler(dependencies({ getProjectRole: async () => role }));
-      const result = await handler(requestFor(), context);
-      equal(result.status, 200);
-    });
-  }
+  it("allows an owner", async () => {
+    const handler = createRehearsalImportPostHandler(dependencies({ getProjectRole: async () => "owner" }));
+    const result = await handler(requestFor(), context);
+    equal(result.status, 200);
+  });
 
-  for (const [label, role] of [["viewer", "viewer"], ["nonmember", null]]) {
+  for (const [label, role] of [["editor", "editor"], ["viewer", "viewer"], ["nonmember", null]]) {
     it(`rejects ${label}`, async () => {
       let called = false;
       const handler = createRehearsalImportPostHandler(dependencies({

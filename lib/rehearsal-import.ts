@@ -1,3 +1,5 @@
+import type { ProjectRole } from "./auth.ts";
+
 export const REHEARSAL_IMPORT_MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 
 export const REHEARSAL_IMPORT_IMAGE_TYPES = [
@@ -7,6 +9,13 @@ export const REHEARSAL_IMPORT_IMAGE_TYPES = [
 ] as const;
 
 export type RehearsalImportImageType = typeof REHEARSAL_IMPORT_IMAGE_TYPES[number];
+
+export function canUseRehearsalScreenshotImport(
+  role?: ProjectRole | null
+): role is "owner" {
+  return role === "owner";
+}
+
 export type ImportedReservationStatus = "reserved" | "cancelled" | "unknown";
 export type ImportedReservationConfidence = "high" | "medium" | "low";
 export type ImportedReservationWarning =
