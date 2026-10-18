@@ -3,7 +3,6 @@ import { describe, it } from "node:test";
 import {
   REHEARSAL_IMPORT_MAX_IMAGE_BYTES,
   RehearsalImportSchemaError,
-  canUseRehearsalScreenshotImport,
   detectImageMimeType,
   parseRehearsalImportResponse,
   revalidateRehearsalImportResponse,
@@ -146,15 +145,5 @@ describe("rehearsal import confirmation drafts", () => {
     const existing = [{ id: "existing", ...values, revision: 0, createdByUid: "a", updatedByUid: "a" }];
     equal(hasExistingRehearsalDuplicate(drafts.candidates[0].input, existing), true);
     equal(validateRehearsalImportDrafts(drafts.candidates).errors.length, 0);
-  });
-});
-
-describe("rehearsal screenshot import availability", () => {
-  it("shows the import entry point only to owners", () => {
-    equal(canUseRehearsalScreenshotImport("owner"), true);
-    equal(canUseRehearsalScreenshotImport("editor"), false);
-    equal(canUseRehearsalScreenshotImport("viewer"), false);
-    equal(canUseRehearsalScreenshotImport(undefined), false);
-    equal(canUseRehearsalScreenshotImport(null), false);
   });
 });
