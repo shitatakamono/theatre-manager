@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:unit": "node --no-warnings --test tests/activity.test.mjs tests/feedback.test.mjs tests/firestore-values.test.mjs tests/member-invite-email.test.mjs tests/member-invites.test.mjs tests/project-revisions.test.mjs tests/rehearsals.test.mjs",
+    "test:unit": "node --no-warnings --test tests/activity.test.mjs tests/feedback.test.mjs tests/firebase-admin-config.test.mjs tests/firestore-values.test.mjs tests/member-invite-email.test.mjs tests/member-invites.test.mjs tests/project-revisions.test.mjs tests/rehearsals.test.mjs",
     "test:conflict": "firebase emulators:exec --only firestore --project seisakuboard-conflict-test \"node --no-warnings --test --test-concurrency=1 tests/conflict.integration.test.mjs tests/rehearsal-conflict.integration.test.mjs\"",
     "test:rules": "firebase emulators:exec --only firestore --project seisakuboard-rules-test \"node --test tests/firestore.rules.test.mjs\""
   },

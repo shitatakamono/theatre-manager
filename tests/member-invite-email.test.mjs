@@ -33,15 +33,23 @@ function policy(overrides = {}) {
 
 describe("invite email API authentication", () => {
   it("rejects an unauthenticated request", async () => {
+    let firebaseAdminWasUsed = false;
     const handler = createMemberInviteEmailPostHandler({
-      verifyIdToken: async () => ({ uid: "unused" }),
-      sendPendingInviteEmail: async () => ({ email: "unused@example.com" }),
+      verifyIdToken: async () => {
+        firebaseAdminWasUsed = true;
+        return { uid: "unused" };
+      },
+      sendPendingInviteEmail: async () => {
+        firebaseAdminWasUsed = true;
+        return { email: "unused@example.com" };
+      },
     });
     const response = await handler(new Request("https://example.test/api/member-invites/send", {
       method: "POST",
       body: JSON.stringify({ projectId: "project-a", inviteEmail: "member@example.com" }),
     }));
     equal(response.status, 401);
+    equal(firebaseAdminWasUsed, false);
   });
 
   it("rejects an invalid ID token", async () => {
