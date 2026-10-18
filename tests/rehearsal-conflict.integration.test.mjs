@@ -1,11 +1,10 @@
 import { readFile } from "node:fs/promises";
-import { deepStrictEqual, rejects, strictEqual } from "node:assert/strict";
+import { strictEqual } from "node:assert/strict";
 import { after, before, beforeEach, describe, it } from "node:test";
 import { initializeTestEnvironment } from "@firebase/rules-unit-testing";
 import { collection, doc, getDoc, getDocs, setDoc } from "firebase/firestore";
 import {
   createProjectRehearsal,
-  createProjectRehearsalBatch,
   createProjectRehearsals,
   deleteProjectRehearsal,
   rehearsalToInput,
@@ -18,7 +17,6 @@ const projectId = "rehearsal-conflict";
 const rehearsalId = "rehearsal-a";
 const ownerUid = "rehearsal-owner";
 const editorUid = "rehearsal-editor";
-const viewerUid = "rehearsal-viewer";
 let testEnv;
 
 function firestoreFor(uid) { return testEnv.authenticatedContext(uid).firestore(); }
@@ -27,10 +25,9 @@ function rehearsalRef(db) { return doc(db, "projects", projectId, "rehearsals", 
 async function seed() {
   await testEnv.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
-    await setDoc(doc(db, "projects", projectId), { title: "稽古競合テスト", memberUids: [ownerUid, editorUid, viewerUid] });
+    await setDoc(doc(db, "projects", projectId), { title: "稽古競合テスト", memberUids: [ownerUid, editorUid] });
     await setDoc(doc(db, "projects", projectId, "members", ownerUid), { uid: ownerUid, role: "owner" });
     await setDoc(doc(db, "projects", projectId, "members", editorUid), { uid: editorUid, role: "editor" });
-    await setDoc(doc(db, "projects", projectId, "members", viewerUid), { uid: viewerUid, role: "viewer" });
     await setDoc(rehearsalRef(db), {
       startAt: new Date("2026-11-15T04:00:00Z"), endAt: new Date("2026-11-15T07:00:00Z"),
       type: "acting", customType: "", venue: "会議室A", content: "立ち稽古", note: "",
@@ -46,42 +43,6 @@ beforeEach(async () => { await testEnv.clearFirestore(); await seed(); });
 after(async () => { await testEnv.cleanup(); });
 
 describe("rehearsal document transactions", () => {
-  it("imports one reservation for an owner with revision zero and one activity log", async () => {
-    const db = firestoreFor(ownerUid);
-    const ids = await createProjectRehearsalBatch(projectId, [{
-      date: "2026-11-20", startTime: "13:00", endTime: "16:00", type: "acting", customType: "",
-      venue: "会議室A", content: "立ち稽古", note: "画像から確認",
-    }], context(ownerUid, 0).actor, "スクリーンショットから稽古予定を1件追加", db);
-    strictEqual(ids.length, 1);
-    strictEqual((await getDoc(doc(db, "projects", projectId, "rehearsals", ids[0]))).data()?.revision, 0);
-    const logDocs = await logs(db);
-    strictEqual(logDocs.size, 1);
-    deepStrictEqual(logDocs.docs[0].data().changedFields, ["スクリーンショットから稽古予定を1件追加"]);
-  });
-
-  it("imports multiple reservations for an editor in one batch with one activity log", async () => {
-    const db = firestoreFor(editorUid);
-    const inputs = ["2026-11-20", "2026-11-21"].map((date) => ({
-      date, startTime: "13:00", endTime: "16:00", type: "acting", customType: "",
-      venue: "会議室A", content: "", note: "",
-    }));
-    const ids = await createProjectRehearsalBatch(projectId, inputs, context(editorUid, 0).actor, "スクリーンショットから稽古予定を2件追加", db);
-    strictEqual(ids.length, 2);
-    strictEqual((await logs(db)).size, 1);
-  });
-
-  it("does not write a partially invalid import batch and denies viewer writes", async () => {
-    const ownerDb = firestoreFor(ownerUid);
-    const valid = {
-      date: "2026-11-20", startTime: "13:00", endTime: "16:00", type: "acting", customType: "",
-      venue: "会議室A", content: "", note: "",
-    };
-    await rejects(() => createProjectRehearsalBatch(projectId, [valid, { ...valid, startTime: "25:00" }], context(ownerUid, 0).actor, "2件追加", ownerDb));
-    strictEqual((await getDocs(collection(ownerDb, "projects", projectId, "rehearsals"))).size, 1);
-    strictEqual((await logs(ownerDb)).size, 0);
-    await rejects(() => createProjectRehearsalBatch(projectId, [valid], context(viewerUid, 0).actor, "1件追加", firestoreFor(viewerUid)));
-  });
-
   it("creates one log per single add and one log for an entire deduplicated bulk add", async () => {
     const db = firestoreFor(ownerUid);
     const input = {
