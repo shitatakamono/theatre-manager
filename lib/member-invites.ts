@@ -48,6 +48,16 @@ export function isExistingMemberEmail(
   return members.some((member) => normalizeInviteEmail(member.email ?? "") === normalized);
 }
 
+export function getMemberInviteAvailability(input: {
+  members: readonly ProjectMember[];
+  existingInvite?: Pick<ProjectMemberInvite, "status"> | null;
+  email: string;
+}): "available" | "pending" | "member" {
+  if (isExistingMemberEmail(input.members, input.email)) return "member";
+  if (input.existingInvite?.status === "pending") return "pending";
+  return "available";
+}
+
 export function buildMemberInvitePayload<TimestampValue>(input: {
   projectId: string;
   projectName: string;
