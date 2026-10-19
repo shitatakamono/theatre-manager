@@ -52,17 +52,40 @@ describe("invite email API authentication", () => {
     equal(firebaseAdminWasUsed, false);
   });
 
-  it("rejects an invalid ID token", async () => {
+  it("logs only the safe error name and code when ID token verification fails", async () => {
+    const logged = [];
+    const sensitiveValues = {
+      authorization: "Bearer secret-id-token",
+      privateKey: "-----BEGIN PRIVATE KEY-----secret",
+      apiKey: "secret-api-key",
+      email: "member@example.com",
+    };
+    const verificationError = Object.assign(new Error("secret error message"), {
+      name: "FirebaseAuthError",
+      code: "auth/invalid-id-token",
+      ...sensitiveValues,
+    });
     const handler = createMemberInviteEmailPostHandler({
-      verifyIdToken: async () => { throw new Error("invalid token"); },
+      verifyIdToken: async () => { throw verificationError; },
       sendPendingInviteEmail: async () => ({ email: "unused@example.com" }),
+      logger: { error: (...values) => { logged.push(values); } },
     });
     const response = await handler(new Request("https://example.test/api/member-invites/send", {
       method: "POST",
-      headers: { authorization: "Bearer invalid" },
+      headers: { authorization: sensitiveValues.authorization },
       body: JSON.stringify({ projectId: "project-a", inviteEmail: "member@example.com" }),
     }));
+    const responseBody = await response.json();
     equal(response.status, 401);
+    deepStrictEqual(responseBody, { error: "認証情報を確認できませんでした" });
+    deepStrictEqual(logged, [[
+      "member_invite_verify_id_token_failed",
+      { name: "FirebaseAuthError", code: "auth/invalid-id-token" },
+    ]]);
+    const serializedLog = JSON.stringify(logged);
+    for (const secret of [verificationError.message, ...Object.values(sensitiveValues)]) {
+      doesNotMatch(serializedLog, new RegExp(secret.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    }
   });
 
   it("uses the verified UID and ignores forged recipient, role, and project name", async () => {

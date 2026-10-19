@@ -7,7 +7,20 @@ export type MemberInviteEmailHandlerDependencies = {
     projectId: string;
     inviteEmail: string;
   }) => Promise<{ email: string }>;
+  logger?: Pick<Console, "error">;
 };
+
+function firebaseAuthErrorSummary(error: unknown): { name: string; code: string | null } {
+  if (typeof error !== "object" || error === null) {
+    return { name: "UnknownError", code: null };
+  }
+
+  const candidate = error as { name?: unknown; code?: unknown };
+  return {
+    name: typeof candidate.name === "string" ? candidate.name : "UnknownError",
+    code: typeof candidate.code === "string" ? candidate.code : null,
+  };
+}
 
 function json(body: unknown, status: number): Response {
   return Response.json(body, { status });
@@ -24,7 +37,11 @@ export function createMemberInviteEmailPostHandler(
     let uid: string;
     try {
       ({ uid } = await dependencies.verifyIdToken(match[1]));
-    } catch {
+    } catch (error) {
+      (dependencies.logger ?? console).error(
+        "member_invite_verify_id_token_failed",
+        firebaseAuthErrorSummary(error)
+      );
       return json({ error: "認証情報を確認できませんでした" }, 401);
     }
 
