@@ -78,9 +78,16 @@ async function reserveInviteSend(input: {
   });
 }
 
-export async function verifyInviteEmailIdToken(idToken: string): Promise<{ uid: string }> {
-  const decoded = await getFirebaseAdminAuth().verifyIdToken(idToken);
-  return { uid: decoded.uid };
+export function initializeInviteEmailFirebaseAdminAuth(): {
+  verifyIdToken: (idToken: string) => Promise<{ uid: string }>;
+} {
+  const auth = getFirebaseAdminAuth();
+  return {
+    verifyIdToken: async (idToken) => {
+      const decoded = await auth.verifyIdToken(idToken);
+      return { uid: decoded.uid };
+    },
+  };
 }
 
 export async function sendPendingInviteEmail(input: {

@@ -1,7 +1,11 @@
 import { InviteEmailRequestError } from "../member-invite-email.ts";
 
 export type MemberInviteEmailHandlerDependencies = {
-  verifyIdToken: (idToken: string) => Promise<{ uid: string }>;
+  loadAuthModule: () => Promise<{
+    initializeFirebaseAdminAuth: () => {
+      verifyIdToken: (idToken: string) => Promise<{ uid: string }>;
+    };
+  }>;
   sendPendingInviteEmail: (input: {
     uid: string;
     projectId: string;
@@ -26,6 +30,18 @@ function json(body: unknown, status: number): Response {
   return Response.json(body, { status });
 }
 
+function authenticationFailure(
+  dependencies: MemberInviteEmailHandlerDependencies,
+  eventName: string,
+  error: unknown
+): Response {
+  (dependencies.logger ?? console).error(
+    eventName,
+    firebaseAuthErrorSummary(error)
+  );
+  return json({ error: "認証情報を確認できませんでした" }, 401);
+}
+
 export function createMemberInviteEmailPostHandler(
   dependencies: MemberInviteEmailHandlerDependencies
 ) {
@@ -34,15 +50,25 @@ export function createMemberInviteEmailPostHandler(
     const match = authorization.match(/^Bearer\s+(.+)$/i);
     if (!match) return json({ error: "ログインが必要です" }, 401);
 
+    let authModule: Awaited<ReturnType<MemberInviteEmailHandlerDependencies["loadAuthModule"]>>;
+    try {
+      authModule = await dependencies.loadAuthModule();
+    } catch (error) {
+      return authenticationFailure(dependencies, "member_invite_auth_module_import_failed", error);
+    }
+
+    let firebaseAdminAuth: ReturnType<typeof authModule.initializeFirebaseAdminAuth>;
+    try {
+      firebaseAdminAuth = authModule.initializeFirebaseAdminAuth();
+    } catch (error) {
+      return authenticationFailure(dependencies, "member_invite_admin_initialization_failed", error);
+    }
+
     let uid: string;
     try {
-      ({ uid } = await dependencies.verifyIdToken(match[1]));
+      ({ uid } = await firebaseAdminAuth.verifyIdToken(match[1]));
     } catch (error) {
-      (dependencies.logger ?? console).error(
-        "member_invite_verify_id_token_failed",
-        firebaseAuthErrorSummary(error)
-      );
-      return json({ error: "認証情報を確認できませんでした" }, 401);
+      return authenticationFailure(dependencies, "member_invite_verify_id_token_failed", error);
     }
 
     let body: Record<string, unknown>;
