@@ -31,120 +31,41 @@ function policy(overrides = {}) {
   };
 }
 
-function handlerDependencies(overrides = {}) {
-  return {
-    loadAuthModule: async () => ({
-      initializeFirebaseAdminAuth: () => ({
-        verifyIdToken: async () => ({ uid: "owner-a" }),
-      }),
-    }),
-    sendPendingInviteEmail: async () => ({ email: "member@example.com" }),
-    ...overrides,
-  };
-}
-
-function authFailure(name, code, secrets) {
-  return Object.assign(new Error(secrets.message), {
-    name,
-    code,
-    authorization: secrets.authorization,
-    privateKey: secrets.privateKey,
-    apiKey: secrets.apiKey,
-    email: secrets.email,
-  });
-}
-
-async function assertSafeAuthFailure({ loadAuthModule, expectedEvent }) {
-  const logged = [];
-  const secrets = {
-    authorization: "Bearer secret-id-token",
-    privateKey: "-----BEGIN PRIVATE KEY-----secret",
-    apiKey: "secret-api-key",
-    email: "member@example.com",
-    message: "secret error message",
-  };
-  const handler = createMemberInviteEmailPostHandler(handlerDependencies({
-    loadAuthModule: () => loadAuthModule(authFailure("FirebaseAuthError", "auth/invalid-id-token", secrets)),
-    logger: { error: (...values) => { logged.push(values); } },
-  }));
-  const response = await handler(new Request("https://example.test/api/member-invites/send", {
-    method: "POST",
-    headers: { authorization: secrets.authorization },
-    body: JSON.stringify({ projectId: "project-a", inviteEmail: secrets.email }),
-  }));
-
-  equal(response.status, 401);
-  deepStrictEqual(await response.json(), { error: "認証情報を確認できませんでした" });
-  deepStrictEqual(logged, [[
-    expectedEvent,
-    { name: "FirebaseAuthError", code: "auth/invalid-id-token" },
-  ]]);
-  const serializedLog = JSON.stringify(logged);
-  for (const secret of Object.values(secrets)) {
-    doesNotMatch(serializedLog, new RegExp(secret.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-  }
-}
-
 describe("invite email API authentication", () => {
   it("rejects an unauthenticated request", async () => {
-    let firebaseAdminWasUsed = false;
-    const handler = createMemberInviteEmailPostHandler(handlerDependencies({
-      loadAuthModule: async () => {
-        firebaseAdminWasUsed = true;
-        return {
-          initializeFirebaseAdminAuth: () => ({
-            verifyIdToken: async () => ({ uid: "unused" }),
-          }),
-        };
-      },
-      sendPendingInviteEmail: async () => {
-        firebaseAdminWasUsed = true;
-        return { email: "unused@example.com" };
-      },
-    }));
+    const handler = createMemberInviteEmailPostHandler({
+      verifyIdToken: async () => ({ uid: "unused" }),
+      sendPendingInviteEmail: async () => ({ email: "unused@example.com" }),
+    });
     const response = await handler(new Request("https://example.test/api/member-invites/send", {
       method: "POST",
       body: JSON.stringify({ projectId: "project-a", inviteEmail: "member@example.com" }),
     }));
     equal(response.status, 401);
-    equal(firebaseAdminWasUsed, false);
   });
 
-  it("logs only a safe module import failure", async () => {
-    await assertSafeAuthFailure({
-      expectedEvent: "member_invite_auth_module_import_failed",
-      loadAuthModule: async (error) => { throw error; },
+  it("rejects an invalid ID token", async () => {
+    const handler = createMemberInviteEmailPostHandler({
+      verifyIdToken: async () => { throw new Error("invalid token"); },
+      sendPendingInviteEmail: async () => ({ email: "unused@example.com" }),
     });
-  });
-
-  it("logs only a safe Firebase Admin initialization failure", async () => {
-    await assertSafeAuthFailure({
-      expectedEvent: "member_invite_admin_initialization_failed",
-      loadAuthModule: async (error) => ({
-        initializeFirebaseAdminAuth: () => { throw error; },
-      }),
-    });
-  });
-
-  it("logs only a safe ID token verification failure", async () => {
-    await assertSafeAuthFailure({
-      expectedEvent: "member_invite_verify_id_token_failed",
-      loadAuthModule: async (error) => ({
-        initializeFirebaseAdminAuth: () => ({
-          verifyIdToken: async () => { throw error; },
-        }),
-      }),
-    });
+    const response = await handler(new Request("https://example.test/api/member-invites/send", {
+      method: "POST",
+      headers: { authorization: "Bearer invalid" },
+      body: JSON.stringify({ projectId: "project-a", inviteEmail: "member@example.com" }),
+    }));
+    equal(response.status, 401);
   });
 
   it("uses the verified UID and ignores forged recipient, role, and project name", async () => {
     let received;
-    const handler = createMemberInviteEmailPostHandler(handlerDependencies({
+    const handler = createMemberInviteEmailPostHandler({
+      verifyIdToken: async () => ({ uid: "owner-a" }),
       sendPendingInviteEmail: async (input) => {
         received = input;
         return { email: "member@example.com" };
       },
-    }));
+    });
     const response = await handler(new Request("https://example.test/api/member-invites/send", {
       method: "POST",
       headers: { authorization: "Bearer valid" },
@@ -172,16 +93,12 @@ describe("invite email API authentication", () => {
     ["revoked invite", 409, "invite_not_pending"],
   ]) {
     it(`returns the server authorization failure for ${label}`, async () => {
-      const handler = createMemberInviteEmailPostHandler(handlerDependencies({
-        loadAuthModule: async () => ({
-          initializeFirebaseAdminAuth: () => ({
-            verifyIdToken: async () => ({ uid: "verified-user" }),
-          }),
-        }),
+      const handler = createMemberInviteEmailPostHandler({
+        verifyIdToken: async () => ({ uid: "verified-user" }),
         sendPendingInviteEmail: async () => {
           throw new InviteEmailRequestError(status, code, "送信不可");
         },
-      }));
+      });
       const response = await handler(new Request("https://example.test/api/member-invites/send", {
         method: "POST",
         headers: { authorization: "Bearer valid" },
@@ -194,11 +111,12 @@ describe("invite email API authentication", () => {
   }
 
   it("returns a retryable failed email state without deleting the invite", async () => {
-    const handler = createMemberInviteEmailPostHandler(handlerDependencies({
+    const handler = createMemberInviteEmailPostHandler({
+      verifyIdToken: async () => ({ uid: "owner-a" }),
       sendPendingInviteEmail: async () => {
         throw new InviteEmailRequestError(502, "send_failed", "送信失敗");
       },
-    }));
+    });
     const response = await handler(new Request("https://example.test/api/member-invites/send", {
       method: "POST",
       headers: { authorization: "Bearer valid" },

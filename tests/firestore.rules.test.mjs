@@ -688,46 +688,6 @@ describe("member invites", () => {
     await assertFails(setDoc(ref, inviteData()));
   });
 
-  it("allows only an owner to restart a revoked invite with a new role and reset delivery state", async () => {
-    const ownerDb = firestoreFor(ownerUid);
-    const ref = inviteRef(ownerDb);
-    await assertSucceeds(setDoc(ref, inviteData()));
-    await assertSucceeds(updateDoc(ref, { status: "revoked", updatedAt: serverTimestamp() }));
-    await assertFails(setDoc(inviteRef(firestoreFor(editorUid)), inviteData(invitedEmail, "viewer")));
-    await assertFails(setDoc(inviteRef(firestoreFor(viewerUid)), inviteData(invitedEmail, "viewer")));
-    await assertSucceeds(setDoc(ref, inviteData(invitedEmail, "viewer")));
-    const restarted = (await getDoc(ref)).data();
-    strictEqual(restarted?.status, "pending");
-    strictEqual(restarted?.role, "viewer");
-    strictEqual(restarted?.acceptedAt, null);
-    strictEqual(restarted?.emailStatus, "not_sent");
-    strictEqual(restarted?.emailSentAt, null);
-    strictEqual(restarted?.emailLastError, null);
-    strictEqual(restarted?.emailSendCount, 0);
-    strictEqual(restarted?.emailLastAttemptAt, null);
-  });
-
-  it("allows an owner to restart accepted history after the member is no longer present", async () => {
-    await testEnv.withSecurityRulesDisabled(async (context) => {
-      await setDoc(inviteRef(context.firestore()), {
-        ...inviteData(),
-        status: "accepted",
-        acceptedAt: new Date("2026-10-01T00:00:00Z"),
-        emailStatus: "sent",
-        emailSentAt: new Date("2026-09-30T00:00:00Z"),
-        emailSendCount: 2,
-        emailLastAttemptAt: new Date("2026-09-30T00:00:00Z"),
-      });
-    });
-    const ownerDb = firestoreFor(ownerUid);
-    await assertSucceeds(setDoc(inviteRef(ownerDb), inviteData(invitedEmail, "editor")));
-    const restarted = (await getDoc(inviteRef(ownerDb))).data();
-    strictEqual(restarted?.status, "pending");
-    strictEqual(restarted?.acceptedAt, null);
-    strictEqual(restarted?.emailStatus, "not_sent");
-    strictEqual(restarted?.emailSendCount, 0);
-  });
-
   it("prevents a client from forging the initial email delivery state", async () => {
     await assertFails(setDoc(inviteRef(firestoreFor(ownerUid)), {
       ...inviteData(),

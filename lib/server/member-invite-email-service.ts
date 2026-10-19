@@ -1,3 +1,4 @@
+import "server-only";
 import { Timestamp } from "firebase-admin/firestore";
 import { Resend } from "resend";
 import {
@@ -6,7 +7,7 @@ import {
   validateInviteEmailSend,
 } from "../member-invite-email.ts";
 import { normalizeInviteEmail, type InviteRole } from "../member-invites.ts";
-import { getFirebaseAdminAuth, getFirebaseAdminFirestore } from "./firebase-admin";
+import { adminAuth, adminDb } from "./firebase-admin";
 
 type ReservedInvite = {
   email: string;
@@ -28,7 +29,6 @@ async function reserveInviteSend(input: {
   inviteEmail: string;
   nowMs: number;
 }): Promise<ReservedInvite> {
-  const adminDb = getFirebaseAdminFirestore();
   const memberRef = adminDb.doc(`projects/${input.projectId}/members/${input.uid}`);
   const projectRef = adminDb.doc(`projects/${input.projectId}`);
   const normalizedEmail = normalizeInviteEmail(input.inviteEmail);
@@ -77,16 +77,9 @@ async function reserveInviteSend(input: {
   });
 }
 
-export function initializeInviteEmailFirebaseAdminAuth(): {
-  verifyIdToken: (idToken: string) => Promise<{ uid: string }>;
-} {
-  const auth = getFirebaseAdminAuth();
-  return {
-    verifyIdToken: async (idToken) => {
-      const decoded = await auth.verifyIdToken(idToken);
-      return { uid: decoded.uid };
-    },
-  };
+export async function verifyInviteEmailIdToken(idToken: string): Promise<{ uid: string }> {
+  const decoded = await adminAuth.verifyIdToken(idToken);
+  return { uid: decoded.uid };
 }
 
 export async function sendPendingInviteEmail(input: {
@@ -96,7 +89,6 @@ export async function sendPendingInviteEmail(input: {
 }): Promise<{ email: string }> {
   const nowMs = Date.now();
   const reserved = await reserveInviteSend({ ...input, nowMs });
-  const adminDb = getFirebaseAdminFirestore();
   const inviteRef = adminDb.doc(reserved.invitePath);
 
   try {
