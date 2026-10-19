@@ -1,4 +1,3 @@
-import "server-only";
 import { Timestamp } from "firebase-admin/firestore";
 import { Resend } from "resend";
 import {
