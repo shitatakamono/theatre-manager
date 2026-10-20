@@ -69,7 +69,7 @@ export default function MembersPage({ params }: { params: Promise<{ projectId: s
     setInviting(true); setError(""); setMessage("");
     try {
       const created = await createProjectMemberInvite({ projectId, projectName, email: inviteEmail, role: inviteRole, invitedBy: profile });
-      setInvites((current) => [created, ...current]);
+      setInvites((current) => [created, ...current.filter((item) => item.id !== created.id)]);
       setInviteEmail("");
       try {
         await requestMemberInviteEmail(projectId, created.email);

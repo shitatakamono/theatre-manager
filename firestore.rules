@@ -279,6 +279,11 @@ service cloud.firestore {
         && request.resource.data.updatedAt == request.time;
     }
 
+    function validInviteRestart(projectId, email) {
+      return resource.data.status in ['accepted', 'revoked']
+        && validMemberInviteCreate(projectId, email);
+    }
+
     function validInviteAccept(projectId) {
       return hasVerifiedEmail()
         && resource.data.email == request.auth.token.email
@@ -412,7 +417,8 @@ service cloud.firestore {
         allow read: if isOwner(projectId)
           || (hasVerifiedEmail() && resource.data.email == request.auth.token.email);
         allow create: if isOwner(projectId) && validMemberInviteCreate(projectId, email);
-        allow update: if (isOwner(projectId) && validInviteRevoke())
+        allow update: if (isOwner(projectId)
+            && (validInviteRevoke() || validInviteRestart(projectId, email)))
           || validInviteAccept(projectId);
         allow delete: if false;
       }

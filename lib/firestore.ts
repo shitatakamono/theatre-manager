@@ -59,8 +59,8 @@ import {
 } from "./project-revisions";
 import {
   buildMemberInvitePayload,
+  getMemberInviteAvailability,
   getMemberDisplayName,
-  isExistingMemberEmail,
   isValidInviteEmail,
   normalizeInviteEmail,
   type InviteRole,
@@ -444,15 +444,23 @@ export async function createProjectMemberInvite(input: {
   if (!isValidInviteEmail(email)) throw new Error("有効なメールアドレスを入力してください");
   if (normalizeInviteEmail(input.invitedBy.email ?? "") === email) throw new Error("自分自身を招待する必要はありません");
   const members = await getProjectMembers(input.projectId);
-  if (isExistingMemberEmail(members, email)) throw new Error("このメールアドレスは既にメンバーです");
+  if (getMemberInviteAvailability({ members, email }) === "member") {
+    throw new Error("このメールアドレスはすでに参加しています");
+  }
 
   const inviteRef = doc(db, "projects", input.projectId, "memberInvites", email);
   const payload = buildMemberInvitePayload({ ...input, email }, serverTimestamp());
   await runTransaction(db, async (transaction) => {
     const existing = await transaction.get(inviteRef);
-    if (existing.exists()) {
-      const status = existing.data().status;
-      throw new Error(status === "pending" ? "このメールアドレスは既に招待中です" : "このメールアドレスへの招待履歴が既にあります");
+    const availability = getMemberInviteAvailability({
+      members: [],
+      existingInvite: existing.exists()
+        ? existing.data() as Pick<ProjectMemberInvite, "status">
+        : null,
+      email,
+    });
+    if (availability === "pending") {
+      throw new Error("このメールアドレスは現在招待中です");
     }
     transaction.set(inviteRef, payload);
   });
