@@ -102,6 +102,30 @@ function participantData(uid, overrides = {}) {
   };
 }
 
+function attendanceRef(db, date = "2026-11-03", participantId = "participant-a", targetProjectId = projectId) {
+  return doc(db, "projects", targetProjectId, "attendanceRecords", `${date}_${participantId}`);
+}
+
+function attendanceData(uid, overrides = {}) {
+  return {
+    participantId: "participant-a",
+    date: "2026-11-03",
+    status: "attending",
+    availableFrom: "13:00",
+    availableUntil: "16:30",
+    publicNote: "途中参加",
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    createdByUid: uid,
+    updatedByUid: uid,
+    ...overrides,
+  };
+}
+
+async function createAttendanceParticipant(db, id = "participant-a") {
+  return setDoc(participantRef(db, id), participantData(ownerUid));
+}
+
 async function createLinkedParticipant(db, actorUid, participantId, linkedUserUid) {
   const batch = writeBatch(db);
   batch.set(participantRef(db, participantId), participantData(actorUid, { linkedUserUid }));
@@ -678,6 +702,108 @@ describe("participants", () => {
       updatedByUid: ownerUid,
     }));
     await assertFails(deleteDoc(participantRef(db)));
+  });
+});
+
+describe("attendance records", () => {
+  it("allows owners and editors to create and update records for an existing participant", async () => {
+    const ownerDb = firestoreFor(ownerUid);
+    await createAttendanceParticipant(ownerDb);
+    await assertSucceeds(setDoc(attendanceRef(ownerDb), attendanceData(ownerUid)));
+
+    const editorDb = firestoreFor(editorUid);
+    await assertSucceeds(updateDoc(attendanceRef(editorDb), {
+      status: "tentative",
+      availableFrom: null,
+      availableUntil: null,
+      publicNote: "確認中",
+      updatedAt: serverTimestamp(),
+      updatedByUid: editorUid,
+    }));
+  });
+
+  it("allows viewer reads but denies viewer creates and updates", async () => {
+    const ownerDb = firestoreFor(ownerUid);
+    await createAttendanceParticipant(ownerDb);
+    await assertSucceeds(setDoc(attendanceRef(ownerDb), attendanceData(ownerUid)));
+    const viewerDb = firestoreFor(viewerUid);
+    await assertSucceeds(getDocs(collection(viewerDb, "projects", projectId, "attendanceRecords")));
+    await assertFails(setDoc(attendanceRef(viewerDb, "2026-11-04"), attendanceData(viewerUid, { date: "2026-11-04" })));
+    await assertFails(updateDoc(attendanceRef(viewerDb), {
+      publicNote: "改ざん",
+      updatedAt: serverTimestamp(),
+      updatedByUid: viewerUid,
+    }));
+  });
+
+  it("denies non-member reads and writes", async () => {
+    const ownerDb = firestoreFor(ownerUid);
+    await createAttendanceParticipant(ownerDb);
+    await assertSucceeds(setDoc(attendanceRef(ownerDb), attendanceData(ownerUid)));
+    const outsiderDb = firestoreFor(outsiderUid);
+    await assertFails(getDocs(collection(outsiderDb, "projects", projectId, "attendanceRecords")));
+    await assertFails(setDoc(attendanceRef(outsiderDb, "2026-11-04"), attendanceData(outsiderUid, { date: "2026-11-04" })));
+  });
+
+  it("requires an existing participant and a deterministic document ID", async () => {
+    const db = firestoreFor(ownerUid);
+    await assertFails(setDoc(attendanceRef(db), attendanceData(ownerUid)));
+    await createAttendanceParticipant(db);
+    await assertFails(setDoc(doc(db, "projects", projectId, "attendanceRecords", "random-id"), attendanceData(ownerUid)));
+    await assertSucceeds(setDoc(attendanceRef(db), attendanceData(ownerUid)));
+  });
+
+  it("validates status, dates, times, notes, and the exact schema", async () => {
+    const db = firestoreFor(ownerUid);
+    await createAttendanceParticipant(db);
+    await assertFails(setDoc(attendanceRef(db), attendanceData(ownerUid, { status: "unanswered" })));
+    await assertFails(setDoc(attendanceRef(db, "2026-13-03"), attendanceData(ownerUid, { date: "2026-13-03" })));
+    await assertFails(setDoc(attendanceRef(db), attendanceData(ownerUid, { availableFrom: "9:00" })));
+    await assertFails(setDoc(attendanceRef(db), attendanceData(ownerUid, { availableFrom: "16:30", availableUntil: "16:30" })));
+    await assertFails(setDoc(attendanceRef(db), attendanceData(ownerUid, { status: "absent" })));
+    await assertFails(setDoc(attendanceRef(db), attendanceData(ownerUid, { status: "tentative", availableFrom: null })));
+    await assertFails(setDoc(attendanceRef(db), attendanceData(ownerUid, { publicNote: "a".repeat(2001) })));
+    await assertFails(setDoc(attendanceRef(db), attendanceData(ownerUid, { privateNote: "不可" })));
+    await assertSucceeds(setDoc(attendanceRef(db), attendanceData(ownerUid)));
+  });
+
+  it("accepts null times for absent and tentative", async () => {
+    const db = firestoreFor(ownerUid);
+    await createAttendanceParticipant(db);
+    await assertSucceeds(setDoc(attendanceRef(db), attendanceData(ownerUid, {
+      status: "absent", availableFrom: null, availableUntil: null,
+    })));
+    await assertSucceeds(setDoc(attendanceRef(db, "2026-11-04"), attendanceData(ownerUid, {
+      date: "2026-11-04", status: "tentative", availableFrom: null, availableUntil: null,
+    })));
+  });
+
+  it("protects creator metadata and immutable participant and date fields", async () => {
+    const db = firestoreFor(ownerUid);
+    await createAttendanceParticipant(db);
+    await setDoc(participantRef(db, "participant-b"), participantData(ownerUid));
+    await assertSucceeds(setDoc(attendanceRef(db), attendanceData(ownerUid)));
+    await assertFails(updateDoc(attendanceRef(db), {
+      createdAt: serverTimestamp(), updatedAt: serverTimestamp(), updatedByUid: ownerUid,
+    }));
+    await assertFails(updateDoc(attendanceRef(db), {
+      createdByUid: editorUid, updatedAt: serverTimestamp(), updatedByUid: ownerUid,
+    }));
+    await assertFails(updateDoc(attendanceRef(db), {
+      participantId: "participant-b", updatedAt: serverTimestamp(), updatedByUid: ownerUid,
+    }));
+    await assertFails(updateDoc(attendanceRef(db), {
+      date: "2026-11-04", updatedAt: serverTimestamp(), updatedByUid: ownerUid,
+    }));
+  });
+
+  it("denies deletion for every member role", async () => {
+    const ownerDb = firestoreFor(ownerUid);
+    await createAttendanceParticipant(ownerDb);
+    await assertSucceeds(setDoc(attendanceRef(ownerDb), attendanceData(ownerUid)));
+    await assertFails(deleteDoc(attendanceRef(ownerDb)));
+    await assertFails(deleteDoc(attendanceRef(firestoreFor(editorUid))));
+    await assertFails(deleteDoc(attendanceRef(firestoreFor(viewerUid))));
   });
 });
 

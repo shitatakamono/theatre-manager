@@ -231,6 +231,69 @@ service cloud.firestore {
         || getAfter(participantPath(projectId, resource.data.participantId)).data.linkedUserUid != uid;
     }
 
+    function validAttendanceDate(value) {
+      return value is string
+        && value.matches('^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$');
+    }
+
+    function validAttendanceTime(value) {
+      return value is string
+        && value.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$');
+    }
+
+    function validAttendanceAvailability() {
+      return (request.resource.data.status == 'attending'
+          && validAttendanceTime(request.resource.data.availableFrom)
+          && validAttendanceTime(request.resource.data.availableUntil)
+          && request.resource.data.availableFrom < request.resource.data.availableUntil)
+        || (request.resource.data.status in ['absent', 'tentative']
+          && request.resource.data.availableFrom == null
+          && request.resource.data.availableUntil == null);
+    }
+
+    function validAttendanceData(projectId, recordId) {
+      return request.resource.data.keys().hasOnly([
+          'participantId', 'date', 'status', 'availableFrom', 'availableUntil',
+          'publicNote', 'createdAt', 'updatedAt', 'createdByUid', 'updatedByUid'
+        ])
+        && request.resource.data.keys().hasAll([
+          'participantId', 'date', 'status', 'availableFrom', 'availableUntil',
+          'publicNote', 'createdAt', 'updatedAt', 'createdByUid', 'updatedByUid'
+        ])
+        && request.resource.data.participantId is string
+        && request.resource.data.participantId.size() > 0
+        && request.resource.data.participantId.size() <= 128
+        && validAttendanceDate(request.resource.data.date)
+        && recordId == request.resource.data.date + '_' + request.resource.data.participantId
+        && request.resource.data.status in ['attending', 'absent', 'tentative']
+        && validAttendanceAvailability()
+        && request.resource.data.publicNote is string
+        && request.resource.data.publicNote.size() <= 2000
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt is timestamp
+        && request.resource.data.createdByUid is string
+        && request.resource.data.updatedByUid is string
+        && exists(participantPath(projectId, request.resource.data.participantId));
+    }
+
+    function validAttendanceCreate(projectId, recordId) {
+      return validAttendanceData(projectId, recordId)
+        && request.resource.data.createdByUid == request.auth.uid
+        && request.resource.data.updatedByUid == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function validAttendanceUpdate(projectId, recordId) {
+      return validAttendanceData(projectId, recordId)
+        && request.resource.data.participantId == resource.data.participantId
+        && request.resource.data.date == resource.data.date
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.createdByUid == resource.data.createdByUid
+        && request.resource.data.updatedByUid == request.auth.uid
+        && request.resource.data.updatedAt == request.time;
+    }
+
     function projectPath(projectId) {
       return /databases/$(database)/documents/projects/$(projectId);
     }
@@ -498,6 +561,13 @@ service cloud.firestore {
         allow delete: if canEdit(projectId)
           && (!existsAfter(participantPath(projectId, resource.data.participantId))
             || getAfter(participantPath(projectId, resource.data.participantId)).data.linkedUserUid != uid);
+      }
+
+      match /attendanceRecords/{recordId} {
+        allow read: if isMember(projectId);
+        allow create: if canEdit(projectId) && validAttendanceCreate(projectId, recordId);
+        allow update: if canEdit(projectId) && validAttendanceUpdate(projectId, recordId);
+        allow delete: if false;
       }
 
       match /activityLogs/{logId} {
