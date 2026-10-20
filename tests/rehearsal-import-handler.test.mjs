@@ -1,7 +1,8 @@
-import { deepStrictEqual, equal } from "node:assert/strict";
+import { deepStrictEqual, equal, rejects } from "node:assert/strict";
 import { describe, it } from "node:test";
 import { RehearsalImportProviderError, RehearsalImportTimeoutError } from "../lib/rehearsal-import.ts";
 import { createRehearsalImportPostHandler } from "../lib/server/rehearsal-import-handler.ts";
+import { analyzeChigasakiReservationImage } from "../lib/server/rehearsal-import-service.ts";
 
 const context = { params: Promise.resolve({ projectId: "project-a" }) };
 const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
@@ -106,5 +107,90 @@ describe("rehearsal screenshot import API", () => {
       if (previous === undefined) delete process.env.OPENAI_API_KEY;
       else process.env.OPENAI_API_KEY = previous;
     }
+  });
+});
+
+describe("OpenAI failure diagnostics", () => {
+  const image = { bytes: png, mimeType: "image/png" };
+
+  async function withOpenAIEnvironment(operation) {
+    const previousKey = process.env.OPENAI_API_KEY;
+    const previousModel = process.env.OPENAI_REHEARSAL_IMPORT_MODEL;
+    process.env.OPENAI_API_KEY = "test-key-not-a-secret";
+    process.env.OPENAI_REHEARSAL_IMPORT_MODEL = "diagnostic-test-model";
+    try {
+      await operation();
+    } finally {
+      if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
+      else process.env.OPENAI_API_KEY = previousKey;
+      if (previousModel === undefined) delete process.env.OPENAI_REHEARSAL_IMPORT_MODEL;
+      else process.env.OPENAI_REHEARSAL_IMPORT_MODEL = previousModel;
+    }
+  }
+
+  for (const scenario of [
+    { label: "401", status: 401, code: "invalid_api_key", type: "invalid_request_error" },
+    { label: "403", status: 403, code: "permission_denied", type: "permission_error" },
+    { label: "400", status: 400, code: "invalid_request", type: "invalid_request_error" },
+    { label: "429", status: 429, code: "rate_limit_exceeded", type: "rate_limit_error" },
+  ]) {
+    it(`logs only safe OpenAI fields for ${scenario.label}`, async () => {
+      await withOpenAIEnvironment(async () => {
+        const logs = [];
+        const providerError = Object.assign(new Error("secret provider response"), {
+          status: scenario.status,
+          code: scenario.code,
+          type: scenario.type,
+          response: { body: "secret response body" },
+        });
+        await rejects(
+          () => analyzeChigasakiReservationImage(image, {
+            requestOpenAI: async () => { throw providerError; },
+            logError: (...values) => logs.push(values),
+          }),
+          RehearsalImportProviderError
+        );
+        deepStrictEqual(logs, [["rehearsal_import_openai_failed", {
+          name: "Error",
+          status: scenario.status,
+          code: scenario.code,
+          type: scenario.type,
+          model: "diagnostic-test-model",
+        }]]);
+        const serialized = JSON.stringify(logs);
+        equal(serialized.includes("secret provider response"), false);
+        equal(serialized.includes("secret response body"), false);
+        equal(serialized.includes("test-key-not-a-secret"), false);
+      });
+    });
+  }
+
+  it("logs null metadata for a generic error without leaking its message", async () => {
+    await withOpenAIEnvironment(async () => {
+      const logs = [];
+      await rejects(
+        () => analyzeChigasakiReservationImage(image, {
+          requestOpenAI: async () => { throw new Error("generic secret message"); },
+          logError: (...values) => logs.push(values),
+        }),
+        RehearsalImportProviderError
+      );
+      deepStrictEqual(logs, [["rehearsal_import_openai_failed", {
+        name: "Error", status: null, code: null, type: null, model: "diagnostic-test-model",
+      }]]);
+      equal(JSON.stringify(logs).includes("generic secret message"), false);
+    });
+  });
+
+  it("does not emit a failure log for a successful response", async () => {
+    await withOpenAIEnvironment(async () => {
+      const logs = [];
+      const result = await analyzeChigasakiReservationImage(image, {
+        requestOpenAI: async () => JSON.stringify({ source: "ok" }),
+        logError: (...values) => logs.push(values),
+      });
+      deepStrictEqual(result, { source: "ok" });
+      deepStrictEqual(logs, []);
+    });
   });
 });
