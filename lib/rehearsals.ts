@@ -258,34 +258,32 @@ export async function getProjectRehearsal(projectId: string, rehearsalId: string
 
 export async function createProjectRehearsal(projectId: string, input: RehearsalInput, actor: ActivityActor, firestore?: Firestore): Promise<string> {
   const values = buildRehearsalValues(input);
-  const database = await resolveFirestore(firestore);
-  const projectRef = doc(database, "projects", projectId);
-  const rehearsalRef = doc(collection(projectRef, "rehearsals"));
-  const logRef = doc(collection(projectRef, "activityLogs"));
-  const batch = writeBatch(database);
-  batch.set(rehearsalRef, {
-    ...values,
-    revision: 0,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-    createdByUid: actor.uid,
-    updatedByUid: actor.uid,
-  });
-  batch.set(logRef, activityPayload(actor, "create", [`稽古予定を追加（${formatRehearsalActivityDate(values.startAt)}）`]));
-  await batch.commit();
-  return rehearsalRef.id;
+  const ids = await createProjectRehearsalBatch(
+    projectId,
+    [input],
+    actor,
+    `稽古予定を追加（${formatRehearsalActivityDate(values.startAt)}）`,
+    firestore
+  );
+  return ids[0];
 }
 
-export async function createProjectRehearsals(projectId: string, dates: string[], shared: Omit<RehearsalInput, "date">, actor: ActivityActor, firestore?: Firestore): Promise<number> {
-  const uniqueDates = [...new Set(dates.map((date) => date.trim()).filter(Boolean))];
-  if (uniqueDates.length === 0) throw new Error("日付を1件以上入力してください");
-  if (uniqueDates.length > 100) throw new Error("一度に追加できる稽古は100件までです");
-  const values = uniqueDates.map((date) => buildRehearsalValues({ ...shared, date }));
+export async function createProjectRehearsalBatch(
+  projectId: string,
+  inputs: RehearsalInput[],
+  actor: ActivityActor,
+  activityMessage: string,
+  firestore?: Firestore
+): Promise<string[]> {
+  if (inputs.length === 0) throw new Error("稽古予定を1件以上選択してください");
+  if (inputs.length > 100) throw new Error("一度に追加できる稽古は100件までです");
+  const values = inputs.map(buildRehearsalValues);
   const database = await resolveFirestore(firestore);
   const projectRef = doc(database, "projects", projectId);
+  const rehearsalRefs = values.map(() => doc(collection(projectRef, "rehearsals")));
   const batch = writeBatch(database);
-  for (const value of values) {
-    batch.set(doc(collection(projectRef, "rehearsals")), {
+  values.forEach((value, index) => {
+    batch.set(rehearsalRefs[index], {
       ...value,
       revision: 0,
       createdAt: serverTimestamp(),
@@ -293,10 +291,19 @@ export async function createProjectRehearsals(projectId: string, dates: string[]
       createdByUid: actor.uid,
       updatedByUid: actor.uid,
     });
-  }
-  batch.set(doc(collection(projectRef, "activityLogs")), activityPayload(actor, "create", [`稽古予定を${values.length}件追加`]));
+  });
+  batch.set(doc(collection(projectRef, "activityLogs")), activityPayload(actor, "create", [activityMessage]));
   await batch.commit();
-  return values.length;
+  return rehearsalRefs.map((reference) => reference.id);
+}
+
+export async function createProjectRehearsals(projectId: string, dates: string[], shared: Omit<RehearsalInput, "date">, actor: ActivityActor, firestore?: Firestore): Promise<number> {
+  const uniqueDates = [...new Set(dates.map((date) => date.trim()).filter(Boolean))];
+  if (uniqueDates.length === 0) throw new Error("日付を1件以上入力してください");
+  if (uniqueDates.length > 100) throw new Error("一度に追加できる稽古は100件までです");
+  const inputs = uniqueDates.map((date) => ({ ...shared, date }));
+  await createProjectRehearsalBatch(projectId, inputs, actor, `稽古予定を${inputs.length}件追加`, firestore);
+  return inputs.length;
 }
 
 export async function updateProjectRehearsal(

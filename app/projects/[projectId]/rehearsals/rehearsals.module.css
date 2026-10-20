@@ -61,11 +61,50 @@
 .formError { margin-top: 16px; border-radius: 7px; padding: 10px 12px; font-size: 13px; }
 .dialog footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
 .dialog button:disabled { cursor: not-allowed; opacity: .55; }
+.importDialog { width: min(760px, 100%); }
+.importBody { padding: 20px 22px 8px; }
+.importLead { color: #53645e; font-size: 13px; line-height: 1.65; }
+.visuallyHidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+.fileButton { min-height: 42px; margin-top: 14px; border: 1px solid #21634f; border-radius: 8px; color: #21634f; padding: 8px 16px; font-weight: 800; }
+.fileName { display: inline; margin-left: 12px; color: #65746f; font-size: 12px; }
+.importPreview { display: block; width: 100%; max-height: 320px; object-fit: contain; margin-top: 16px; border: 1px solid #dbe2df; border-radius: 8px; background: #f7f9f8; }
+.importResults { margin-top: 22px; border-top: 1px solid #dbe2df; padding-top: 16px; }
+.importResults h3 { font-size: 18px; font-weight: 850; }
+.importRows { display: grid; gap: 10px; margin-top: 12px; }
+.importRow { border: 1px solid #d2dcd8; border-radius: 8px; padding: 12px 14px; }
+.importRow.needsReview { border-color: #dfbd79; background: #fffcf4; }
+.importRow > header { display: flex; align-items: center; gap: 8px; }
+.importRow > header > span { margin-left: auto; border-radius: 999px; padding: 2px 8px; font-size: 11px; font-weight: 800; }
+.unknown { background: #fff0cf; color: #75500d; }
+.importCheck { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.importCheck input { width: 18px; height: 18px; accent-color: #21634f; }
+.importFormGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
+.importFormGrid label { display: grid; gap: 5px; }
+.importFormGrid label > span { color: #43534d; font-size: 11px; font-weight: 800; }
+.importFormGrid input, .importFormGrid select, .importFormGrid textarea { width: 100%; min-height: 40px; border: 1px solid #bac8c3; border-radius: 7px; background: #fff; padding: 8px 9px; }
+.importFormGrid textarea { resize: vertical; }
+.importFull { grid-column: 1 / -1; }
+.importRow details { margin-top: 8px; color: #65746f; font-size: 12px; }
+.importRow details p { margin-top: 5px; white-space: pre-wrap; }
+.importWarnings { display: grid; gap: 3px; margin-top: 8px; color: #8a5d12; font-size: 12px; }
+.importWarnings li::before { content: "・"; }
+.reviewNote, .duplicateWarning, .rowError { margin-top: 8px; border-radius: 6px; padding: 7px 9px; font-size: 12px; }
+.reviewNote { background: #fff4da; color: #76520d; }
+.duplicateWarning { border: 1px solid #dfbd79; background: #fff9e9; color: #76520d; }
+.rowError { border: 1px solid #e2b1b1; background: #fff4f4; color: #8b2929; }
+.cancelledSection { margin-top: 18px; border-top: 1px solid #dbe2df; padding-top: 12px; }
+.cancelledSection summary { cursor: pointer; color: #53645e; font-size: 13px; font-weight: 800; }
+.cancelledSection summary span { color: #708078; font-size: 11px; }
+.cancelledSection > div { display: grid; gap: 7px; margin-top: 10px; }
+.cancelledRow { display: grid; grid-template-columns: 110px minmax(170px, auto) 1fr; gap: 10px; border-radius: 7px; background: #f0f2f1; padding: 9px 11px; color: #56635e; font-size: 12px; }
+.importFooter { position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid #dbe2df; background: #fff; padding: 14px 22px 18px; }
+.importFooter button { min-height: 42px; border: 1px solid #21634f; border-radius: 8px; background: #21634f; color: #fff; padding: 8px 16px; font-weight: 800; cursor: pointer; }
 
 @media (max-width: 700px) {
   .page { padding: 20px 14px 40px; overflow-x: hidden; }
   .header { align-items: start; flex-direction: column; }
   .headerActions { width: 100%; }
+  .headerActions { flex-wrap: wrap; }
   .headerActions button { flex: 1; padding-inline: 10px; }
   .next { grid-template-columns: 1fr; gap: 10px; padding: 17px; }
   .next li { grid-template-columns: 90px 1fr; gap: 5px 10px; }
@@ -80,4 +119,10 @@
   .full { grid-column: auto; }
   .overlay { align-items: end; padding: 0; }
   .dialog { max-height: 94vh; border-radius: 14px 14px 0 0; }
+  .fileName { display: block; margin: 8px 0 0; }
+  .importBody { padding-inline: 16px; }
+  .importFooter { padding-inline: 16px; }
+  .importFormGrid { grid-template-columns: 1fr; }
+  .importFull { grid-column: auto; }
+  .cancelledRow { grid-template-columns: 1fr; gap: 3px; }
 }

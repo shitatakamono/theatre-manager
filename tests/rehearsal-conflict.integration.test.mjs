@@ -1,10 +1,11 @@
 import { readFile } from "node:fs/promises";
-import { strictEqual } from "node:assert/strict";
+import { deepStrictEqual, strictEqual } from "node:assert/strict";
 import { after, before, beforeEach, describe, it } from "node:test";
 import { initializeTestEnvironment } from "@firebase/rules-unit-testing";
 import { collection, doc, getDoc, getDocs, setDoc } from "firebase/firestore";
 import {
   createProjectRehearsal,
+  createProjectRehearsalBatch,
   createProjectRehearsals,
   deleteProjectRehearsal,
   rehearsalToInput,
@@ -43,6 +44,30 @@ beforeEach(async () => { await testEnv.clearFirestore(); await seed(); });
 after(async () => { await testEnv.cleanup(); });
 
 describe("rehearsal document transactions", () => {
+  it("saves an imported batch with revision zero and one activity log", async () => {
+    const db = firestoreFor(ownerUid);
+    const inputs = ["2026-11-20", "2026-11-21"].map((date) => ({
+      date, startTime: "13:00", endTime: "16:00", type: "acting", customType: "",
+      venue: "会議室A", content: "立ち稽古", note: "画像から確認",
+    }));
+    const ids = await createProjectRehearsalBatch(projectId, inputs, context(ownerUid, 0).actor, "スクリーンショットから稽古予定を2件追加", db);
+    strictEqual(ids.length, 2);
+    strictEqual((await getDoc(doc(db, "projects", projectId, "rehearsals", ids[0]))).data()?.revision, 0);
+    const logDocuments = await logs(db);
+    strictEqual(logDocuments.size, 1);
+    deepStrictEqual(logDocuments.docs[0].data().changedFields, ["スクリーンショットから稽古予定を2件追加"]);
+  });
+
+  it("keeps the shared batch creation path available to editors", async () => {
+    const db = firestoreFor(editorUid);
+    const ids = await createProjectRehearsalBatch(projectId, [{
+      date: "2026-11-20", startTime: "13:00", endTime: "16:00", type: "acting", customType: "",
+      venue: "会議室A", content: "", note: "",
+    }], context(editorUid, 0).actor, "稽古予定を1件追加", db);
+    strictEqual(ids.length, 1);
+    strictEqual((await logs(db)).size, 1);
+  });
+
   it("creates one log per single add and one log for an entire deduplicated bulk add", async () => {
     const db = firestoreFor(ownerUid);
     const input = {
