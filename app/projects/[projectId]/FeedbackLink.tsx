@@ -9,7 +9,7 @@ export function FeedbackLink({ projectId }: { projectId: string }) {
 
   return (
     <Link
-      className="fixed bottom-4 right-4 z-40 inline-flex min-h-11 items-center rounded-full border border-emerald-800 bg-white px-4 text-sm font-bold text-emerald-900 shadow-lg hover:bg-emerald-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-800"
+      className="fixed bottom-4 right-4 z-40 inline-flex min-h-11 items-center rounded-full border border-emerald-800 bg-white px-4 text-sm font-bold text-emerald-900 shadow-lg hover:bg-emerald-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-800 print:hidden"
       href={{ pathname: `/projects/${projectId}/feedback`, query: { from: pathname } }}
     >
       フィードバック

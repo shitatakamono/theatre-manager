@@ -1,0 +1,79 @@
+.page {
+  min-height: 100vh;
+  background: #f4f6f5;
+  color: #17201d;
+  padding: 24px 32px 48px;
+  --date-width: 92px;
+  --type-width: 112px;
+  --bar-height: 34px;
+  --lane-gap: 4px;
+  --row-padding: 6px;
+}
+
+.header { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 20px; border-bottom: 1px solid #cbd5d1; padding-bottom: 16px; }
+.header p { color: #708078; font-size: 10px; font-weight: 800; letter-spacing: .14em; }
+.header h1 { margin-top: 3px; font-size: 30px; font-weight: 850; }
+.header span { display: inline-block; margin-top: 5px; color: #65746f; font-size: 12px; }
+.screenActions { display: flex; gap: 8px; }
+.screenActions a, .screenActions button { display: inline-flex; align-items: center; min-height: 42px; border: 1px solid #21634f; border-radius: 8px; padding: 8px 15px; font-size: 13px; font-weight: 800; cursor: pointer; }
+.screenActions a { background: #fff; color: #21634f; }
+.screenActions button { background: #21634f; color: #fff; }
+.message, .error { margin-top: 24px; border-radius: 8px; background: #fff; padding: 18px; color: #65746f; font-size: 13px; }
+.error { border: 1px solid #e2b1b1; background: #fff4f4; color: #8b2929; }
+.scrollArea { overflow-x: auto; padding-bottom: 12px; }
+.timeline { width: 100%; min-width: max(920px, calc(var(--slot-count) * 22px + var(--date-width) + var(--type-width))); border: 1px solid #aebdb7; border-collapse: collapse; background: #fff; table-layout: fixed; }
+.dateColumn { width: var(--date-width); }
+.typeColumn { width: var(--type-width); }
+.axisHeader { height: 40px; border-bottom: 2px solid #7f9189; background: #f7f9f8; }
+.dateHeading, .typeHeading { border-right: 1px solid #bfcac6; padding: 8px; color: #52615c; text-align: left; font-size: 11px; font-weight: 850; }
+.hourHeading { padding: 0; }
+.hourAxis { position: relative; width: 100%; height: 38px; margin-right: 1px; }
+.hourAxis span { position: absolute; bottom: 7px; transform: translateX(-50%); color: #43534d; font-size: 10px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.hourAxis span:first-child { transform: none; }
+.hourAxis span:last-child { transform: translateX(-100%); }
+.dayGroup { break-inside: avoid; page-break-inside: avoid; }
+.dayGroup + .dayGroup { border-top: 2px solid #7f9189; }
+.categoryRow + .categoryRow { border-top: 1px solid #d8e0dd; }
+.dateCell, .typeCell { border-right: 1px solid #bfcac6; padding: 10px 8px; font-size: 12px; }
+.dateCell { background: #f7f9f8; text-align: left; vertical-align: top; font-weight: 850; }
+.typeCell { color: #35443f; text-align: left; vertical-align: middle; font-weight: 800; }
+.barCell { padding: 0; }
+.barArea {
+  position: relative;
+  min-height: calc(var(--lane-count) * (var(--bar-height) + var(--lane-gap)) + var(--row-padding) * 2 - var(--lane-gap));
+  background-image:
+    repeating-linear-gradient(to right, transparent 0, transparent calc((100% / var(--slot-count)) - 1px), #edf1ef calc((100% / var(--slot-count)) - 1px), #edf1ef calc(100% / var(--slot-count))),
+    repeating-linear-gradient(to right, transparent 0, transparent calc((400% / var(--slot-count)) - 1px), #b8c5c0 calc((400% / var(--slot-count)) - 1px), #b8c5c0 calc(400% / var(--slot-count)));
+}
+.bar { position: absolute; z-index: 2; height: var(--bar-height); min-width: 2px; overflow: hidden; border: 1px solid #2c735b; border-radius: 4px; background: #cfe8de; padding: 3px 6px; color: #173f32; white-space: nowrap; }
+.bar strong { display: block; overflow: hidden; font-size: 10px; text-overflow: ellipsis; }
+.bar span { display: block; overflow: hidden; font-size: 9px; font-variant-numeric: tabular-nums; text-overflow: ellipsis; }
+
+@media (max-width: 700px) {
+  .page { padding: 18px 12px 36px; }
+  .header { align-items: start; flex-direction: column; }
+  .screenActions { width: 100%; }
+  .screenActions a, .screenActions button { flex: 1; justify-content: center; }
+}
+
+@page { size: A4 landscape; margin: 9mm; }
+
+@media print {
+  .page { min-height: 0; background: #fff; padding: 0; --date-width: 22mm; --type-width: 26mm; --bar-height: 8mm; --lane-gap: 1mm; --row-padding: 1.5mm; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .header { margin-bottom: 4mm; padding-bottom: 2mm; }
+  .header h1 { font-size: 16pt; }
+  .header p { font-size: 7pt; }
+  .header span { font-size: 8pt; }
+  .screenActions { display: none !important; }
+  .scrollArea { overflow: visible; padding: 0; }
+  .timeline { width: 100%; min-width: 0; }
+  .timeline thead { display: table-header-group; }
+  .axisHeader { height: 8mm; }
+  .hourAxis { height: 7.5mm; }
+  .hourAxis span { bottom: 1.5mm; font-size: 6.5pt; }
+  .dateHeading, .typeHeading { padding: 1.5mm; font-size: 7pt; }
+  .dateCell, .typeCell { padding: 2mm 1.5mm; font-size: 7.5pt; }
+  .bar { border-radius: 1mm; padding: .6mm 1mm; }
+  .bar strong { font-size: 6.5pt; }
+  .bar span { font-size: 5.8pt; }
+}

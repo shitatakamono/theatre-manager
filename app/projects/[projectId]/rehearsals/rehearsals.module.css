@@ -6,6 +6,7 @@
 .header h1 { margin-top: 3px; font-size: clamp(28px, 3vw, 38px); font-weight: 850; }
 .headerActions { display: flex; gap: 8px; }
 .header button, .dialog footer button, .conflict button { min-height: 42px; border: 1px solid #21634f; border-radius: 8px; background: #21634f; color: #fff; padding: 8px 16px; font-weight: 800; cursor: pointer; }
+.actionLink { display: inline-flex !important; align-items: center; min-height: 42px; margin: 0 !important; border: 1px solid #21634f; border-radius: 8px; color: #21634f !important; padding: 8px 16px; text-decoration: none; }
 .secondaryButton { background: #fff !important; color: #285c4b !important; }
 .success, .error { margin-top: 16px; border-radius: 8px; padding: 11px 14px; font-size: 13px; }
 .success { border: 1px solid #9dc9b8; background: #edf8f3; color: #205c49; }

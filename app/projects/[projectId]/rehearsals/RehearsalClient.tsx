@@ -213,15 +213,18 @@ export function RehearsalClient({ projectId }: { projectId: string }) {
     <main className={styles.page}>
       <header className={styles.header}>
         <div><Link href={`/projects/${projectId}`}>← 公演トップ</Link><p>REHEARSAL SCHEDULE</p><h1>稽古スケジュール</h1></div>
-        {canEdit && <div className={styles.headerActions}>
-          <button type="button" onClick={openSingle}>稽古を追加</button>
-          <button className={styles.secondaryButton} type="button" onClick={openBulk}>複数日追加</button>
-          {canUseRehearsalScreenshotImport(role) && <RehearsalImportDialog
-            projectId={projectId}
-            existingRehearsals={[...upcoming, ...past]}
-            onImported={async (count) => { setNotice(`${count}件の稽古予定を追加しました`); await load(); }}
-          />}
-        </div>}
+        <div className={styles.headerActions}>
+          <Link className={styles.actionLink} href={`/projects/${projectId}/rehearsals/print`}>印刷</Link>
+          {canEdit && <>
+            <button type="button" onClick={openSingle}>稽古を追加</button>
+            <button className={styles.secondaryButton} type="button" onClick={openBulk}>複数日追加</button>
+            {canUseRehearsalScreenshotImport(role) && <RehearsalImportDialog
+              projectId={projectId}
+              existingRehearsals={[...upcoming, ...past]}
+              onImported={async (count) => { setNotice(`${count}件の稽古予定を追加しました`); await load(); }}
+            />}
+          </>}
+        </div>
       </header>
 
       {notice && <p className={styles.success} role="status">{notice}</p>}

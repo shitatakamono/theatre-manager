@@ -250,6 +250,13 @@ export async function getProjectRehearsals(projectId: string, now = Timestamp.no
   };
 }
 
+export async function getAllProjectRehearsals(projectId: string, firestore?: Firestore): Promise<Rehearsal[]> {
+  const database = await resolveFirestore(firestore);
+  const ref = collection(database, "projects", projectId, "rehearsals");
+  const snapshot = await getDocs(query(ref, orderBy("startAt", "asc")));
+  return snapshot.docs.map(mapRehearsal);
+}
+
 export async function getProjectRehearsal(projectId: string, rehearsalId: string, firestore?: Firestore): Promise<Rehearsal | null> {
   const database = await resolveFirestore(firestore);
   const snapshot = await getDoc(doc(database, "projects", projectId, "rehearsals", rehearsalId));
