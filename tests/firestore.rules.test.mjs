@@ -79,6 +79,36 @@ function rehearsalData(uid, overrides = {}) {
   };
 }
 
+function participantRef(db, id = "participant-a", targetProjectId = projectId) {
+  return doc(db, "projects", targetProjectId, "participants", id);
+}
+
+function participantLinkedUserRef(db, uid = editorUid, targetProjectId = projectId) {
+  return doc(db, "projects", targetProjectId, "participantLinkedUsers", uid);
+}
+
+function participantData(uid, overrides = {}) {
+  return {
+    displayName: "参加者A",
+    specialPractice: "none",
+    linkedUserUid: null,
+    publicNote: "公開備考",
+    active: true,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    createdByUid: uid,
+    updatedByUid: uid,
+    ...overrides,
+  };
+}
+
+async function createLinkedParticipant(db, actorUid, participantId, linkedUserUid) {
+  const batch = writeBatch(db);
+  batch.set(participantRef(db, participantId), participantData(actorUid, { linkedUserUid }));
+  batch.set(participantLinkedUserRef(db, linkedUserUid), { participantId });
+  return batch.commit();
+}
+
 function activityRef(db, id = "activity-a", targetProjectId = projectId) {
   return doc(db, "projects", targetProjectId, "activityLogs", id);
 }
@@ -529,6 +559,125 @@ describe("rehearsals", () => {
       updatedAt: serverTimestamp(),
       updatedByUid: editorUid,
     }));
+  });
+});
+
+describe("participants", () => {
+  it("allows owners and editors to create and update participants", async () => {
+    const ownerDb = firestoreFor(ownerUid);
+    const editorDb = firestoreFor(editorUid);
+    await assertSucceeds(setDoc(participantRef(ownerDb, "owner-created"), participantData(ownerUid)));
+    await assertSucceeds(setDoc(participantRef(editorDb, "editor-created"), participantData(editorUid, { specialPractice: "stage_combat" })));
+    await assertSucceeds(updateDoc(participantRef(editorDb, "owner-created"), {
+      displayName: "更新参加者",
+      active: false,
+      updatedAt: serverTimestamp(),
+      updatedByUid: editorUid,
+    }));
+    const updated = await getDoc(participantRef(ownerDb, "owner-created"));
+    strictEqual(updated.data()?.active, false);
+  });
+
+  it("allows viewers to read participants but denies their writes", async () => {
+    await assertSucceeds(setDoc(participantRef(firestoreFor(ownerUid)), participantData(ownerUid)));
+    const viewerDb = firestoreFor(viewerUid);
+    await assertSucceeds(getDocs(collection(viewerDb, "projects", projectId, "participants")));
+    await assertFails(setDoc(participantRef(viewerDb, "viewer-created"), participantData(viewerUid)));
+    await assertFails(updateDoc(participantRef(viewerDb), {
+      active: false,
+      updatedAt: serverTimestamp(),
+      updatedByUid: viewerUid,
+    }));
+    await assertFails(deleteDoc(participantRef(viewerDb)));
+  });
+
+  it("denies non-member reads and writes", async () => {
+    const db = firestoreFor(outsiderUid);
+    await assertFails(getDocs(collection(db, "projects", projectId, "participants")));
+    await assertFails(setDoc(participantRef(db), participantData(outsiderUid)));
+  });
+
+  it("validates display name, special practice, linked UID, active, and schema", async () => {
+    const db = firestoreFor(ownerUid);
+    await assertFails(setDoc(participantRef(db, "empty-name"), participantData(ownerUid, { displayName: "" })));
+    await assertFails(setDoc(participantRef(db, "bad-special"), participantData(ownerUid, { specialPractice: "acting" })));
+    await assertFails(setDoc(participantRef(db, "bad-active"), participantData(ownerUid, { active: "yes" })));
+    await assertFails(setDoc(participantRef(db, "bad-linked"), participantData(ownerUid, { linkedUserUid: 42 })));
+    await assertFails(setDoc(participantRef(db, "extra-field"), participantData(ownerUid, { privateNote: "不可" })));
+    await assertSucceeds(setDoc(participantRef(db, "null-linked"), participantData(ownerUid, { linkedUserUid: null, active: false })));
+    await assertSucceeds(setDoc(participantRef(db, "dance"), participantData(ownerUid, { specialPractice: "japanese_dance" })));
+  });
+
+  it("requires a matching internal link and prevents duplicate linked users", async () => {
+    const db = firestoreFor(ownerUid);
+    await assertFails(setDoc(participantRef(db, "missing-link"), participantData(ownerUid, { linkedUserUid: editorUid })));
+    await assertSucceeds(createLinkedParticipant(db, ownerUid, "linked-first", editorUid));
+
+    const duplicate = writeBatch(db);
+    duplicate.set(participantRef(db, "linked-second"), participantData(ownerUid, { linkedUserUid: editorUid }));
+    duplicate.set(participantLinkedUserRef(db, editorUid), { participantId: "linked-second" });
+    await assertFails(duplicate.commit());
+  });
+
+  it("accepts null or a current project member UID and rejects a non-member UID", async () => {
+    const db = firestoreFor(ownerUid);
+    await assertSucceeds(setDoc(participantRef(db, "unlinked"), participantData(ownerUid, { linkedUserUid: null })));
+    await assertSucceeds(createLinkedParticipant(db, ownerUid, "linked-member", editorUid));
+
+    const nonMember = writeBatch(db);
+    nonMember.set(participantRef(db, "linked-outsider"), participantData(ownerUid, { linkedUserUid: outsiderUid }));
+    nonMember.set(participantLinkedUserRef(db, outsiderUid), { participantId: "linked-outsider" });
+    await assertFails(nonMember.commit());
+  });
+
+  it("allows an editor to change or clear a linked user atomically", async () => {
+    const ownerDb = firestoreFor(ownerUid);
+    await assertSucceeds(createLinkedParticipant(ownerDb, ownerUid, "linked", editorUid));
+    const editorDb = firestoreFor(editorUid);
+    const change = writeBatch(editorDb);
+    change.update(participantRef(editorDb, "linked"), {
+      linkedUserUid: viewerUid,
+      updatedAt: serverTimestamp(),
+      updatedByUid: editorUid,
+    });
+    change.delete(participantLinkedUserRef(editorDb, editorUid));
+    change.set(participantLinkedUserRef(editorDb, viewerUid), { participantId: "linked" });
+    await assertSucceeds(change.commit());
+
+    const nonMemberChange = writeBatch(editorDb);
+    nonMemberChange.update(participantRef(editorDb, "linked"), {
+      linkedUserUid: outsiderUid,
+      updatedAt: serverTimestamp(),
+      updatedByUid: editorUid,
+    });
+    nonMemberChange.delete(participantLinkedUserRef(editorDb, viewerUid));
+    nonMemberChange.set(participantLinkedUserRef(editorDb, outsiderUid), { participantId: "linked" });
+    await assertFails(nonMemberChange.commit());
+
+    const clear = writeBatch(editorDb);
+    clear.update(participantRef(editorDb, "linked"), {
+      linkedUserUid: null,
+      updatedAt: serverTimestamp(),
+      updatedByUid: editorUid,
+    });
+    clear.delete(participantLinkedUserRef(editorDb, viewerUid));
+    await assertSucceeds(clear.commit());
+  });
+
+  it("protects creator metadata and disallows document deletion", async () => {
+    const db = firestoreFor(ownerUid);
+    await assertSucceeds(setDoc(participantRef(db), participantData(ownerUid)));
+    await assertFails(updateDoc(participantRef(db), {
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      updatedByUid: ownerUid,
+    }));
+    await assertFails(updateDoc(participantRef(db), {
+      createdByUid: editorUid,
+      updatedAt: serverTimestamp(),
+      updatedByUid: ownerUid,
+    }));
+    await assertFails(deleteDoc(participantRef(db)));
   });
 });
 

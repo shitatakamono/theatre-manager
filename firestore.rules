@@ -149,6 +149,88 @@ service cloud.firestore {
         && request.resource.data.updatedAt == request.time;
     }
 
+    function participantPath(projectId, participantId) {
+      return /databases/$(database)/documents/projects/$(projectId)/participants/$(participantId);
+    }
+
+    function participantLinkedUserPath(projectId, uid) {
+      return /databases/$(database)/documents/projects/$(projectId)/participantLinkedUsers/$(uid);
+    }
+
+    function validSpecialPractice(value) {
+      return value in ['none', 'stage_combat', 'japanese_dance'];
+    }
+
+    function validParticipantData() {
+      return request.resource.data.keys().hasOnly([
+          'displayName', 'specialPractice', 'linkedUserUid', 'publicNote', 'active',
+          'createdAt', 'updatedAt', 'createdByUid', 'updatedByUid'
+        ])
+        && request.resource.data.keys().hasAll([
+          'displayName', 'specialPractice', 'linkedUserUid', 'publicNote', 'active',
+          'createdAt', 'updatedAt', 'createdByUid', 'updatedByUid'
+        ])
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() > 0
+        && request.resource.data.displayName.size() <= 100
+        && validSpecialPractice(request.resource.data.specialPractice)
+        && (request.resource.data.linkedUserUid == null
+          || (request.resource.data.linkedUserUid is string
+            && request.resource.data.linkedUserUid.size() > 0
+            && request.resource.data.linkedUserUid.size() <= 128))
+        && request.resource.data.publicNote is string
+        && request.resource.data.publicNote.size() <= 2000
+        && request.resource.data.active is bool
+        && request.resource.data.createdByUid is string
+        && request.resource.data.updatedByUid is string;
+    }
+
+    function linkedUserPointsToParticipant(projectId, participantId, linkedUserUid) {
+      return linkedUserUid == null
+        || (exists(projectMemberPath(projectId, linkedUserUid))
+          && existsAfter(participantLinkedUserPath(projectId, linkedUserUid))
+          && getAfter(participantLinkedUserPath(projectId, linkedUserUid)).data.participantId == participantId);
+    }
+
+    function oldParticipantLinkReleased(projectId) {
+      return resource.data.linkedUserUid == null
+        || resource.data.linkedUserUid == request.resource.data.linkedUserUid
+        || !existsAfter(participantLinkedUserPath(projectId, resource.data.linkedUserUid));
+    }
+
+    function validParticipantCreate(projectId, participantId) {
+      return validParticipantData()
+        && request.resource.data.createdByUid == request.auth.uid
+        && request.resource.data.updatedByUid == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && linkedUserPointsToParticipant(projectId, participantId, request.resource.data.linkedUserUid);
+    }
+
+    function validParticipantUpdate(projectId, participantId) {
+      return validParticipantData()
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.createdByUid == resource.data.createdByUid
+        && request.resource.data.updatedByUid == request.auth.uid
+        && request.resource.data.updatedAt == request.time
+        && linkedUserPointsToParticipant(projectId, participantId, request.resource.data.linkedUserUid)
+        && oldParticipantLinkReleased(projectId);
+    }
+
+    function validParticipantLinkedUserData(projectId, uid) {
+      return request.resource.data.keys().hasOnly(['participantId'])
+        && request.resource.data.keys().hasAll(['participantId'])
+        && request.resource.data.participantId is string
+        && existsAfter(participantPath(projectId, request.resource.data.participantId))
+        && getAfter(participantPath(projectId, request.resource.data.participantId)).data.linkedUserUid == uid;
+    }
+
+    function previousParticipantLinkReleased(projectId, uid) {
+      return resource.data.participantId == request.resource.data.participantId
+        || !existsAfter(participantPath(projectId, resource.data.participantId))
+        || getAfter(participantPath(projectId, resource.data.participantId)).data.linkedUserUid != uid;
+    }
+
     function projectPath(projectId) {
       return /databases/$(database)/documents/projects/$(projectId);
     }
@@ -398,6 +480,24 @@ service cloud.firestore {
         allow create: if canEdit(projectId) && validRehearsalCreate();
         allow update: if canEdit(projectId) && validRehearsalUpdate();
         allow delete: if canEdit(projectId);
+      }
+
+      match /participants/{participantId} {
+        allow read: if isMember(projectId);
+        allow create: if canEdit(projectId) && validParticipantCreate(projectId, participantId);
+        allow update: if canEdit(projectId) && validParticipantUpdate(projectId, participantId);
+        allow delete: if false;
+      }
+
+      match /participantLinkedUsers/{uid} {
+        allow read: if canEdit(projectId);
+        allow create: if canEdit(projectId) && validParticipantLinkedUserData(projectId, uid);
+        allow update: if canEdit(projectId)
+          && validParticipantLinkedUserData(projectId, uid)
+          && previousParticipantLinkReleased(projectId, uid);
+        allow delete: if canEdit(projectId)
+          && (!existsAfter(participantPath(projectId, resource.data.participantId))
+            || getAfter(participantPath(projectId, resource.data.participantId)).data.linkedUserUid != uid);
       }
 
       match /activityLogs/{logId} {
