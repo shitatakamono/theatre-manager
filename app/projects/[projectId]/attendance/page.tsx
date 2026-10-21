@@ -24,6 +24,7 @@ import {
   type Participant,
 } from "@/lib/participants";
 import { getAllProjectRehearsals, type Rehearsal } from "@/lib/rehearsals";
+import { useProjectAccess } from "../ProjectAccess";
 import styles from "./attendance.module.css";
 
 const STATUS_OPTIONS: { value: AttendanceStatus; label: string; mark: string }[] = [
@@ -65,6 +66,7 @@ async function fetchAttendancePageData(projectId: string) {
 export default function AttendancePage({ params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = use(params);
   const { profile } = useAuth();
+  const { canEdit } = useProjectAccess();
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [rehearsals, setRehearsals] = useState<Rehearsal[]>([]);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
@@ -159,6 +161,7 @@ export default function AttendancePage({ params }: { params: Promise<{ projectId
     <main className={styles.page}>
       <header className={styles.header}>
         <div><Link href={`/projects/${projectId}`}>← 公演トップ</Link><p>ATTENDANCE</p><h1>出欠管理</h1></div>
+        {canEdit && <Link className={styles.manageLink} href={`/projects/${projectId}/attendance/manage`}>制作管理</Link>}
       </header>
 
       {loadError && <p className={styles.error} role="alert">{loadError} <button type="button" onClick={() => void load()}>再読み込み</button></p>}
