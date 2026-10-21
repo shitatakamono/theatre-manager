@@ -294,6 +294,13 @@ service cloud.firestore {
         && request.resource.data.updatedAt == request.time;
     }
 
+    function isOwnActiveParticipant(projectId, participantId) {
+      return isMember(projectId)
+        && exists(participantPath(projectId, participantId))
+        && get(participantPath(projectId, participantId)).data.active == true
+        && get(participantPath(projectId, participantId)).data.linkedUserUid == request.auth.uid;
+    }
+
     function projectPath(projectId) {
       return /databases/$(database)/documents/projects/$(projectId);
     }
@@ -565,8 +572,12 @@ service cloud.firestore {
 
       match /attendanceRecords/{recordId} {
         allow read: if isMember(projectId);
-        allow create: if canEdit(projectId) && validAttendanceCreate(projectId, recordId);
-        allow update: if canEdit(projectId) && validAttendanceUpdate(projectId, recordId);
+        allow create: if (canEdit(projectId)
+            || isOwnActiveParticipant(projectId, request.resource.data.participantId))
+          && validAttendanceCreate(projectId, recordId);
+        allow update: if (canEdit(projectId)
+            || isOwnActiveParticipant(projectId, request.resource.data.participantId))
+          && validAttendanceUpdate(projectId, recordId);
         allow delete: if false;
       }
 

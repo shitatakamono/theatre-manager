@@ -264,6 +264,10 @@ export default function ProjectPage({ params }: ProjectPageProps) {
             </details>
             <MembersLink projectId={projectId} />
             <Link href={`/projects/${projectId}/participants`}>参加者管理</Link>
+            <Link className={styles.purposeLink} href={`/projects/${projectId}/attendance`}>
+              <strong>出欠管理</strong>
+              <span>稽古日の出欠予定を入力・共有</span>
+            </Link>
             <Link href={`/projects/${projectId}/activity`}>更新履歴</Link>
             <Link className={styles.purposeLink} href={`/projects/${projectId}/rehearsals`}>
               <strong>稽古スケジュール</strong>

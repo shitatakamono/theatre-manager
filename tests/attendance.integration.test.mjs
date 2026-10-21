@@ -14,6 +14,7 @@ const emulatorProjectId = "seisakuboard-conflict-test";
 const projectId = "attendance-integration";
 const ownerUid = "attendance-owner";
 const editorUid = "attendance-editor";
+const viewerUid = "attendance-viewer";
 const participantA = "participant-a";
 const participantB = "participant-b";
 let testEnv;
@@ -23,10 +24,11 @@ function firestoreFor(uid) { return testEnv.authenticatedContext(uid).firestore(
 async function seed() {
   await testEnv.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
-    await setDoc(doc(db, "projects", projectId), { title: "出欠テスト", memberUids: [ownerUid, editorUid] });
+    await setDoc(doc(db, "projects", projectId), { title: "出欠テスト", memberUids: [ownerUid, editorUid, viewerUid] });
     await setDoc(doc(db, "projects", projectId, "members", ownerUid), { uid: ownerUid, role: "owner" });
     await setDoc(doc(db, "projects", projectId, "members", editorUid), { uid: editorUid, role: "editor" });
-    await setDoc(doc(db, "projects", projectId, "participants", participantA), { displayName: "参加者A", active: true });
+    await setDoc(doc(db, "projects", projectId, "members", viewerUid), { uid: viewerUid, role: "viewer" });
+    await setDoc(doc(db, "projects", projectId, "participants", participantA), { displayName: "参加者A", active: true, linkedUserUid: viewerUid });
     await setDoc(doc(db, "projects", projectId, "participants", participantB), { displayName: "参加者B", active: false });
   });
 }
@@ -84,5 +86,20 @@ describe("attendance transactions", () => {
       "2026-11-04_participant-a",
     ]);
     strictEqual((await getDoc(doc(db, "projects", projectId, "attendanceRecords", results[0].id))).exists(), true);
+  });
+
+  it("reuses the Phase 3C upsert boundary for viewer self-entry", async () => {
+    const db = firestoreFor(viewerUid);
+    const result = await upsertProjectAttendanceRecord(projectId, {
+      participantId: participantA,
+      date: "2026-11-05",
+      status: "attending",
+      availableFrom: "13:00",
+      availableUntil: "17:00",
+      publicNote: "本人入力",
+    }, viewerUid, db);
+    strictEqual(result.created, true);
+    const record = await getDoc(doc(db, "projects", projectId, "attendanceRecords", result.id));
+    strictEqual(record.data()?.updatedByUid, viewerUid);
   });
 });

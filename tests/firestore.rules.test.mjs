@@ -805,6 +805,92 @@ describe("attendance records", () => {
     await assertFails(deleteDoc(attendanceRef(firestoreFor(editorUid))));
     await assertFails(deleteDoc(attendanceRef(firestoreFor(viewerUid))));
   });
+
+  it("allows a viewer to create and update only their linked active participant attendance", async () => {
+    const ownerDb = firestoreFor(ownerUid);
+    await assertSucceeds(createLinkedParticipant(ownerDb, ownerUid, "viewer-participant", viewerUid));
+    const viewerDb = firestoreFor(viewerUid);
+    const selfRef = attendanceRef(viewerDb, "2026-11-03", "viewer-participant");
+    await assertSucceeds(setDoc(selfRef, attendanceData(viewerUid, { participantId: "viewer-participant" })));
+    await assertSucceeds(updateDoc(selfRef, {
+      status: "tentative",
+      availableFrom: null,
+      availableUntil: null,
+      publicNote: "確認中",
+      updatedAt: serverTimestamp(),
+      updatedByUid: viewerUid,
+    }));
+  });
+
+  it("denies a viewer from creating or updating another participant attendance", async () => {
+    const ownerDb = firestoreFor(ownerUid);
+    await assertSucceeds(createLinkedParticipant(ownerDb, ownerUid, "viewer-participant", viewerUid));
+    await assertSucceeds(setDoc(participantRef(ownerDb, "other-participant"), participantData(ownerUid)));
+    await assertSucceeds(setDoc(attendanceRef(ownerDb, "2026-11-03", "other-participant"), attendanceData(ownerUid, { participantId: "other-participant" })));
+    const viewerDb = firestoreFor(viewerUid);
+    await assertFails(setDoc(attendanceRef(viewerDb, "2026-11-04", "other-participant"), attendanceData(viewerUid, {
+      participantId: "other-participant", date: "2026-11-04",
+    })));
+    await assertFails(updateDoc(attendanceRef(viewerDb, "2026-11-03", "other-participant"), {
+      publicNote: "改ざん",
+      updatedAt: serverTimestamp(),
+      updatedByUid: viewerUid,
+    }));
+  });
+
+  it("denies self writes when the viewer is unlinked or the participant is inactive", async () => {
+    const ownerDb = firestoreFor(ownerUid);
+    await assertSucceeds(setDoc(participantRef(ownerDb, "unlinked"), participantData(ownerUid)));
+    const viewerDb = firestoreFor(viewerUid);
+    await assertFails(setDoc(attendanceRef(viewerDb, "2026-11-03", "unlinked"), attendanceData(viewerUid, { participantId: "unlinked" })));
+
+    const inactive = writeBatch(ownerDb);
+    inactive.set(participantRef(ownerDb, "inactive"), participantData(ownerUid, { linkedUserUid: viewerUid, active: false }));
+    inactive.set(participantLinkedUserRef(ownerDb, viewerUid), { participantId: "inactive" });
+    await assertSucceeds(inactive.commit());
+    await assertFails(setDoc(attendanceRef(viewerDb, "2026-11-03", "inactive"), attendanceData(viewerUid, { participantId: "inactive" })));
+  });
+
+  it("denies viewer participant and audit UID impersonation", async () => {
+    const ownerDb = firestoreFor(ownerUid);
+    await assertSucceeds(createLinkedParticipant(ownerDb, ownerUid, "viewer-participant", viewerUid));
+    await assertSucceeds(setDoc(participantRef(ownerDb, "other-participant"), participantData(ownerUid)));
+    const viewerDb = firestoreFor(viewerUid);
+    await assertFails(setDoc(attendanceRef(viewerDb, "2026-11-03", "viewer-participant"), attendanceData(viewerUid, {
+      participantId: "other-participant",
+    })));
+    await assertFails(setDoc(attendanceRef(viewerDb, "2026-11-03", "viewer-participant"), attendanceData(ownerUid, {
+      participantId: "viewer-participant",
+      updatedByUid: viewerUid,
+    })));
+    await assertFails(setDoc(attendanceRef(viewerDb, "2026-11-03", "viewer-participant"), attendanceData(viewerUid, {
+      participantId: "viewer-participant",
+      updatedByUid: ownerUid,
+    })));
+  });
+
+  it("revokes viewer self-write access after the participant link changes", async () => {
+    const ownerDb = firestoreFor(ownerUid);
+    await assertSucceeds(createLinkedParticipant(ownerDb, ownerUid, "viewer-participant", viewerUid));
+    const viewerDb = firestoreFor(viewerUid);
+    const selfRef = attendanceRef(viewerDb, "2026-11-03", "viewer-participant");
+    await assertSucceeds(setDoc(selfRef, attendanceData(viewerUid, { participantId: "viewer-participant" })));
+
+    const relink = writeBatch(ownerDb);
+    relink.update(participantRef(ownerDb, "viewer-participant"), {
+      linkedUserUid: editorUid,
+      updatedAt: serverTimestamp(),
+      updatedByUid: ownerUid,
+    });
+    relink.delete(participantLinkedUserRef(ownerDb, viewerUid));
+    relink.set(participantLinkedUserRef(ownerDb, editorUid), { participantId: "viewer-participant" });
+    await assertSucceeds(relink.commit());
+    await assertFails(updateDoc(selfRef, {
+      publicNote: "旧ユーザー更新",
+      updatedAt: serverTimestamp(),
+      updatedByUid: viewerUid,
+    }));
+  });
 });
 
 describe("activity logs", () => {
