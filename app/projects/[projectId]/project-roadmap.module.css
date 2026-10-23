@@ -8,6 +8,8 @@
 
 .header,
 .onboarding,
+.statusSummary,
+.shortcuts,
 .roadmapSection,
 .notices {
   width: min(1280px, 100%);
@@ -231,6 +233,14 @@
   white-space: nowrap;
 }
 
+.organizer {
+  margin-bottom: 2px;
+  color: #2b684f;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: .08em;
+}
+
 .hero h1 {
   overflow-wrap: anywhere;
   margin-top: 2px;
@@ -278,6 +288,62 @@
   letter-spacing: -.02em;
   box-shadow: 0 4px 16px rgba(28, 62, 50, .06);
 }
+
+.heroAside {
+  flex: none;
+  display: grid;
+  justify-items: end;
+  gap: 7px;
+}
+
+.heroAside > a {
+  color: #286c55;
+  font-size: 11px;
+  font-weight: 850;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.statusSummary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 14px;
+  border-block: 1px solid #d8dfdc;
+}
+
+.statusSummary > a {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  padding: 11px 14px;
+  border-right: 1px solid #d8dfdc;
+}
+
+.statusSummary > a:last-child { border-right: 0; }
+.statusSummary > a:hover { background: #f8fbf9; }
+.statusSummary span { color: #6f7e78; font-size: 9px; font-weight: 850; letter-spacing: .08em; }
+.statusSummary strong { overflow: hidden; font-size: 13px; font-weight: 850; text-overflow: ellipsis; white-space: nowrap; }
+.statusSummary small { overflow: hidden; color: #74817c; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+
+.shortcuts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 11px;
+}
+
+.shortcuts a {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  border-radius: 7px;
+  background: #e9efec;
+  padding: 7px 10px;
+}
+
+.shortcuts a:hover { background: #dfeae5; }
+.shortcuts b { color: #255f4b; font-size: 11px; font-weight: 900; }
+.shortcuts span { color: #63716c; font-size: 9px; }
 
 .roadmapSection {
   margin-top: 18px;
@@ -651,6 +717,10 @@
     padding-bottom: 15px;
   }
 
+  .heroAside {
+    justify-items: start;
+  }
+
   .hero h1 {
     font-size: 27px;
   }
@@ -677,6 +747,21 @@
     align-self: flex-start;
     padding: 9px 13px;
     font-size: 17px;
+  }
+
+  .statusSummary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .statusSummary > a {
+    border-bottom: 1px solid #d8dfdc;
+  }
+
+  .statusSummary > a:nth-child(2) { border-right: 0; }
+  .statusSummary > a:last-child { grid-column: 1 / -1; border-bottom: 0; }
+
+  .shortcuts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .roadmapSection {

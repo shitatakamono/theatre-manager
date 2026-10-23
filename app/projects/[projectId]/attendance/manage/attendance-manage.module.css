@@ -17,7 +17,7 @@
 .matrix thead th:first-child { left: 0; z-index: 3; min-width: 170px; text-align: left; }
 .matrix thead small, .matrix tbody th small { display: block; margin-top: 3px; color: #718079; font-size: 10px; font-weight: 700; }
 .matrix tbody th { position: sticky; left: 0; z-index: 1; min-width: 170px; background: #fff; padding: 10px 9px; text-align: left; }
-.matrix td button { width: 100%; min-height: 54px; padding: 8px; text-align: left; font-size: 11px; font-weight: 800; }
+.matrix td button, .cellDisplay { width: 100%; min-height: 54px; display: flex; align-items: center; padding: 8px; text-align: left; font-size: 11px; font-weight: 800; }
 .matrix td button:hover { background: #f2f7f5; }
 .page [data-status="attending"] { color: #176044; }
 .page [data-status="absent"] { color: #914343; }
@@ -72,9 +72,9 @@
   .mobileDays article > header { background: #edf2f0; padding: 12px; }
   .mobileDays h2 { font-size: 17px; font-weight: 850; }
   .mobileDays ul { margin-top: 4px; color: #607069; font-size: 11px; }
-  .mobileDays article > button { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 54px; border-top: 1px solid #e0e6e3; padding: 9px 12px; text-align: left; }
-  .mobileDays article > button span small { display: block; color: #718079; font-size: 10px; }
-  .mobileDays article > button strong { flex: 0 0 auto; font-size: 12px; }
+  .mobileRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 54px; border-top: 1px solid #e0e6e3; padding: 9px 12px; text-align: left; }
+  .mobileRow span small { display: block; color: #718079; font-size: 10px; }
+  .mobileRow strong { flex: 0 0 auto; font-size: 12px; }
   .dialog { width: 100%; }
   .dialog > header, .dialog form { padding-right: 16px; padding-left: 16px; }
 }

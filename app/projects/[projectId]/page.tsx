@@ -2,8 +2,14 @@
 
 import { use, useEffect, useState, type CSSProperties } from "react";
 import Link from "next/link";
-import { getProjectPerformanceData, type ProjectPerformanceRecord } from "@/lib/firestore";
-import { resolveSeatsPerPerformance } from "@/lib/performance";
+import { getProjectActivityLogs, getProjectPerformanceData, type ProjectPerformanceRecord } from "@/lib/firestore";
+import { getProjectAttendanceRecords, type AttendanceRecord } from "@/lib/attendance";
+import { getProjectParticipants, type Participant } from "@/lib/participants";
+import { buildDashboardAttendanceSummary } from "@/lib/project-dashboard";
+import { hasEnteredPerformanceInformation } from "@/lib/project-navigation";
+import { getProjectRehearsals, timestampToTokyoInput, type Rehearsal } from "@/lib/rehearsals";
+import type { ActivityLog } from "@/lib/activity";
+import { useAuth } from "@/app/AuthProvider";
 import {
   getAccountingProgress,
   getFlyerProgress,
@@ -14,10 +20,17 @@ import {
   type SectionProgress,
 } from "@/lib/production-progress";
 import styles from "./project-roadmap.module.css";
-import { MembersLink } from "./ProjectAccess";
+import { useProjectAccess } from "./ProjectAccess";
 
 type ProjectPageProps = {
   params: Promise<{ projectId: string }>;
+};
+
+type DashboardData = {
+  upcomingRehearsals: Rehearsal[];
+  participants: Participant[];
+  attendance: AttendanceRecord[];
+  activity: ActivityLog[];
 };
 
 type ProductionStatus = "not-started" | "in-progress" | "complete";
@@ -165,12 +178,43 @@ function getTimelinePosition(firstDate: Date | null, date: Date): number | null 
   return Math.min(100, Math.max(0, (elapsed / duration) * 100));
 }
 
+function formatDashboardDate(value: unknown): string {
+  if (!value || typeof value !== "object" || !("toDate" in value) || typeof value.toDate !== "function") return "更新日時未確定";
+  return new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(value.toDate() as Date);
+}
+
+function formatNextRehearsal(rehearsal: Rehearsal | undefined): { title: string; detail: string } {
+  if (!rehearsal) return { title: "予定なし", detail: "今後の稽古は未登録です" };
+  const start = timestampToTokyoInput(rehearsal.startAt);
+  const end = rehearsal.endAt ? timestampToTokyoInput(rehearsal.endAt).time : "終了未設定";
+  const date = new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", month: "numeric", day: "numeric", weekday: "short" }).format(rehearsal.startAt.toDate());
+  return { title: `${date} ${start.time}〜${end}`, detail: rehearsal.venue || "会場未設定" };
+}
+
 export default function ProjectPage({ params }: ProjectPageProps) {
   const { projectId } = use(params);
+  const { profile } = useAuth();
+  const { canEdit, role } = useProjectAccess();
   const [project, setProject] = useState<ProjectPerformanceRecord | null>();
+  const [dashboard, setDashboard] = useState<DashboardData>();
 
   useEffect(() => {
     void getProjectPerformanceData(projectId).then(setProject);
+  }, [projectId]);
+
+  useEffect(() => {
+    let active = true;
+    void Promise.all([
+      getProjectRehearsals(projectId),
+      getProjectParticipants(projectId),
+      getProjectAttendanceRecords(projectId),
+      getProjectActivityLogs(projectId),
+    ]).then(([rehearsals, participants, attendance, activity]) => {
+      if (active) setDashboard({ upcomingRehearsals: rehearsals.upcoming, participants, attendance, activity });
+    }).catch(() => {
+      if (active) setDashboard({ upcomingRehearsals: [], participants: [], attendance: [], activity: [] });
+    });
+    return () => { active = false; };
   }, [projectId]);
 
   if (project === undefined) return <main className={styles.notFound}>読み込み中…</main>;
@@ -215,7 +259,8 @@ export default function ProjectPage({ params }: ProjectPageProps) {
     todayPosition === null
       ? undefined
       : ({ "--today-position": `${todayPosition}%` } as CSSProperties);
-  const title = basic?.title || project.legacyTitle || "公演タイトル未設定";
+  const enteredTitle = basic?.title || project.legacyTitle;
+  const title = enteredTitle || "公演タイトル未設定";
   const performanceName = basic?.performanceName || "公演名称未設定";
   const venueName = venue?.name || "会場未設定";
   const hallName = venue?.hall;
@@ -225,14 +270,17 @@ export default function ProjectPage({ params }: ProjectPageProps) {
     !basic?.durationMinutes ? "上演時間が未設定です" : null,
   ].filter((notice): notice is string => notice !== null);
   const shows = project.data.performances ?? [];
-  const commonInformationScore = [
-    Boolean(basic?.title?.trim()),
-    shows.length > 0,
-    Boolean(venue?.name?.trim()),
-    resolveSeatsPerPerformance(basic, shows.length) !== undefined,
-  ].filter(Boolean).length;
-  const showOnboarding = commonInformationScore < 4;
-  const onboardingIsPrimary = commonInformationScore <= 1;
+  const hasPerformanceInformation = hasEnteredPerformanceInformation({
+    organizer: basic?.organizer,
+    performanceName: basic?.performanceName,
+    title: enteredTitle,
+    venueName: venue?.name,
+    hasPerformanceDate: firstDate !== null,
+  });
+  const upcomingDates = [...new Set((dashboard?.upcomingRehearsals ?? []).map((rehearsal) => timestampToTokyoInput(rehearsal.startAt).date))];
+  const attendanceSummary = buildDashboardAttendanceSummary(projectId, role, profile?.uid ?? "", dashboard?.participants ?? [], upcomingDates, dashboard?.attendance ?? []);
+  const nextRehearsal = formatNextRehearsal(dashboard?.upcomingRehearsals[0]);
+  const latestActivity = dashboard?.activity[0];
   const production = project.production;
   const sectionProgress: Record<string, SectionProgress> = {
     venue: getVenueProgress(production?.venue),
@@ -246,43 +294,6 @@ export default function ProjectPage({ params }: ProjectPageProps) {
   return (
     <main className={styles.page}>
       <header className={styles.header}>
-        <div className={styles.topLine}>
-          <Link className={styles.backLink} href="/">
-            ← 公演一覧
-          </Link>
-          <nav className={styles.actions} aria-label="公演メニュー">
-            <details className={styles.howTo}>
-              <summary>使い方</summary>
-              <div>
-                <h2>SeisakuBoardの基本的な使い方</h2>
-                <ol>
-                  <li><strong>公演情報を登録</strong><span>日時・会場・料金など、全セクションで使う情報を登録します。</span></li>
-                  <li><strong>制作ロードマップを確認</strong><span>いつ何を進めるか、現在の準備状況を確認します。</span></li>
-                  <li><strong>各制作セクションを進める</strong><span>会場、チケット、広報、受付、会計などを順次管理します。</span></li>
-                </ol>
-              </div>
-            </details>
-            <MembersLink projectId={projectId} />
-            <Link href={`/projects/${projectId}/participants`}>参加者管理</Link>
-            <Link className={styles.purposeLink} href={`/projects/${projectId}/attendance`}>
-              <strong>出欠管理</strong>
-              <span>稽古日の出欠予定を入力・共有</span>
-            </Link>
-            <Link href={`/projects/${projectId}/activity`}>更新履歴</Link>
-            <Link className={styles.purposeLink} href={`/projects/${projectId}/rehearsals`}>
-              <strong>稽古スケジュール</strong>
-              <span>稽古の日程・場所・内容を確認</span>
-            </Link>
-            <Link className={`${styles.tasksLink} ${styles.purposeLink}`} href={`/projects/${projectId}/tasks`}>
-              <strong>タスク一覧（開発中）</strong>
-              <span>制作作業の担当・期限・進捗を管理</span>
-            </Link>
-            <Link className={styles.infoLink} href={`/projects/${projectId}/info`}>
-              公演情報を見る
-            </Link>
-          </nav>
-        </div>
-
         <div className={styles.hero}>
           <div className={styles.titleBlock}>
             <p className={styles.performanceName}>{performanceName}</p>
@@ -301,21 +312,34 @@ export default function ProjectPage({ params }: ProjectPageProps) {
               </div>
             </dl>
           </div>
-          <div className={styles.countdown}>{getCountdown(firstDate, today)}</div>
+          <div className={styles.heroAside}><div className={styles.countdown}>{getCountdown(firstDate, today)}</div>{canEdit && <Link href={`/projects/${projectId}/info`}>{hasPerformanceInformation ? "公演情報を編集" : "公演情報を入力する"}</Link>}</div>
         </div>
       </header>
 
-      {showOnboarding && (
-        <section className={styles.onboarding} data-compact={!onboardingIsPrimary}>
+      {!hasPerformanceInformation && (
+        <section className={styles.onboarding}>
           <div>
-            <h2>まず公演情報を登録しましょう</h2>
-            <p>公演日・会場・座席数などを登録すると、制作ロードマップや各管理画面に自動反映されます。</p>
+            <h2>公演情報が未入力です</h2>
+            <p>劇団名・公演名・公演日・会場を入力すると、公演状況を正しく表示できます。</p>
           </div>
-          <Link href={`/projects/${projectId}/info`}>公演情報を入力する</Link>
+          {canEdit && <Link href={`/projects/${projectId}/info`}>公演情報を入力する</Link>}
         </section>
       )}
 
-      <section className={styles.roadmapSection} aria-labelledby="roadmap-title">
+      <section className={styles.statusSummary} aria-label="公演状況サマリー">
+        <Link href={`/projects/${projectId}/rehearsals`}><span>次回稽古</span><strong>{dashboard ? nextRehearsal.title : "読み込み中…"}</strong><small>{dashboard ? nextRehearsal.detail : ""}</small></Link>
+        <Link href={attendanceSummary.href}><span>{attendanceSummary.label}</span><strong>{dashboard ? attendanceSummary.value : "読み込み中…"}</strong><small>{dashboard ? attendanceSummary.detail : ""}</small></Link>
+        <Link href={`/projects/${projectId}/activity`}><span>最新の更新</span><strong>{latestActivity?.sectionLabel ?? (dashboard ? "更新なし" : "読み込み中…")}</strong><small>{latestActivity ? `${latestActivity.actorName}・${formatDashboardDate(latestActivity.createdAt)}` : "更新履歴を確認"}</small></Link>
+      </section>
+
+      <nav className={styles.shortcuts} aria-label="公演機能ショートカット">
+        <Link href={`/projects/${projectId}/info`}><b>公演</b><span>基本情報を確認</span></Link>
+        <Link href={`/projects/${projectId}/rehearsals`}><b>稽古</b><span>予定と出欠</span></Link>
+        <Link href="#production-roadmap"><b>制作</b><span>準備の現在地</span></Link>
+        <Link href={`/projects/${projectId}/activity`}><b>管理</b><span>更新を確認</span></Link>
+      </nav>
+
+      <section className={styles.roadmapSection} id="production-roadmap" aria-labelledby="roadmap-title">
         <div className={styles.sectionHeading}>
           <div>
             <p>PRODUCTION ROADMAP</p>

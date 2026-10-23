@@ -22,6 +22,7 @@ import {
 import { buildFutureRehearsalDays, formatRehearsalDayItem } from "@/lib/attendance-view";
 import { getProjectMembers } from "@/lib/firestore";
 import { getProjectParticipants, SPECIAL_PRACTICE_LABELS, type Participant } from "@/lib/participants";
+import { getAttendanceManagementAccess } from "@/lib/project-navigation";
 import { getAllProjectRehearsals, type Rehearsal } from "@/lib/rehearsals";
 import { useProjectAccess } from "../../ProjectAccess";
 import styles from "./attendance-manage.module.css";
@@ -85,7 +86,8 @@ async function fetchManagementData(projectId: string) {
 export default function AttendanceManagePage({ params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = use(params);
   const { profile } = useAuth();
-  const { canEdit } = useProjectAccess();
+  const { role } = useProjectAccess();
+  const { canView, canEdit } = getAttendanceManagementAccess(role);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [rehearsals, setRehearsals] = useState<Rehearsal[]>([]);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
@@ -108,10 +110,6 @@ export default function AttendanceManagePage({ params }: { params: Promise<{ pro
   const draftError = getManagementDraftError(draft);
 
   async function load() {
-    if (!canEdit) {
-      setLoading(false);
-      return;
-    }
     setLoading(true);
     setLoadError("");
     try {
@@ -129,9 +127,6 @@ export default function AttendanceManagePage({ params }: { params: Promise<{ pro
 
   useEffect(() => {
     let active = true;
-    if (!canEdit) {
-      return () => { active = false; };
-    }
     void fetchManagementData(projectId)
       .then((data) => {
         if (!active) return;
@@ -145,9 +140,10 @@ export default function AttendanceManagePage({ params }: { params: Promise<{ pro
       })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [canEdit, projectId]);
+  }, [projectId]);
 
   function openEditor(participant: Participant, date: string, record: AttendanceRecord | null) {
+    if (!canEdit) return;
     setEditing({ participant, date, record });
     setDraft(buildManagementDraft(record));
     setFormError("");
@@ -193,11 +189,11 @@ export default function AttendanceManagePage({ params }: { params: Promise<{ pro
     }
   }
 
-  if (!canEdit) return <main className={styles.page}><section className={styles.denied}><h1>制作側の出欠管理</h1><p>この画面はOwnerまたはEditorのみ利用できます。</p><Link href={`/projects/${projectId}/attendance`}>出欠管理へ戻る</Link></section></main>;
+  if (!canView) return <main className={styles.page}><section className={styles.denied}><h1>全体出欠</h1><p>この画面を閲覧する権限がありません。</p><Link href={`/projects/${projectId}/attendance`}>出欠入力へ戻る</Link></section></main>;
 
   return <main className={styles.page}>
     <header className={styles.header}>
-      <div><Link href={`/projects/${projectId}/attendance`}>← 出欠管理へ戻る</Link><p>ATTENDANCE MANAGEMENT</p><h1>制作側の全体出欠管理</h1></div>
+      <div><Link href={`/projects/${projectId}/attendance`}>← 出欠入力へ戻る</Link><p>TEAM ATTENDANCE</p><h1>全体出欠</h1></div>
       <span>参加者 {participants.filter(({ active }) => active).length}名 / 稽古日 {days.length}日</span>
     </header>
 
@@ -211,7 +207,7 @@ export default function AttendanceManagePage({ params }: { params: Promise<{ pro
       <section className={styles.matrixWrap} aria-label="参加者と稽古日の出欠表">
         <table className={styles.matrix}>
           <thead><tr><th>参加者</th>{days.map((day) => <th key={day.date}><b>{formatDate(day.date)}</b><small>{day.rehearsals.length}件</small></th>)}</tr></thead>
-          <tbody>{rows.map((row) => <tr key={row.participant.id}><th><b>{row.participant.displayName}</b>{row.participant.specialPractice !== "none" && <small>{SPECIAL_PRACTICE_LABELS[row.participant.specialPractice]}</small>}</th>{row.cells.map(({ date, record }) => <td key={date}><button type="button" data-status={record?.status ?? "unanswered"} onClick={() => openEditor(row.participant, date, record)}>{formatAttendanceCell(record)}</button></td>)}</tr>)}</tbody>
+          <tbody>{rows.map((row) => <tr key={row.participant.id}><th><b>{row.participant.displayName}</b>{row.participant.specialPractice !== "none" && <small>{SPECIAL_PRACTICE_LABELS[row.participant.specialPractice]}</small>}</th>{row.cells.map(({ date, record }) => <td key={date}>{canEdit ? <button type="button" data-status={record?.status ?? "unanswered"} onClick={() => openEditor(row.participant, date, record)}>{formatAttendanceCell(record)}</button> : <span className={styles.cellDisplay} data-status={record?.status ?? "unanswered"}>{formatAttendanceCell(record)}</span>}</td>)}</tr>)}</tbody>
         </table>
       </section>
 
@@ -219,7 +215,8 @@ export default function AttendanceManagePage({ params }: { params: Promise<{ pro
         {days.map((day) => <article key={day.date}><header><h2>{formatDate(day.date, true)}</h2><ul>{day.rehearsals.map((rehearsal) => <li key={rehearsal.id}>{formatRehearsalDayItem(rehearsal)}</li>)}</ul></header>{rows.map((row) => {
           const cell = row.cells.find(({ date }) => date === day.date);
           if (!cell) return null;
-          return <button type="button" onClick={() => openEditor(row.participant, day.date, cell.record)} key={row.participant.id}><span><b>{row.participant.displayName}</b>{row.participant.specialPractice !== "none" && <small>{SPECIAL_PRACTICE_LABELS[row.participant.specialPractice]}</small>}</span><strong data-status={cell.record?.status ?? "unanswered"}>{formatAttendanceCell(cell.record)}</strong></button>;
+          const content = <><span><b>{row.participant.displayName}</b>{row.participant.specialPractice !== "none" && <small>{SPECIAL_PRACTICE_LABELS[row.participant.specialPractice]}</small>}</span><strong data-status={cell.record?.status ?? "unanswered"}>{formatAttendanceCell(cell.record)}</strong></>;
+          return canEdit ? <button className={styles.mobileRow} type="button" onClick={() => openEditor(row.participant, day.date, cell.record)} key={row.participant.id}>{content}</button> : <div className={styles.mobileRow} key={row.participant.id}>{content}</div>;
         })}</article>)}
       </section>
     </>}

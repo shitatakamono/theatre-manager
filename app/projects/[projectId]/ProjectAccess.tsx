@@ -75,5 +75,5 @@ export function useProjectAccess() {
 
 export function MembersLink({ projectId }: { projectId: string }) {
   const { canManageMembers } = useProjectAccess();
-  return canManageMembers ? <Link href={`/projects/${projectId}/members`}>メンバー</Link> : null;
+  return canManageMembers ? <Link href={`/projects/${projectId}/members`}>システム利用者</Link> : null;
 }
