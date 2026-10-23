@@ -14,6 +14,7 @@ import {
   type Firestore,
 } from "firebase/firestore";
 import { getActivityActorName, type ActivityActor } from "./activity.ts";
+import type { ProjectRole } from "./auth.ts";
 import { ConflictError, normalizeRevision } from "./project-revisions.ts";
 
 export const REHEARSAL_TYPE_OPTIONS = [
@@ -30,6 +31,13 @@ export const REHEARSAL_TYPES = REHEARSAL_TYPE_OPTIONS.map(({ value }) => value);
 export const REHEARSAL_TYPE_LABELS = Object.fromEntries(
   REHEARSAL_TYPE_OPTIONS.map(({ value, label }) => [value, label])
 ) as Record<RehearsalType, string>;
+
+export function getRehearsalScheduleCapabilities(role?: ProjectRole): { canEdit: boolean; canImport: boolean } {
+  return {
+    canEdit: role === "owner" || role === "editor",
+    canImport: role === "owner",
+  };
+}
 
 export type RehearsalInput = {
   date: string;

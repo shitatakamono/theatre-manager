@@ -1,0 +1,49 @@
+.scrollArea { width: 100%; max-width: 100%; min-width: 0; overflow-x: auto; overscroll-behavior-inline: contain; padding-bottom: 12px; }
+.timeline { width: 100%; min-width: max(920px, calc(var(--slot-count) * 22px + var(--date-width, 92px) + var(--type-width, 112px))); border: 1px solid #aebdb7; border-collapse: collapse; background: #fff; table-layout: fixed; }
+.dateColumn { width: var(--date-width, 92px); }
+.typeColumn { width: var(--type-width, 112px); }
+.axisHeader { height: 40px; border-bottom: 2px solid #7f9189; background: #f7f9f8; }
+.dateHeading, .typeHeading { border-right: 1px solid #bfcac6; padding: 8px; color: #52615c; text-align: left; font-size: 11px; font-weight: 850; }
+.hourHeading { padding: 0; }
+.hourAxis { position: relative; width: 100%; height: 38px; margin-right: 1px; }
+.hourAxis span { position: absolute; bottom: 7px; transform: translateX(-50%); color: #43534d; font-size: 10px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.hourAxis span:first-child { transform: none; }
+.hourAxis span:last-child { right: 6px; left: auto !important; transform: none; }
+.dayGroup { break-inside: avoid; page-break-inside: avoid; }
+.dayGroup + .dayGroup { border-top: 2px solid #7f9189; }
+.categoryRow + .categoryRow { border-top: 1px solid #d8e0dd; }
+.dateCell, .typeCell { border-right: 1px solid #bfcac6; padding: 10px 8px; font-size: 12px; }
+.dateCell { background: #f7f9f8; text-align: left; vertical-align: top; font-weight: 850; }
+.typeCell { color: #35443f; text-align: left; vertical-align: middle; font-weight: 800; }
+.typeCell[data-type="acting"] { color: #1d5d48; }
+.typeCell[data-type="japanese_dance"] { color: #704c8a; }
+.typeCell[data-type="stage_combat"] { color: #8a4a34; }
+.typeCell[data-type="meeting"] { color: #42658a; }
+.typeCell[data-type="other"] { color: #626d69; }
+.barCell { padding: 0; }
+.barArea { position: relative; min-height: calc(var(--lane-count) * (var(--bar-height, 46px) + var(--lane-gap, 4px)) + var(--row-padding, 6px) * 2 - var(--lane-gap, 4px)); background-image: repeating-linear-gradient(to right, transparent 0, transparent calc((100% / var(--slot-count)) - 1px), #edf1ef calc((100% / var(--slot-count)) - 1px), #edf1ef calc(100% / var(--slot-count))), repeating-linear-gradient(to right, transparent 0, transparent calc((400% / var(--slot-count)) - 1px), #b8c5c0 calc((400% / var(--slot-count)) - 1px), #b8c5c0 calc(400% / var(--slot-count))); }
+.bar { position: absolute; z-index: 2; height: var(--bar-height, 46px); min-width: 2px; overflow: hidden; border: 1px solid #2c735b; border-radius: 4px; background: #cfe8de; padding: 3px 6px; color: #173f32; text-align: left; white-space: nowrap; }
+button.bar { cursor: pointer; }
+button.bar:hover, button.bar:focus-visible { filter: brightness(.96); outline: 2px solid #174f3e; outline-offset: 1px; }
+.bar[data-type="japanese_dance"] { border-color: #75558b; background: #eadff1; color: #4f3463; }
+.bar[data-type="stage_combat"] { border-color: #9a5b43; background: #f2dfd7; color: #653624; }
+.bar[data-type="meeting"] { border-color: #53769a; background: #dfeaf4; color: #304f70; }
+.bar[data-type="other"] { border-color: #73817c; background: #e5e9e7; color: #424e4a; }
+.bar strong { display: block; overflow: hidden; font-size: 10px; text-overflow: ellipsis; }
+.bar span { display: block; overflow: hidden; font-size: 9px; text-overflow: ellipsis; }
+.barVenue { color: currentColor; opacity: .86; }
+.barTime { font-variant-numeric: tabular-nums; opacity: .78; }
+
+@media print {
+  .scrollArea { overflow: visible; padding: 0; }
+  .timeline { width: 100%; min-width: 0; }
+  .timeline thead { display: table-header-group; }
+  .axisHeader { height: 8mm; }
+  .hourAxis { height: 7.5mm; }
+  .hourAxis span { bottom: 1.5mm; font-size: 6.5pt; }
+  .dateHeading, .typeHeading { padding: 1.5mm; font-size: 7pt; }
+  .dateCell, .typeCell { padding: 2mm 1.5mm; font-size: 7.5pt; }
+  .bar { border-radius: 1mm; padding: .6mm 1mm; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .bar strong { font-size: 6.5pt; }
+  .bar span { font-size: 5.8pt; }
+}

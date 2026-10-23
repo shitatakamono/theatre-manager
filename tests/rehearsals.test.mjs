@@ -5,6 +5,7 @@ import {
   getRehearsalChangedFields,
   getNextRehearsals,
   getRehearsalTypeLabel,
+  getRehearsalScheduleCapabilities,
   normalizeStoredRehearsalType,
   REHEARSAL_TYPE_OPTIONS,
   timestampToTokyoInput,
@@ -23,6 +24,12 @@ const baseInput = {
 };
 
 describe("rehearsal values", () => {
+  it("keeps schedule editing for owner and editor while import stays owner-only", () => {
+    deepStrictEqual(getRehearsalScheduleCapabilities("owner"), { canEdit: true, canImport: true });
+    deepStrictEqual(getRehearsalScheduleCapabilities("editor"), { canEdit: true, canImport: false });
+    deepStrictEqual(getRehearsalScheduleCapabilities("viewer"), { canEdit: false, canImport: false });
+  });
+
   it("converts Japanese local date and time to one Timestamp without duplicate date fields", () => {
     const value = buildRehearsalValues(baseInput);
     strictEqual(value.startAt.toDate().toISOString(), "2026-11-15T04:00:00.000Z");

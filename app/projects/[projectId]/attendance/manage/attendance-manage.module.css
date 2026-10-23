@@ -1,4 +1,4 @@
-.page { min-height: 100vh; background: #f4f6f5; color: #17201d; padding: 28px 40px 56px; }
+.page { min-height: 100vh; overflow-x: hidden; background: #f4f6f5; color: #17201d; padding: 28px 40px 56px; }
 .header, .toolbar, .matrixWrap, .mobileDays, .empty, .error, .success { width: min(1320px, 100%); }
 .header { display: flex; align-items: end; justify-content: space-between; gap: 20px; border-bottom: 1px solid #cbd5d1; padding-bottom: 18px; }
 .header a { display: inline-block; margin-bottom: 18px; color: #53645e; font-size: 12px; font-weight: 700; }
@@ -8,15 +8,17 @@
 .toolbar { display: flex; gap: 7px; margin-top: 18px; }
 .toolbar button { min-height: 38px; border: 1px solid #b9c8c2; border-radius: 999px; background: #fff; padding: 7px 14px; color: #42524c; font-size: 12px; font-weight: 800; }
 .toolbar button[data-selected="true"] { border-color: #21634f; background: #e5f3ed; color: #18513f; }
-.matrixWrap { margin-top: 15px; overflow: auto; border: 1px solid #cbd5d1; border-radius: 10px; background: #fff; }
-.matrix { min-width: 760px; width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; }
+.matrixWrap { width: min(1320px, 100%); max-width: 100%; min-width: 0; margin-top: 15px; overflow-x: auto; border: 1px solid #cbd5d1; border-radius: 10px; background: #fff; }
+.matrix { isolation: isolate; min-width: 760px; width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; }
 .matrix th, .matrix td { border-right: 1px solid #dbe2df; border-bottom: 1px solid #dbe2df; padding: 0; }
 .matrix tr:last-child > * { border-bottom: 0; }
 .matrix tr > *:last-child { border-right: 0; }
 .matrix thead th { position: sticky; top: 0; z-index: 2; min-width: 132px; background: #edf2f0; padding: 10px 8px; text-align: center; }
-.matrix thead th:first-child { left: 0; z-index: 3; min-width: 170px; text-align: left; }
+.matrix thead th:first-child { position: sticky; left: 0; z-index: 4; min-width: 170px; border-right-color: #b8c5c0; background: #edf2f0; box-shadow: 1px 0 #cbd5d1; text-align: left; }
 .matrix thead small, .matrix tbody th small { display: block; margin-top: 3px; color: #718079; font-size: 10px; font-weight: 700; }
-.matrix tbody th { position: sticky; left: 0; z-index: 1; min-width: 170px; background: #fff; padding: 10px 9px; text-align: left; }
+.matrix tbody th { position: sticky; left: 0; z-index: 2; min-width: 170px; border-right-color: #c7d1cd; background: #fff; background-clip: padding-box; box-shadow: 1px 0 #d4ddda; padding: 10px 9px; text-align: left; }
+.matrix tbody tr[data-self="true"] th, .matrix tbody tr[data-self="true"] td { background: #f1f7f4; }
+.matrix tbody tr[data-self="true"] th { box-shadow: inset 3px 0 #6b9d8a; }
 .matrix td button, .cellDisplay { width: 100%; min-height: 54px; display: flex; align-items: center; padding: 8px; text-align: left; font-size: 11px; font-weight: 800; }
 .matrix td button:hover { background: #f2f7f5; }
 .page [data-status="attending"] { color: #176044; }
@@ -73,6 +75,7 @@
   .mobileDays h2 { font-size: 17px; font-weight: 850; }
   .mobileDays ul { margin-top: 4px; color: #607069; font-size: 11px; }
   .mobileRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 54px; border-top: 1px solid #e0e6e3; padding: 9px 12px; text-align: left; }
+  .mobileRow[data-self="true"] { background: #f1f7f4; box-shadow: inset 3px 0 #6b9d8a; }
   .mobileRow span small { display: block; color: #718079; font-size: 10px; }
   .mobileRow strong { flex: 0 0 auto; font-size: 12px; }
   .dialog { width: 100%; }

@@ -1,7 +1,7 @@
 import { deepStrictEqual, strictEqual } from "node:assert/strict";
 import { describe, it } from "node:test";
 import { Timestamp } from "firebase/firestore";
-import { buildRehearsalPrintModel } from "../lib/rehearsal-print.ts";
+import { buildRehearsalPrintModel, formatRehearsalTimelineBar } from "../lib/rehearsal-print.ts";
 
 function rehearsal(id, date, startTime, endTime, type, venue = "稽古場") {
   const toTimestamp = (time) => Timestamp.fromDate(new Date(`${date}T${time}:00+09:00`));
@@ -115,5 +115,25 @@ describe("rehearsal print model", () => {
     strictEqual(bar.endTime, "01:00");
     strictEqual(bar.slotSpan, 1);
     strictEqual(model.axisEndMinutes, 24 * 60);
+  });
+
+  it("shows content before venue and time while falling back to venue", () => {
+    const withContent = buildRehearsalPrintModel([
+      { ...rehearsal("content", "2026-11-15", "12:00", "16:00", "acting", "集会室"), content: "説明会オーディション" },
+    ]).days[0].categories[0].bars[0];
+    deepStrictEqual(formatRehearsalTimelineBar(withContent), {
+      primary: "説明会オーディション",
+      secondary: "集会室",
+      time: "12:00–16:00",
+    });
+
+    const withoutContent = buildRehearsalPrintModel([
+      rehearsal("venue", "2026-11-15", "13:00", null, "acting", "和室"),
+    ]).days[0].categories[0].bars[0];
+    deepStrictEqual(formatRehearsalTimelineBar(withoutContent), {
+      primary: "和室",
+      secondary: null,
+      time: "13:00–終了未設定",
+    });
   });
 });

@@ -19,7 +19,7 @@ import {
   type AttendanceManagementDraft,
   type AttendanceManagementFilter,
 } from "@/lib/attendance-management";
-import { buildFutureRehearsalDays, formatRehearsalDayItem } from "@/lib/attendance-view";
+import { buildFutureRehearsalDays, findSelfParticipant, formatRehearsalDayItem } from "@/lib/attendance-view";
 import { getProjectMembers } from "@/lib/firestore";
 import { getProjectParticipants, SPECIAL_PRACTICE_LABELS, type Participant } from "@/lib/participants";
 import { getAttendanceManagementAccess } from "@/lib/project-navigation";
@@ -107,6 +107,7 @@ export default function AttendanceManagePage({ params }: { params: Promise<{ pro
     [days, filter, participants, records]
   );
   const memberByUid = useMemo(() => new Map(members.map((member) => [member.uid, member])), [members]);
+  const selfParticipantId = useMemo(() => profile ? findSelfParticipant(participants, profile.uid)?.id : undefined, [participants, profile]);
   const draftError = getManagementDraftError(draft);
 
   async function load() {
@@ -207,7 +208,7 @@ export default function AttendanceManagePage({ params }: { params: Promise<{ pro
       <section className={styles.matrixWrap} aria-label="参加者と稽古日の出欠表">
         <table className={styles.matrix}>
           <thead><tr><th>参加者</th>{days.map((day) => <th key={day.date}><b>{formatDate(day.date)}</b><small>{day.rehearsals.length}件</small></th>)}</tr></thead>
-          <tbody>{rows.map((row) => <tr key={row.participant.id}><th><b>{row.participant.displayName}</b>{row.participant.specialPractice !== "none" && <small>{SPECIAL_PRACTICE_LABELS[row.participant.specialPractice]}</small>}</th>{row.cells.map(({ date, record }) => <td key={date}>{canEdit ? <button type="button" data-status={record?.status ?? "unanswered"} onClick={() => openEditor(row.participant, date, record)}>{formatAttendanceCell(record)}</button> : <span className={styles.cellDisplay} data-status={record?.status ?? "unanswered"}>{formatAttendanceCell(record)}</span>}</td>)}</tr>)}</tbody>
+          <tbody>{rows.map((row) => <tr data-self={row.participant.id === selfParticipantId} key={row.participant.id}><th><b>{row.participant.displayName}</b>{row.participant.specialPractice !== "none" && <small>{SPECIAL_PRACTICE_LABELS[row.participant.specialPractice]}</small>}</th>{row.cells.map(({ date, record }) => <td key={date}>{canEdit ? <button type="button" data-status={record?.status ?? "unanswered"} onClick={() => openEditor(row.participant, date, record)}>{formatAttendanceCell(record)}</button> : <span className={styles.cellDisplay} data-status={record?.status ?? "unanswered"}>{formatAttendanceCell(record)}</span>}</td>)}</tr>)}</tbody>
         </table>
       </section>
 
@@ -216,7 +217,7 @@ export default function AttendanceManagePage({ params }: { params: Promise<{ pro
           const cell = row.cells.find(({ date }) => date === day.date);
           if (!cell) return null;
           const content = <><span><b>{row.participant.displayName}</b>{row.participant.specialPractice !== "none" && <small>{SPECIAL_PRACTICE_LABELS[row.participant.specialPractice]}</small>}</span><strong data-status={cell.record?.status ?? "unanswered"}>{formatAttendanceCell(cell.record)}</strong></>;
-          return canEdit ? <button className={styles.mobileRow} type="button" onClick={() => openEditor(row.participant, day.date, cell.record)} key={row.participant.id}>{content}</button> : <div className={styles.mobileRow} key={row.participant.id}>{content}</div>;
+          return canEdit ? <button className={styles.mobileRow} data-self={row.participant.id === selfParticipantId} type="button" onClick={() => openEditor(row.participant, day.date, cell.record)} key={row.participant.id}>{content}</button> : <div className={styles.mobileRow} data-self={row.participant.id === selfParticipantId} key={row.participant.id}>{content}</div>;
         })}</article>)}
       </section>
     </>}

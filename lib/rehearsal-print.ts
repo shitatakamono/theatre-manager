@@ -58,6 +58,22 @@ export type RehearsalPrintModel = {
   days: RehearsalPrintDay[];
 };
 
+export type RehearsalTimelineBarText = {
+  primary: string;
+  secondary: string | null;
+  time: string;
+};
+
+export function formatRehearsalTimelineBar(bar: RehearsalPrintBar): RehearsalTimelineBarText {
+  const content = bar.content.trim();
+  const venue = bar.venue.trim();
+  return {
+    primary: content || venue || "会場未設定",
+    secondary: content && venue ? venue : null,
+    time: `${bar.startTime}–${bar.endsOnAnotherDate ? `翌日 ${bar.endTime}` : bar.endTime ?? "終了未設定"}`,
+  };
+}
+
 type PreparedRehearsal = {
   rehearsal: Rehearsal;
   date: string;

@@ -12,7 +12,7 @@ import {
   deleteProjectRehearsal,
   getProjectRehearsal,
   getProjectRehearsals,
-  getNextRehearsals,
+  getRehearsalScheduleCapabilities,
   getRehearsalTypeLabel,
   rehearsalToInput,
   timestampToTokyoInput,
@@ -22,11 +22,14 @@ import {
 } from "@/lib/rehearsals";
 import { CONFLICT_MESSAGE, isConflictError } from "@/lib/project-revisions";
 import { canUseRehearsalScreenshotImport } from "@/lib/rehearsal-import";
+import { buildRehearsalPrintModel } from "@/lib/rehearsal-print";
 import { useProjectAccess } from "../ProjectAccess";
 import { RehearsalImportDialog } from "./RehearsalImportDialog";
+import { RehearsalTimeline } from "./RehearsalTimeline";
 import styles from "./rehearsals.module.css";
 
 type EditorMode = "single" | "bulk" | "edit" | null;
+type ScheduleView = "list" | "timeline";
 
 function todayInTokyo(): string {
   const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
@@ -58,7 +61,7 @@ function RehearsalRows({ items, canEdit, onEdit, onDelete }: {
           <tr key={item.id}>
             <td data-label="日付">{formatDate(item)}</td>
             <td data-label="時間" className={styles.time}>{formatTime(item)}</td>
-            <td data-label="種別">{getRehearsalTypeLabel(item.type, item.customType)}</td>
+            <td data-label="種別"><span className={styles.typeBadge} data-type={item.type}>{getRehearsalTypeLabel(item.type, item.customType)}</span></td>
             <td data-label="場所">{item.venue || "—"}</td>
             <td data-label="内容" className={styles.longText}>{item.content || "—"}</td>
             <td data-label="備考" className={styles.longText}>{item.note || "—"}</td>
@@ -90,7 +93,8 @@ function RehearsalFields({ value, onChange, hideDate = false }: { value: Rehears
 }
 
 export function RehearsalClient({ projectId }: { projectId: string }) {
-  const { role, canEdit, actor } = useProjectAccess();
+  const { role, actor } = useProjectAccess();
+  const { canEdit, canImport } = getRehearsalScheduleCapabilities(role);
   const [upcoming, setUpcoming] = useState<Rehearsal[]>([]);
   const [past, setPast] = useState<Rehearsal[]>([]);
   const [loading, setLoading] = useState(true);
@@ -103,6 +107,7 @@ export function RehearsalClient({ projectId }: { projectId: string }) {
   const [formError, setFormError] = useState("");
   const [conflict, setConflict] = useState(false);
   const [notice, setNotice] = useState("");
+  const [view, setView] = useState<ScheduleView>("list");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -133,7 +138,7 @@ export function RehearsalClient({ projectId }: { projectId: string }) {
     return () => { active = false; };
   }, [projectId]);
 
-  const nextRehearsals = useMemo(() => getNextRehearsals(upcoming), [upcoming]);
+  const timelineModel = useMemo(() => buildRehearsalPrintModel(upcoming), [upcoming]);
 
   const openSingle = () => {
     setDraft({ ...EMPTY_REHEARSAL_INPUT, date: todayInTokyo() });
@@ -214,36 +219,39 @@ export function RehearsalClient({ projectId }: { projectId: string }) {
       <header className={styles.header}>
         <div><Link href={`/projects/${projectId}`}>← 公演トップ</Link><p>REHEARSAL SCHEDULE</p><h1>稽古スケジュール</h1></div>
         <div className={styles.headerActions}>
-          <Link className={styles.actionLink} href={`/projects/${projectId}/rehearsals/print`}>印刷</Link>
           {canEdit && <>
-            <button type="button" onClick={openSingle}>稽古を追加</button>
+            <button type="button" onClick={openSingle}>＋ 稽古を追加</button>
             <button className={styles.secondaryButton} type="button" onClick={openBulk}>複数日追加</button>
-            {canUseRehearsalScreenshotImport(role) && <RehearsalImportDialog
+            {canImport && canUseRehearsalScreenshotImport(role) && <RehearsalImportDialog
               projectId={projectId}
               existingRehearsals={[...upcoming, ...past]}
               onImported={async (count) => { setNotice(`${count}件の稽古予定を追加しました`); await load(); }}
             />}
           </>}
+          <Link className={styles.actionLink} href={`/projects/${projectId}/rehearsals/print`}>印刷</Link>
+          <details className={styles.attendanceMenu}><summary>出欠</summary><div><Link href={`/projects/${projectId}/attendance`}>出欠入力</Link><Link href={`/projects/${projectId}/attendance/manage`}>全体出欠</Link></div></details>
         </div>
       </header>
 
       {notice && <p className={styles.success} role="status">{notice}</p>}
       {loadError && <p className={styles.error} role="alert">{loadError} <button type="button" onClick={() => void load()}>再読み込み</button></p>}
 
-      <section className={styles.next} aria-labelledby="next-title">
-        <div className={styles.sectionTitle}><p>NEXT</p><h2 id="next-title">次回稽古</h2></div>
-        {loading ? <p className={styles.empty}>読み込み中…</p> : nextRehearsals.length === 0 ? <p className={styles.empty}>今後の稽古予定はありません。</p> : <div><strong className={styles.nextDate}>{formatDate(nextRehearsals[0])} {formatTime(nextRehearsals[0])}</strong><ul>{nextRehearsals.map((item) => <li key={item.id}><b>{getRehearsalTypeLabel(item.type, item.customType)}</b><span>{item.venue || "場所未設定"}</span>{item.content && <small>{item.content}</small>}</li>)}</ul></div>}
-      </section>
+      <div className={styles.viewSwitch} role="group" aria-label="稽古予定の表示形式"><button type="button" data-selected={view === "list"} onClick={() => setView("list")}>一覧</button><button type="button" data-selected={view === "timeline"} onClick={() => setView("timeline")}>時間軸</button></div>
 
-      <section className={styles.schedule} aria-labelledby="upcoming-title">
-        <div className={styles.sectionTitle}><p>UPCOMING</p><h2 id="upcoming-title">今後の稽古</h2><span>{upcoming.length}件</span></div>
-        {!loading && upcoming.length === 0 ? <p className={styles.empty}>登録されている今後の稽古はありません。</p> : <RehearsalRows items={upcoming} canEdit={canEdit} onEdit={openEdit} onDelete={remove} />}
-      </section>
+      {view === "list" ? <>
+        <section className={styles.schedule} aria-labelledby="upcoming-title">
+          <div className={styles.sectionTitle}><p>UPCOMING</p><h2 id="upcoming-title">今後の稽古</h2><span>{upcoming.length}件</span></div>
+          {!loading && upcoming.length === 0 ? <p className={styles.empty}>登録されている今後の稽古はありません。</p> : <RehearsalRows items={upcoming} canEdit={canEdit} onEdit={openEdit} onDelete={remove} />}
+        </section>
 
-      <details className={styles.pastSection}>
-        <summary>過去の稽古 <span>{past.length}件</span></summary>
-        {past.length === 0 ? <p className={styles.empty}>過去の稽古はありません。</p> : <RehearsalRows items={past} canEdit={canEdit} onEdit={openEdit} onDelete={remove} />}
-      </details>
+        <details className={styles.pastSection}>
+          <summary>過去の稽古 <span>{past.length}件</span></summary>
+          {past.length === 0 ? <p className={styles.empty}>過去の稽古はありません。</p> : <RehearsalRows items={past} canEdit={canEdit} onEdit={openEdit} onDelete={remove} />}
+        </details>
+      </> : <section className={styles.timelineSection} aria-labelledby="timeline-title">
+        <div className={styles.sectionTitle}><p>TIMELINE</p><h2 id="timeline-title">今後の稽古時間軸</h2><span>{timelineModel.days.length}日</span></div>
+        {loading ? <p className={styles.empty}>読み込み中…</p> : timelineModel.rehearsalCount === 0 ? <p className={styles.empty}>登録されている今後の稽古はありません。</p> : <RehearsalTimeline model={timelineModel} onSelect={canEdit ? (id) => { const item = upcoming.find((rehearsal) => rehearsal.id === id); if (item) openEdit(item); } : undefined} />}
+      </section>}
 
       {mode && <div className={styles.overlay} role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) closeEditor(); }}><section className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby="editor-title"><header><div><p>REHEARSAL</p><h2 id="editor-title">{mode === "edit" ? "稽古を編集" : mode === "bulk" ? "複数日追加" : "稽古を追加"}</h2></div><button aria-label="閉じる" type="button" onClick={closeEditor}>×</button></header><form onSubmit={save}>
         {mode === "bulk" && <fieldset className={styles.dateList}><legend>日付 *</legend>{bulkDates.map((date, index) => <div key={index}><input required type="date" value={date} onChange={(event) => setBulkDates((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} /><button disabled={bulkDates.length === 1} type="button" onClick={() => setBulkDates((current) => current.filter((_, itemIndex) => itemIndex !== index))}>削除</button></div>)}<button type="button" disabled={bulkDates.length >= 100} onClick={() => setBulkDates((current) => [...current, ""])}>＋ 日付を追加</button><small>同じ日付は1件として登録します（最大100件）</small></fieldset>}

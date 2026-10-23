@@ -12,14 +12,12 @@ import {
 import {
   buildAttendanceDrafts,
   buildFutureRehearsalDays,
-  buildSharedAttendanceRows,
   findSelfParticipant,
   formatRehearsalDayItem,
   getChangedAttendanceInputs,
   type AttendanceDraft,
 } from "@/lib/attendance-view";
 import {
-  SPECIAL_PRACTICE_LABELS,
   getProjectParticipants,
   type Participant,
 } from "@/lib/participants";
@@ -45,12 +43,6 @@ function formatDate(date: string): string {
     day: "numeric",
     weekday: "short",
   }).format(new Date(`${date}T00:00:00+09:00`));
-}
-
-function attendanceText(record: AttendanceRecord | null): string {
-  if (!record) return "未回答";
-  if (record.status !== "attending") return STATUS_LABELS[record.status];
-  return `${record.availableFrom ?? "--:--"}〜${record.availableUntil ?? "--:--"}`;
 }
 
 async function fetchAttendancePageData(projectId: string) {
@@ -158,7 +150,7 @@ export default function AttendancePage({ params }: { params: Promise<{ projectId
   return (
     <main className={styles.page}>
       <header className={styles.header}>
-        <div><Link href={`/projects/${projectId}`}>← 公演トップ</Link><p>ATTENDANCE</p><h1>出欠管理</h1></div>
+        <div><Link href={`/projects/${projectId}`}>← 公演トップ</Link><p>ATTENDANCE</p><h1>出欠入力</h1></div>
         <Link className={styles.manageLink} href={`/projects/${projectId}/attendance/manage`}>全体出欠</Link>
       </header>
 
@@ -171,7 +163,7 @@ export default function AttendancePage({ params }: { params: Promise<{ projectId
               : days.length === 0 ? <p className={styles.empty}>今後の稽古予定はありません。</p>
                 : <div className={styles.cards}>{days.map((day) => {
                   const draft = drafts[day.date] ?? { status: null, availableFrom: null, availableUntil: null, publicNote: "" };
-                  return <article className={styles.card} key={day.date}>
+                  return <article className={styles.card} data-status={draft.status ?? "unanswered"} key={day.date}>
                     <div className={styles.cardHeader}><div><h3>{formatDate(day.date)}</h3><span>{draft.status ? STATUS_LABELS[draft.status] : "未回答"}</span></div><ul>{day.rehearsals.map((rehearsal) => <li key={rehearsal.id}>{formatRehearsalDayItem(rehearsal)}{rehearsal.venue ? ` / ${rehearsal.venue}` : ""}</li>)}</ul></div>
                     <div className={styles.statusOptions} aria-label={`${formatDate(day.date)}の出欠`}>{STATUS_OPTIONS.map((option) => <button type="button" data-selected={draft.status === option.value} key={option.value} onClick={() => selectStatus(day.date, option.value)}><b>{option.mark}</b>{option.label}</button>)}</div>
                     {draft.status === "attending" && <div className={styles.timeFields}>
@@ -185,11 +177,6 @@ export default function AttendancePage({ params }: { params: Promise<{ projectId
                 })}</div>}
           {notice && <p className={styles.success} role="status">{notice}</p>}
           {saveError && <p className={styles.error} role="alert">{saveError}</p>}
-        </section>
-
-        <section className={styles.sharedSection} aria-labelledby="shared-attendance-title">
-          <div className={styles.sectionHeading}><div><p>TEAM SCHEDULE</p><h2 id="shared-attendance-title">全員の出欠</h2></div></div>
-          {days.length === 0 ? <p className={styles.empty}>今後の稽古予定はありません。</p> : <div className={styles.sharedDays}>{days.map((day) => <article key={day.date}><h3>{formatDate(day.date)}</h3><div className={styles.tableWrap}><table><thead><tr><th>参加者</th><th>特別稽古</th><th>出欠</th><th>参加可能時間</th><th>公開備考</th></tr></thead><tbody>{buildSharedAttendanceRows(day.date, participants, records).map(({ participant, record }) => <tr key={participant.id}><td data-label="参加者"><strong>{participant.displayName}</strong></td><td data-label="特別稽古"><span className={styles.badge}>{SPECIAL_PRACTICE_LABELS[participant.specialPractice]}</span></td><td data-label="出欠" data-status={record?.status ?? "unanswered"}>{record ? STATUS_LABELS[record.status] : "未回答"}</td><td data-label="参加可能時間">{attendanceText(record)}</td><td data-label="公開備考" className={styles.publicNote}>{record?.publicNote || "—"}</td></tr>)}</tbody></table></div></article>)}</div>}
         </section>
       </>}
     </main>
