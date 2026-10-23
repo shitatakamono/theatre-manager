@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import type { ProjectPerformanceRecord } from "@/lib/firestore";
 import { updateProjectPerformanceSection } from "@/lib/firestore";
 import { getProjectRevision, isConflictError } from "@/lib/project-revisions";
+import { formatInformationValue, PERFORMANCE_INFORMATION_SECTIONS } from "@/lib/management-view";
 import { useProjectAccess } from "../ProjectAccess";
 import {
   calculateEndTime,
@@ -30,12 +31,12 @@ import styles from "./performance-info.module.css";
 const editorLabels: Record<PerformanceSection, string> = {
   performanceInfo: "基本情報",
   venue: "会場",
-  performances: "公演回",
-  tickets: "チケット",
-  cast: "出演者",
+  performances: "タイムスケジュール",
+  tickets: "料金",
+  cast: "キャスト",
   staff: "スタッフ",
   contact: "問い合わせ・公式情報",
-  credits: "掲載情報",
+  credits: "協賛・協力等",
 };
 
 const creditLabels: Record<CreditType, string> = {
@@ -45,17 +46,6 @@ const creditLabels: Record<CreditType, string> = {
   grant: "助成",
   other: "その他",
 };
-
-const sectionLinks: { id: string; label: string }[] = [
-  { id: "basic", label: "基本" },
-  { id: "venue", label: "会場" },
-  { id: "shows", label: "公演回" },
-  { id: "tickets", label: "料金" },
-  { id: "cast", label: "出演者" },
-  { id: "staff", label: "スタッフ" },
-  { id: "contact", label: "問合せ" },
-  { id: "credits", label: "掲載情報" },
-];
 
 const standardStaffRoles = [
   "作",
@@ -85,10 +75,6 @@ function createStandardStaffTemplate(): StaffRole[] {
 
 function numberOrUndefined(value: string) {
   return value === "" ? undefined : Number(value);
-}
-
-function displayValue(value?: string | number) {
-  return value === undefined || value === "" ? "未設定" : String(value);
 }
 
 function externalUrl(value: string) {
@@ -394,7 +380,7 @@ export function PerformanceInfoClient({
       {savedMessage && <p className={styles.successMessage}>{savedMessage}</p>}
 
       <nav className={styles.sectionNav} aria-label="公演情報のセクション">
-        {sectionLinks.map((link) => (
+        {PERFORMANCE_INFORMATION_SECTIONS.map((link) => (
           <a key={link.id} href={`#${link.id}`}>
             {link.label}
           </a>
@@ -409,12 +395,12 @@ export function PerformanceInfoClient({
           onEdit={openEditor}
         >
           <dl className={styles.detailList}>
-            <div><dt>公演名称</dt><dd>{displayValue(basic.performanceName)}</dd></div>
+            <div><dt>公演名称</dt><dd>{formatInformationValue(basic.performanceName)}</dd></div>
             <div><dt>タイトル</dt><dd>{displayTitle}</dd></div>
-            <div><dt>サブタイトル</dt><dd>{displayValue(basic.subtitle)}</dd></div>
-            <div><dt>主催</dt><dd>{displayValue(basic.organizer)}</dd></div>
-            <div><dt>共催</dt><dd>{displayValue(basic.coOrganizer)}</dd></div>
-            <div><dt>後援</dt><dd>{displayValue(basic.support)}</dd></div>
+            <div><dt>サブタイトル</dt><dd>{formatInformationValue(basic.subtitle)}</dd></div>
+            <div><dt>主催</dt><dd>{formatInformationValue(basic.organizer)}</dd></div>
+            <div><dt>共催</dt><dd>{formatInformationValue(basic.coOrganizer)}</dd></div>
+            <div><dt>後援</dt><dd>{formatInformationValue(basic.support)}</dd></div>
             <div><dt>上演時間</dt><dd>{basic.durationMinutes ? `${basic.durationMinutes}分（休憩込み）` : "未設定"}</dd></div>
             <div><dt>1公演あたりの座席数</dt><dd>{seatsPerPerformance === undefined ? "未設定" : `${seatsPerPerformance.toLocaleString()}席`}</dd></div>
             <div><dt>公演回数</dt><dd>{shows.length.toLocaleString()}回</dd></div>
@@ -422,30 +408,31 @@ export function PerformanceInfoClient({
             <div><dt>休憩</dt><dd>{!configuredSections.has("performanceInfo") ? "未設定" : basic.hasIntermission ? `${basic.intermissionMinutes ?? "時間未設定"}分` : "なし"}</dd></div>
           </dl>
           <div className={styles.longDetails}>
-            <div><h3>年齢制限</h3><p>{displayValue(basic.ageRestriction)}</p></div>
-            <div><h3>注意事項</h3><p>{displayValue(basic.notice)}</p></div>
-            <div><h3>公演概要・あらすじ</h3><p>{displayValue(basic.synopsis)}</p></div>
+            <div><h3>年齢制限</h3><p>{formatInformationValue(basic.ageRestriction)}</p></div>
+            <div><h3>注意事項</h3><p>{formatInformationValue(basic.notice)}</p></div>
+            <div><h3>公演概要・あらすじ</h3><p>{formatInformationValue(basic.synopsis)}</p></div>
           </div>
         </InfoCard>
 
         <InfoCard
           id="venue"
-          title="会場"
+          title="公演日・会場"
           section="venue"
           onEdit={openEditor}
         >
           <dl className={styles.detailList}>
-            <div><dt>会場名</dt><dd>{displayValue(venue.name)}</dd></div>
-            <div><dt>ホール・劇場名</dt><dd>{displayValue(venue.hall)}</dd></div>
-            <div><dt>所在地</dt><dd>{displayValue(venue.address)}</dd></div>
+            <div><dt>公演期間</dt><dd>{formatPeriod(project)}</dd></div>
+            <div><dt>公演回数</dt><dd>{shows.length ? `${shows.length}回` : "未入力"}</dd></div>
+            <div><dt>会場名</dt><dd>{formatInformationValue(venue.name)}</dd></div>
+            <div><dt>ホール・劇場名</dt><dd>{formatInformationValue(venue.hall)}</dd></div>
+            <div><dt>所在地</dt><dd>{formatInformationValue(venue.address)}</dd></div>
             <div><dt>会場URL</dt><dd>{venue.url ? <a className={styles.inlineLink} href={externalUrl(venue.url)} target="_blank" rel="noreferrer">{venue.url} ↗</a> : "未設定"}</dd></div>
           </dl>
-          <div className={styles.longDetails}><div><h3>交通アクセス</h3><p>{displayValue(venue.access)}</p></div></div>
         </InfoCard>
 
         <InfoCard
-          id="shows"
-          title="公演回"
+          id="schedule"
+          title="タイムスケジュール"
           section="performances"
           onEdit={openEditor}
         >
@@ -470,7 +457,7 @@ export function PerformanceInfoClient({
 
         <InfoCard
           id="tickets"
-          title="チケット"
+          title="料金"
           section="tickets"
           onEdit={openEditor}
         >
@@ -482,11 +469,11 @@ export function PerformanceInfoClient({
 
         <InfoCard
           id="cast"
-          title={`出演者 ${cast.length ? `(${cast.length})` : ""}`}
+          title={`キャスト ${cast.length ? `(${cast.length})` : ""}`}
           section="cast"
           onEdit={openEditor}
         >
-          {cast.length === 0 ? <p className={styles.empty}>出演者は未設定です</p> : (
+          {cast.length === 0 ? <p className={styles.empty}>登録なし</p> : (
             <ul className={styles.peopleList}>
               {cast.map((member) => (
                 <li key={member.id}>
@@ -514,35 +501,44 @@ export function PerformanceInfoClient({
         </InfoCard>
 
         <InfoCard
-          id="contact"
-          title="問い合わせ・公式情報"
-          section="contact"
-          onEdit={openEditor}
-        >
-          <dl className={styles.detailList}>
-            <div><dt>問い合わせ名称</dt><dd>{displayValue(contact.name)}</dd></div>
-            <div><dt>電話</dt><dd>{contact.phone ? <a href={`tel:${contact.phone}`}>{contact.phone}</a> : "未設定"}</dd></div>
-            <div><dt>メール</dt><dd>{contact.email ? <a href={`mailto:${contact.email}`}>{contact.email}</a> : "未設定"}</dd></div>
-            <div><dt>公式サイト</dt><dd>{contact.website ? <a href={externalUrl(contact.website)} target="_blank" rel="noreferrer">{contact.website} ↗</a> : "未設定"}</dd></div>
-            <div><dt>X</dt><dd>{contact.x ? <a href={externalUrl(contact.x)} target="_blank" rel="noreferrer">{contact.x} ↗</a> : "未設定"}</dd></div>
-            <div><dt>Instagram</dt><dd>{contact.instagram ? <a href={externalUrl(contact.instagram)} target="_blank" rel="noreferrer">{contact.instagram} ↗</a> : "未設定"}</dd></div>
-            <div><dt>その他SNS</dt><dd>{displayValue(contact.other)}</dd></div>
-          </dl>
-        </InfoCard>
-
-        <InfoCard
           id="credits"
-          title="掲載情報"
+          title="協賛・協力・スポンサー・助成"
           section="credits"
           onEdit={openEditor}
         >
-          {credits.length === 0 ? <p className={styles.empty}>掲載情報は未設定です</p> : (
+          {credits.length === 0 ? <p className={styles.empty}>登録なし</p> : (
             <ul className={styles.creditList}>
               {credits.map((credit) => (
                 <li key={credit.id}><span>{creditLabels[credit.type]}</span><strong>{credit.displayName || credit.name}</strong>{credit.hasLogo && <small>ロゴあり</small>}</li>
               ))}
             </ul>
           )}
+        </InfoCard>
+
+        <InfoCard
+          id="access"
+          title="交通アクセス"
+          section="venue"
+          onEdit={openEditor}
+        >
+          <div className={styles.longDetails}><div><h3>会場までのアクセス</h3><p>{formatInformationValue(venue.access)}</p></div></div>
+        </InfoCard>
+
+        <InfoCard
+          id="contact"
+          title="問い合わせ・公式情報"
+          section="contact"
+          onEdit={openEditor}
+        >
+          <dl className={styles.detailList}>
+            <div><dt>問い合わせ名称</dt><dd>{formatInformationValue(contact.name)}</dd></div>
+            <div><dt>電話</dt><dd>{contact.phone ? <a href={`tel:${contact.phone}`}>{contact.phone}</a> : "未設定"}</dd></div>
+            <div><dt>メール</dt><dd>{contact.email ? <a href={`mailto:${contact.email}`}>{contact.email}</a> : "未設定"}</dd></div>
+            <div><dt>公式サイト</dt><dd>{contact.website ? <a href={externalUrl(contact.website)} target="_blank" rel="noreferrer">{contact.website} ↗</a> : "未設定"}</dd></div>
+            <div><dt>X</dt><dd>{contact.x ? <a href={externalUrl(contact.x)} target="_blank" rel="noreferrer">{contact.x} ↗</a> : "未設定"}</dd></div>
+            <div><dt>Instagram</dt><dd>{contact.instagram ? <a href={externalUrl(contact.instagram)} target="_blank" rel="noreferrer">{contact.instagram} ↗</a> : "未設定"}</dd></div>
+            <div><dt>その他SNS</dt><dd>{formatInformationValue(contact.other)}</dd></div>
+          </dl>
         </InfoCard>
       </div>
 

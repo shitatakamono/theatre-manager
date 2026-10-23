@@ -11,8 +11,10 @@ import {
   removeProjectMember, revokeProjectMemberInvite, updateProjectMemberRole,
 } from "@/lib/firestore";
 import { useProjectAccess } from "../ProjectAccess";
+import { getSystemUserStatus, SYSTEM_ROLE_LABELS } from "@/lib/management-view";
+import styles from "./members.module.css";
 
-const roleLabels: Record<ProjectRole, string> = { owner: "Owner", editor: "Editor", viewer: "Viewer" };
+const roleLabels = SYSTEM_ROLE_LABELS;
 
 export default function MembersPage({ params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = use(params);
@@ -39,7 +41,7 @@ export default function MembersPage({ params }: { params: Promise<{ projectId: s
       setMembers(memberItems);
       setProjectName(project?.title || "名称未設定の公演");
       setInvites(inviteItems);
-    }).catch(() => { if (active) setError("メンバー情報を読み込めませんでした"); })
+    }).catch(() => { if (active) setError("システム利用者を読み込めませんでした"); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [canManageMembers, projectId]);
@@ -55,12 +57,12 @@ export default function MembersPage({ params }: { params: Promise<{ projectId: s
 
   async function remove(member: ProjectMember) {
     const memberName = member.displayName || member.email || member.uid;
-    if (!canManageMembers || member.uid === profile?.uid || !confirm(`${memberName} をメンバーから削除しますか？`)) return;
+    if (!canManageMembers || member.uid === profile?.uid || !confirm(`${memberName} のシステム利用を解除しますか？`)) return;
     setError(""); setMessage("");
     try {
       await removeProjectMember(projectId, member.uid);
       setMembers((current) => current.filter((item) => item.uid !== member.uid));
-    } catch { setError("メンバーを削除できませんでした"); }
+    } catch { setError("システム利用を解除できませんでした"); }
   }
 
   async function invite(event: React.FormEvent<HTMLFormElement>) {
@@ -121,41 +123,42 @@ export default function MembersPage({ params }: { params: Promise<{ projectId: s
 
   const pendingInvites = invites.filter((inviteItem) => inviteItem.status === "pending");
 
-  return <main className="mx-auto min-h-screen max-w-3xl space-y-5 bg-gray-50 p-6 text-gray-900">
-    <Link className="text-sm font-bold text-emerald-800 underline" href={`/projects/${projectId}`}>← 公演トップへ戻る</Link>
-    <header><p className="text-xs font-bold tracking-widest text-gray-500">PROJECT TEAM</p><h1 className="text-3xl font-bold">メンバー</h1></header>
-    {legacyAccess && <p className="rounded border border-amber-300 bg-amber-50 p-3 text-sm">この公演は移行前データです。Owner bootstrap後にメンバー管理を利用できます。</p>}
-    {!canManageMembers && !legacyAccess && <p className="rounded border bg-white p-3 text-sm text-gray-600">メンバー一覧は閲覧のみです。Role変更・削除・招待管理はOwnerのみ可能です。</p>}
-    {error && <p className="rounded border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700" role="alert">{error}</p>}
-    {message && <p className="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-800" role="status">{message}</p>}
+  return <main className={styles.page}>
+    <header className={styles.header}>
+      <div><Link href={`/projects/${projectId}`}>← 公演トップ</Link><p>SYSTEM USERS</p><h1>システム利用者</h1><span>SeisakuBoardへログインし、この公演を閲覧・編集するアカウントです。</span></div>
+      <strong>{members.length}名</strong>
+    </header>
+    {legacyAccess && <p className={styles.notice}>この公演は移行前データです。Owner bootstrap後に利用者管理を利用できます。</p>}
+    {!canManageMembers && !legacyAccess && <p className={styles.notice}>利用者一覧は閲覧のみです。Role変更・削除・招待管理はOwnerのみ可能です。</p>}
+    {error && <p className={`${styles.notice} ${styles.error}`} role="alert">{error}</p>}
+    {message && <p className={`${styles.notice} ${styles.success}`} role="status">{message}</p>}
 
-    {loading ? <p>読み込み中…</p> : <section className="space-y-3"><h2 className="font-bold">参加中</h2><ul className="space-y-2">{members.map((member) => {
+    {loading ? <p className={styles.state}>読み込み中…</p> : <section className={styles.section}><div className={styles.sectionHeading}><h2>利用中のアカウント</h2><span>キャスト・スタッフ・出欠対象者とは別に管理されます。</span></div><ul className={styles.userList}>{members.map((member) => {
       const primary = member.displayName || member.email || member.uid;
       const secondary = member.displayName ? (member.email || member.uid) : member.email ? member.uid : "";
-      return <li className="flex flex-wrap items-center gap-3 rounded-lg border bg-white p-4" key={member.uid}>
-        <div className="min-w-0 flex-1"><strong className="block truncate">{primary}</strong>{secondary && <span className="block truncate text-xs text-gray-500">{secondary}</span>}</div>
-        {canManageMembers ? <select className="rounded border p-2" value={member.role} disabled={member.uid === profile?.uid} onChange={(event) => void changeRole(member, event.target.value as ProjectRole)}>{Object.entries(roleLabels).map(([role, label]) => <option key={role} value={role}>{label}</option>)}</select> : <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-bold">{roleLabels[member.role]}</span>}
-        {canManageMembers && member.uid !== profile?.uid && <button className="min-h-10 rounded border border-red-300 px-3 text-sm font-bold text-red-700" onClick={() => void remove(member)}>削除</button>}
+      return <li className={styles.userRow} key={member.uid}>
+        <div className={styles.identity}><strong>{primary}</strong>{secondary && <span>{secondary}</span>}</div>
+        <div className={styles.userMeta}><small>状態</small><span className={styles.status}>{getSystemUserStatus()}</span></div>
+        <div className={styles.roleControl}><small>役割</small>{canManageMembers ? <select value={member.role} disabled={member.uid === profile?.uid} onChange={(event) => void changeRole(member, event.target.value as ProjectRole)}>{Object.entries(roleLabels).map(([role, label]) => <option key={role} value={role}>{label}</option>)}</select> : <span className={styles.roleBadge}>{roleLabels[member.role]}</span>}</div>
+        {canManageMembers && member.uid !== profile?.uid && <button className={styles.removeButton} onClick={() => void remove(member)}>利用解除</button>}
       </li>;
     })}</ul></section>}
 
     {canManageMembers && !legacyAccess ? <>
-      <section className="rounded-lg border bg-white p-4">
-        <h2 className="font-bold">新しいメンバーを招待</h2>
-        <p className="mt-1 text-sm text-gray-600">招待メールを送信します。受信したGoogleアカウントでログインすると自動参加します。</p>
-        <form className="mt-4 grid gap-3 sm:grid-cols-[1fr_130px_auto]" onSubmit={(event) => void invite(event)}>
-          <label className="grid gap-1"><span className="text-xs font-bold">メールアドレス</span><input className="min-h-11 rounded border px-3" type="email" required maxLength={254} value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} /></label>
-          <label className="grid gap-1"><span className="text-xs font-bold">Role</span><select className="min-h-11 rounded border px-3" value={inviteRole} onChange={(event) => setInviteRole(event.target.value as InviteRole)}><option value="editor">Editor</option><option value="viewer">Viewer</option></select></label>
-          <button className="min-h-11 self-end rounded bg-emerald-800 px-4 text-sm font-bold text-white disabled:opacity-60" type="submit" disabled={inviting}>{inviting ? "登録中…" : "招待する"}</button>
+      <section className={styles.inviteSection}>
+        <div className={styles.sectionHeading}><h2>システム利用者を招待</h2><span>招待先のGoogleアカウントでログインすると自動参加します。</span></div>
+        <form className={styles.inviteForm} onSubmit={(event) => void invite(event)}>
+          <label><span>メールアドレス</span><input type="email" required maxLength={254} value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} /></label>
+          <label><span>役割</span><select value={inviteRole} onChange={(event) => setInviteRole(event.target.value as InviteRole)}><option value="editor">Editor</option><option value="viewer">Viewer</option></select></label>
+          <button type="submit" disabled={inviting}>{inviting ? "登録中…" : "招待する"}</button>
         </form>
       </section>
 
-      <section className="space-y-3">
-        <h2 className="font-bold">招待中</h2>
-        {pendingInvites.length === 0 ? <p className="rounded border bg-white p-4 text-sm text-gray-500">招待中のメンバーはいません。</p> : <ul className="space-y-2">{pendingInvites.map((inviteItem) => <li className="flex flex-wrap items-center gap-3 rounded-lg border bg-white p-4" key={inviteItem.id}>
-          <div className="min-w-0 flex-1"><strong className="block truncate">{inviteItem.email}</strong><span className="text-xs text-gray-500">{roleLabels[inviteItem.role]}・招待中</span><span className={`mt-1 block text-xs font-bold ${inviteItem.emailStatus === "failed" ? "text-red-700" : "text-gray-500"}`}>{inviteItem.emailStatus === "sent" ? "メール送信済み" : inviteItem.emailStatus === "failed" ? "メール送信失敗" : "メール未送信"}</span></div>
-          <button className="min-h-10 rounded border border-emerald-700 px-3 text-sm font-bold text-emerald-800 disabled:opacity-60" disabled={Boolean(sendingInviteId)} onClick={() => void resend(inviteItem)}>{sendingInviteId === inviteItem.id ? "送信中…" : "招待メールを再送"}</button>
-          <button className="min-h-10 rounded border border-red-300 px-3 text-sm font-bold text-red-700" onClick={() => void revoke(inviteItem)}>招待を取り消す</button>
+      <section className={styles.section}>
+        <div className={styles.sectionHeading}><h2>招待中</h2></div>
+        {pendingInvites.length === 0 ? <p className={styles.state}>招待中の利用者はいません。</p> : <ul className={styles.inviteList}>{pendingInvites.map((inviteItem) => <li key={inviteItem.id}>
+          <div><strong>{inviteItem.email}</strong><span>{roleLabels[inviteItem.role]}・招待中</span><small data-failed={inviteItem.emailStatus === "failed" || undefined}>{inviteItem.emailStatus === "sent" ? "メール送信済み" : inviteItem.emailStatus === "failed" ? "メール送信失敗" : "メール未送信"}</small></div>
+          <div className={styles.inviteActions}><button disabled={Boolean(sendingInviteId)} onClick={() => void resend(inviteItem)}>{sendingInviteId === inviteItem.id ? "送信中…" : "再送"}</button><button data-danger onClick={() => void revoke(inviteItem)}>招待取消</button></div>
         </li>)}</ul>}
       </section>
     </> : null}

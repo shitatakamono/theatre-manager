@@ -1,5 +1,6 @@
 .page {
   min-height: 100vh;
+  overflow-x: clip;
   scroll-behavior: smooth;
   background: #f8faf9;
   color: #18201d;
@@ -58,7 +59,16 @@
 .sectionNav a:last-child { border-right: 0; }
 .sectionNav a:hover { color: #176f55; text-decoration: underline; }
 
-.dashboard { display: block; }
+.dashboard { display: flex; flex-direction: column; }
+.card#basic { order: 1; }
+.card#venue { order: 2; }
+.card#tickets { order: 3; }
+.card#cast { order: 4; }
+.card#staff { order: 5; }
+.card#credits { order: 6; }
+.card#schedule { order: 7; }
+.card#access { order: 8; }
+.card#contact { order: 9; }
 .card { scroll-margin-top: 42px; border-bottom: 1px solid #d8dfdc; padding: 22px 0 24px; font-size: 13px; }
 .cardHeader { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
 .cardHeader h2 { font-size: 17px; font-weight: 800; letter-spacing: -.01em; }

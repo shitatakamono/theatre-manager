@@ -1,11 +1,13 @@
 .page {
   min-height: 100vh;
+  overflow-x: clip;
   background: #f4f6f5;
   color: #17201d;
   padding: 28px 40px 48px;
 }
 
 .header,
+.filters,
 .list,
 .state {
   width: min(920px, 100%);
@@ -46,6 +48,12 @@
   font-size: 12px;
 }
 
+.filters { display: flex; align-items: end; gap: 10px; border-bottom: 1px solid #dbe2df; padding: 14px 0; }
+.filters label { display: grid; gap: 4px; }
+.filters label span { color: #697872; font-size: 9px; font-weight: 800; }
+.filters input, .filters select { min-height: 34px; border: 1px solid #cbd6d1; border-radius: 6px; background: #fff; padding: 6px 9px; color: #283732; font-size: 11px; }
+.filters button { min-height: 34px; color: #376354; padding: 6px 8px; font-size: 10px; font-weight: 800; text-decoration: underline; text-underline-offset: 2px; }
+
 .list {
   list-style: none;
 }
@@ -71,9 +79,7 @@
   gap: 10px;
 }
 
-.summary strong {
-  font-size: 14px;
-}
+.summary strong { min-width: 0; font-size: 13px; overflow-wrap: anywhere; }
 
 .summary span {
   border-radius: 999px;
@@ -111,6 +117,9 @@
   .page { padding: 20px 16px 36px; }
   .header { align-items: start; }
   .header a { margin-bottom: 14px; }
+  .filters { align-items: stretch; flex-direction: column; }
+  .filters label, .filters input, .filters select { width: 100%; }
+  .filters button { align-self: start; }
   .item { grid-template-columns: 1fr; gap: 5px; padding-block: 14px; }
   .summary { align-items: flex-start; flex-wrap: wrap; }
 }

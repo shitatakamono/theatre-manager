@@ -6,6 +6,7 @@ import {
   hasEnteredPerformanceInformation,
   isCurrentProjectNavigationItem,
 } from "../lib/project-navigation.ts";
+import { canEditProject, canManageMembers } from "../lib/auth.ts";
 
 function labels(groups) {
   return groups.flatMap((group) => group.items.map((item) => item.label));
@@ -28,12 +29,19 @@ describe("project navigation", () => {
     const viewer = labels(buildProjectNavigation("p", "viewer"));
     strictEqual(owner.includes("システム利用者"), true);
     strictEqual(owner.includes("全体出欠"), true);
-    strictEqual(editor.includes("システム利用者"), false);
+    strictEqual(editor.includes("システム利用者"), true);
     strictEqual(editor.includes("全体出欠"), true);
     strictEqual(editor.includes("参加者管理（補助）"), true);
     strictEqual(viewer.includes("全体出欠"), true);
+    strictEqual(viewer.includes("システム利用者"), true);
     strictEqual(viewer.includes("参加者管理（補助）"), false);
     strictEqual(viewer.includes("更新履歴"), true);
+    strictEqual(canManageMembers("owner"), true);
+    strictEqual(canManageMembers("editor"), false);
+    strictEqual(canManageMembers("viewer"), false);
+    strictEqual(canEditProject("owner"), true);
+    strictEqual(canEditProject("editor"), true);
+    strictEqual(canEditProject("viewer"), false);
   });
 
   it("keeps attendance management readable for viewers and editable only for owner and editor", () => {

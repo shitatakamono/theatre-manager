@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
 import { getProjectActivityLogs } from "@/lib/firestore";
 import type { ActivityLog } from "@/lib/activity";
+import { filterActivityLogs, getActivityCategories } from "@/lib/management-view";
 import styles from "./activity.module.css";
 
 type ActivityPageProps = {
@@ -16,6 +17,7 @@ function formatCreatedAt(value: unknown): string {
   if (typeof toDate !== "function") return "日時未確定";
   const date = toDate.call(value) as Date;
   return new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -28,6 +30,8 @@ export default function ActivityPage({ params }: ActivityPageProps) {
   const { projectId } = use(params);
   const [logs, setLogs] = useState<ActivityLog[]>();
   const [error, setError] = useState("");
+  const [category, setCategory] = useState("");
+  const [date, setDate] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -41,6 +45,9 @@ export default function ActivityPage({ params }: ActivityPageProps) {
     return () => { active = false; };
   }, [projectId]);
 
+  const categories = useMemo(() => getActivityCategories(logs ?? []), [logs]);
+  const visibleLogs = useMemo(() => filterActivityLogs(logs ?? [], category, date), [category, date, logs]);
+
   return (
     <main className={styles.page}>
       <header className={styles.header}>
@@ -52,21 +59,28 @@ export default function ActivityPage({ params }: ActivityPageProps) {
         <span>最新100件</span>
       </header>
 
+      <div className={styles.filters} aria-label="更新履歴の絞り込み">
+        <label><span>日付</span><input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
+        <label><span>カテゴリ</span><select value={category} onChange={(event) => setCategory(event.target.value)}><option value="">すべて</option>{categories.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
+        {(date || category) && <button type="button" onClick={() => { setDate(""); setCategory(""); }}>絞り込みを解除</button>}
+      </div>
+
       {logs === undefined ? <p className={styles.state}>読み込み中…</p> : null}
       {error ? <p className={`${styles.state} ${styles.error}`} role="alert">更新履歴を取得できませんでした。{error}</p> : null}
       {logs?.length === 0 && !error ? <p className={styles.state}>更新履歴はまだありません。</p> : null}
+      {logs && logs.length > 0 && visibleLogs.length === 0 ? <p className={styles.state}>条件に一致する更新履歴はありません。</p> : null}
 
-      {logs && logs.length > 0 ? (
+      {visibleLogs.length > 0 ? (
         <ol className={styles.list}>
-          {logs.map((log) => (
+          {visibleLogs.map((log) => (
             <li className={styles.item} key={log.id}>
               <time>{formatCreatedAt(log.createdAt)}</time>
               <div className={styles.content}>
                 <div className={styles.summary}>
-                  <strong>{log.actorName}</strong>
                   <span>{log.sectionLabel}</span>
+                  <strong>{log.changedFields.join("、") || "変更内容の記録なし"}</strong>
                 </div>
-                <p>{log.changedFields.join("、")}</p>
+                <p>{log.actorName}が更新</p>
               </div>
             </li>
           ))}
