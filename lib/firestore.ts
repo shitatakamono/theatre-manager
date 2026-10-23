@@ -109,6 +109,13 @@ export type Task = {
   category_parent: string;
   category_child: string;
   done: boolean;
+  status?: string;
+  dueDate?: string;
+  deadline?: string;
+  assigneeUid?: string;
+  assigneeName?: string;
+  assignee?: string;
+  responsible?: string;
 };
 
 export type Category = {

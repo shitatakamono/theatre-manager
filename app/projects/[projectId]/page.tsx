@@ -2,7 +2,8 @@
 
 import { use, useEffect, useState, type CSSProperties } from "react";
 import Link from "next/link";
-import { getProjectActivityLogs, getProjectPerformanceData, type ProjectPerformanceRecord } from "@/lib/firestore";
+import { useRouter } from "next/navigation";
+import { getProjectActivityLogs, getProjectPerformanceData, getTasks, toggleTask, type ProjectPerformanceRecord, type Task } from "@/lib/firestore";
 import { getProjectAttendanceRecords, type AttendanceRecord } from "@/lib/attendance";
 import { getProjectParticipants, type Participant } from "@/lib/participants";
 import { buildDashboardAttendanceSummary } from "@/lib/project-dashboard";
@@ -10,17 +11,11 @@ import { hasEnteredPerformanceInformation } from "@/lib/project-navigation";
 import { getProjectRehearsals, timestampToTokyoInput, type Rehearsal } from "@/lib/rehearsals";
 import type { ActivityLog } from "@/lib/activity";
 import { useAuth } from "@/app/AuthProvider";
-import {
-  getAccountingProgress,
-  getFlyerProgress,
-  getReceptionProgress,
-  getTicketProgress,
-  getVenueProgress,
-  getWebProgress,
-  type SectionProgress,
-} from "@/lib/production-progress";
 import styles from "./project-roadmap.module.css";
 import { useProjectAccess } from "./ProjectAccess";
+import { TaskDetailDrawer } from "./TaskDetailDrawer";
+import { buildProductionTaskViews, canToggleProductionTask, type ProductionTaskView } from "@/lib/production-task-view";
+import { aggregateTaskWarning, getTaskAssignee, getTaskDeadlineWarning, getTaskDueDate, getTaskProgressStatus, getTaskSection, getTokyoDateString, sortTasksByDeadline, TASK_STATUS_LABELS, TASK_WARNING_LABELS, type ProductionSectionSlug } from "@/lib/task-view";
 
 type ProjectPageProps = {
   params: Promise<{ projectId: string }>;
@@ -31,13 +26,12 @@ type DashboardData = {
   participants: Participant[];
   attendance: AttendanceRecord[];
   activity: ActivityLog[];
+  tasks: Task[];
 };
-
-type ProductionStatus = "not-started" | "in-progress" | "complete";
 
 type RoadmapRange = {
   kind: "range";
-  slug: string;
+  slug: ProductionSectionSlug;
   label: string;
   start: TimelineOffset;
   end: TimelineOffset;
@@ -45,7 +39,7 @@ type RoadmapRange = {
 
 type RoadmapMilestone = {
   kind: "milestone";
-  slug: string;
+  slug: ProductionSectionSlug;
   label: string;
   offset: TimelineOffset;
 };
@@ -78,12 +72,6 @@ const roadmapSections: RoadmapSection[] = [
   { kind: "range", slug: "reception", label: "当日受付", start: { months: -1 }, end: {} },
   { kind: "range", slug: "accounting", label: "会計", start: { months: -6 }, end: { weeks: 2 } },
 ];
-
-const statusLabels: Record<ProductionStatus, string> = {
-  "not-started": "未着手",
-  "in-progress": "進行中",
-  complete: "完了",
-};
 
 const DAY_IN_MILLISECONDS = 24 * 60 * 60 * 1000;
 
@@ -193,10 +181,14 @@ function formatNextRehearsal(rehearsal: Rehearsal | undefined): { title: string;
 
 export default function ProjectPage({ params }: ProjectPageProps) {
   const { projectId } = use(params);
+  const router = useRouter();
   const { profile } = useAuth();
   const { canEdit, role } = useProjectAccess();
   const [project, setProject] = useState<ProjectPerformanceRecord | null>();
   const [dashboard, setDashboard] = useState<DashboardData>();
+  const [expandedSections, setExpandedSections] = useState<ProductionSectionSlug[]>([]);
+  const [selectedTask, setSelectedTask] = useState<ProductionTaskView | null>(null);
+  const [savingTask, setSavingTask] = useState(false);
 
   useEffect(() => {
     void getProjectPerformanceData(projectId).then(setProject);
@@ -209,10 +201,11 @@ export default function ProjectPage({ params }: ProjectPageProps) {
       getProjectParticipants(projectId),
       getProjectAttendanceRecords(projectId),
       getProjectActivityLogs(projectId),
-    ]).then(([rehearsals, participants, attendance, activity]) => {
-      if (active) setDashboard({ upcomingRehearsals: rehearsals.upcoming, participants, attendance, activity });
+      getTasks(projectId),
+    ]).then(([rehearsals, participants, attendance, activity, tasks]) => {
+      if (active) setDashboard({ upcomingRehearsals: rehearsals.upcoming, participants, attendance, activity, tasks });
     }).catch(() => {
-      if (active) setDashboard({ upcomingRehearsals: [], participants: [], attendance: [], activity: [] });
+      if (active) setDashboard({ upcomingRehearsals: [], participants: [], attendance: [], activity: [], tasks: [] });
     });
     return () => { active = false; };
   }, [projectId]);
@@ -269,7 +262,6 @@ export default function ProjectPage({ params }: ProjectPageProps) {
     !venue?.name ? "会場が未設定です" : null,
     !basic?.durationMinutes ? "上演時間が未設定です" : null,
   ].filter((notice): notice is string => notice !== null);
-  const shows = project.data.performances ?? [];
   const hasPerformanceInformation = hasEnteredPerformanceInformation({
     organizer: basic?.organizer,
     performanceName: basic?.performanceName,
@@ -281,15 +273,34 @@ export default function ProjectPage({ params }: ProjectPageProps) {
   const attendanceSummary = buildDashboardAttendanceSummary(projectId, role, profile?.uid ?? "", dashboard?.participants ?? [], upcomingDates, dashboard?.attendance ?? []);
   const nextRehearsal = formatNextRehearsal(dashboard?.upcomingRehearsals[0]);
   const latestActivity = dashboard?.activity[0];
-  const production = project.production;
-  const sectionProgress: Record<string, SectionProgress> = {
-    venue: getVenueProgress(production?.venue),
-    flyer: getFlyerProgress(production?.flyer),
-    web: getWebProgress(production?.web, today, lastDate),
-    tickets: getTicketProgress(production?.tickets),
-    reception: getReceptionProgress(production?.reception, shows, today),
-    accounting: getAccountingProgress(production?.accounting, today, firstDate, lastDate),
-  };
+  const taskToday = getTokyoDateString();
+  const productionTasks = buildProductionTaskViews(project, dashboard?.tasks ?? []);
+  const sectionTasks = Object.fromEntries(roadmapSections.map((section) => [
+    section.slug,
+    sortTasksByDeadline(productionTasks.filter((task) => getTaskSection(task) === section.slug)),
+  ])) as Record<ProductionSectionSlug, ProductionTaskView[]>;
+  const warningCounts = productionTasks.reduce((counts, task) => {
+    const warning = getTaskDeadlineWarning(task, taskToday);
+    if (warning !== "none") counts[warning] += 1;
+    return counts;
+  }, { within14Days: 0, within7Days: 0, overdue: 0 });
+
+  async function handleTaskToggle(task: ProductionTaskView) {
+    if (!canToggleProductionTask(task, canEdit) || !task.customTaskId) return;
+    setSavingTask(true);
+    try {
+      const done = task.status !== "complete";
+      await toggleTask(projectId, task.customTaskId, done);
+      const next = { ...task, status: done ? "complete" as const : "not-started" as const };
+      setDashboard((current) => current ? { ...current, tasks: current.tasks.map((item) => item.id === task.customTaskId ? { ...item, done } : item) } : current);
+      setSelectedTask(next);
+    } finally { setSavingTask(false); }
+  }
+
+  function handleTaskOpen(task: ProductionTaskView) {
+    if (task.source === "customTask") setSelectedTask(task);
+    else router.push(task.editTarget);
+  }
 
   return (
     <main className={styles.page}>
@@ -345,8 +356,14 @@ export default function ProjectPage({ params }: ProjectPageProps) {
             <p>PRODUCTION ROADMAP</p>
             <h2 id="roadmap-title">制作ロードマップ</h2>
           </div>
-          <span>各項目を選択すると詳細画面へ移動します</span>
+          <Link href={`/projects/${projectId}/tasks`}>タスク一覧を開く</Link>
         </div>
+
+        {(warningCounts.overdue > 0 || warningCounts.within7Days > 0 || warningCounts.within14Days > 0) && <p className={styles.warningSummary}>
+          {warningCounts.overdue > 0 && <span data-warning="overdue">期限超過 {warningCounts.overdue}件</span>}
+          {warningCounts.within7Days > 0 && <span data-warning="within7Days">7日以内 {warningCounts.within7Days}件</span>}
+          {warningCounts.within14Days > 0 && <span data-warning="within14Days">14日以内 {warningCounts.within14Days}件</span>}
+        </p>}
 
         <div className={styles.chartViewport}>
           <div className={styles.chart} style={timelineStyle}>
@@ -372,46 +389,48 @@ export default function ProjectPage({ params }: ProjectPageProps) {
             </div>
 
             <div className={styles.rows}>
-              {roadmapSections.map((section) => (
-                <Link
-                  className={styles.roadmapRow}
-                  href={`/projects/${projectId}/production/${section.slug}`}
-                  key={section.slug}
-                >
-                  <div className={styles.sectionLabel}>
-                    <strong>{section.label}</strong>
-                    <div className={styles.progressLabel}>
-                      <b>準備進捗 {sectionProgress[section.slug].percentage}%</b>
-                      <span data-status={getProgressStatus(sectionProgress[section.slug])}>
-                        {statusLabels[getProgressStatus(sectionProgress[section.slug])]}
-                      </span>
+              {roadmapSections.map((section) => {
+                const tasks = sectionTasks[section.slug];
+                const expanded = expandedSections.includes(section.slug);
+                const sectionWarning = aggregateTaskWarning(tasks, taskToday);
+                return <div className={styles.roadmapGroup} data-expanded={expanded} key={section.slug}>
+                  <div className={styles.roadmapRow}>
+                    <div className={styles.sectionLabel}>
+                      <button type="button" aria-expanded={expanded} onClick={() => setExpandedSections((current) => current.includes(section.slug) ? current.filter((slug) => slug !== section.slug) : [...current, section.slug])}>
+                        <span aria-hidden="true">{expanded ? "▾" : "▸"}</span><strong>{section.label}</strong>
+                      </button>
+                      <div className={styles.sectionMeta}>
+                        {tasks.length > 0 && <small>{tasks.length}件</small>}
+                        {sectionWarning !== "none" && <em data-warning={sectionWarning}>{TASK_WARNING_LABELS[sectionWarning]}</em>}
+                      </div>
                     </div>
-                  </div>
-                  <div className={styles.timeline}>
-                    <span
-                      className={section.kind === "range" ? styles.bar : styles.milestone}
-                      style={firstDate ? (section.kind === "range" ? ({
+                    <div className={styles.timeline}>
+                      <span className={section.kind === "range" ? styles.bar : styles.milestone} style={firstDate ? (section.kind === "range" ? ({
                         "--bar-start": `${getTimelinePosition(firstDate, getOffsetDate(firstDate, section.start)) ?? 0}%`,
                         "--bar-end": `${getTimelinePosition(firstDate, getOffsetDate(firstDate, section.end)) ?? 100}%`,
-                      } as CSSProperties) : ({
-                        "--milestone-position": `${getTimelinePosition(firstDate, getOffsetDate(firstDate, section.offset)) ?? 0}%`,
-                      } as CSSProperties)) : undefined}
-                    />
-                    {marks.map((mark) => (
-                      <span
-                        className={styles.gridLine}
-                        key={`${mark.offset.months ?? "w"}-${mark.offset.weeks ?? 0}`}
-                        style={{ "--mark-position": `${mark.position}%` } as CSSProperties}
-                      />
-                    ))}
-                    {todayPosition !== null && <span className={styles.todayLine} />}
+                      } as CSSProperties) : ({ "--milestone-position": `${getTimelinePosition(firstDate, getOffsetDate(firstDate, section.offset)) ?? 0}%` } as CSSProperties)) : undefined} />
+                      {marks.map((mark) => <span className={styles.gridLine} key={`${mark.offset.months ?? "w"}-${mark.offset.weeks ?? 0}`} style={{ "--mark-position": `${mark.position}%` } as CSSProperties} />)}
+                      {todayPosition !== null && <span className={styles.todayLine} />}
+                    </div>
                   </div>
-                </Link>
-              ))}
+                  {expanded && <div className={styles.taskRows}>{tasks.length === 0 ? <p>このセクションのタスクはありません。</p> : tasks.map((task) => {
+                    const warning = getTaskDeadlineWarning(task, taskToday);
+                    const dueDate = getTaskDueDate(task);
+                    const status = getTaskProgressStatus(task);
+                    const duePosition = firstDate && dueDate ? getTimelinePosition(firstDate, parseDate(dueDate) ?? firstDate) : null;
+                    return <button type="button" className={styles.taskRow} key={task.id} onClick={() => handleTaskOpen(task)}>
+                      <span className={styles.taskLabel}><strong>{task.title || "名称未設定のタスク"}</strong><small>{dueDate || "期限未設定"}・{getTaskAssignee(task)}・{TASK_STATUS_LABELS[status]}</small>{warning !== "none" && <em data-warning={warning}>{TASK_WARNING_LABELS[warning]}</em>}</span>
+                      <span className={styles.taskTimeline}>{duePosition !== null && <i style={{ "--task-position": `${duePosition}%` } as CSSProperties} />}{marks.map((mark) => <span className={styles.gridLine} key={`${task.id}-${mark.position}`} style={{ "--mark-position": `${mark.position}%` } as CSSProperties} />)}{todayPosition !== null && <span className={styles.todayLine} />}</span>
+                    </button>;
+                  })}</div>}
+                </div>;
+              })}
             </div>
           </div>
         </div>
       </section>
+
+      <TaskDetailDrawer task={selectedTask} canEdit={canEdit} saving={savingTask} onClose={() => setSelectedTask(null)} onToggleComplete={handleTaskToggle} />
 
       <section className={styles.notices} aria-labelledby="notices-title">
         <div className={styles.noticeHeading}>
@@ -430,10 +449,4 @@ export default function ProjectPage({ params }: ProjectPageProps) {
       </section>
     </main>
   );
-}
-
-function getProgressStatus(progress: SectionProgress): ProductionStatus {
-  if (progress.percentage === 100 && progress.total > 0) return "complete";
-  if (progress.completed > 0) return "in-progress";
-  return "not-started";
 }

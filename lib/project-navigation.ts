@@ -28,7 +28,7 @@ export function buildProjectNavigation(projectId: string, role?: ProjectRole): P
     ] },
     { label: "制作", items: [
       { label: "制作ロードマップ", href: `${base}#production-roadmap` },
-      { label: "タスク一覧（開発中）", href: `${base}/tasks` },
+      { label: "タスク一覧", href: `${base}/tasks` },
     ] },
     { label: "管理", items: [
       ...(canManageMembers ? [{ label: "システム利用者", href: `${base}/members` }] : []),
