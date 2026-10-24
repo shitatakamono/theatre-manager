@@ -66,6 +66,13 @@ import {
   type InviteRole,
   type ProjectMemberInvite,
 } from "./member-invites";
+import {
+  buildProductionTaskTransitionEvents,
+  createCustomTaskWithEvent,
+  toggleCustomTaskWithEvent,
+  withProductionBlock,
+  withVenueSection,
+} from "./task-events";
 
 /* ================================
    公演（projects）
@@ -298,6 +305,13 @@ export async function updateProjectVenueSection<
     },
     actor: context.actor,
     activity: getVenueActivityDefinition(section),
+    buildTaskEvents: (project) => buildProductionTaskTransitionEvents({
+      projectId,
+      beforeProject: project,
+      afterProject: withVenueSection(project, section, cleanValue),
+      section: "venue",
+      userUid: context.actor.uid,
+    }),
   });
 }
 
@@ -330,6 +344,13 @@ export async function updateProjectProductionBlock<
     },
     actor: context.actor,
     activity: getProductionActivityDefinition(section, block),
+    buildTaskEvents: (project) => buildProductionTaskTransitionEvents({
+      projectId,
+      beforeProject: project,
+      afterProject: withProductionBlock(project, section, block, cleanValue),
+      section,
+      userUid: context.actor.uid,
+    }),
   });
 }
 
@@ -561,30 +582,20 @@ export async function addTask(
     stage?: string;
     category_parent?: string;
     category_child?: string;
-  }
+  },
+  userUid: string
 ) {
-  const tasksRef = collection(db, "projects", projectId, "tasks");
-
-  const docRef = await addDoc(tasksRef, {
-    title: data.title,
-    stage: data.stage ?? "",
-    category_parent: data.category_parent ?? "",
-    category_child: data.category_child ?? "",
-    done: false,
-    createdAt: Timestamp.now(),
-  });
-
-  return docRef.id;
+  return createCustomTaskWithEvent(db, projectId, data, userUid);
 }
 
 // タスク完了/未完了切替
 export async function toggleTask(
   projectId: string,
   taskId: string,
-  done: boolean
+  done: boolean,
+  userUid: string
 ) {
-  const ref = doc(db, "projects", projectId, "tasks", taskId);
-  await updateDoc(ref, { done });
+  return toggleCustomTaskWithEvent(db, projectId, taskId, done, userUid);
 }
 
 /* ================================

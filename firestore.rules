@@ -52,6 +52,55 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time;
     }
 
+    function validTaskEventStatus(value) {
+      return value in ['not_started', 'in_progress', 'completed', 'on_hold'];
+    }
+
+    function validTaskEvent() {
+      let eventType = request.resource.data.eventType;
+      let beforeStatus = request.resource.data.beforeStatus;
+      let afterStatus = request.resource.data.afterStatus;
+      let source = request.resource.data.taskSource;
+      return request.resource.data.keys().hasOnly([
+          'taskId', 'taskSource', 'section', 'eventType', 'beforeStatus',
+          'afterStatus', 'occurredAt', 'userUid', 'taskTitle',
+          'performanceDateSnapshot'
+        ])
+        && request.resource.data.keys().hasAll([
+          'taskId', 'taskSource', 'section', 'eventType', 'beforeStatus',
+          'afterStatus', 'occurredAt', 'userUid', 'taskTitle',
+          'performanceDateSnapshot'
+        ])
+        && request.resource.data.taskId is string
+        && request.resource.data.taskId.size() > 0
+        && request.resource.data.taskId.size() <= 500
+        && source in ['standard', 'accountingCustom', 'customTask']
+        && ((source == 'standard' && request.resource.data.taskId.matches('^standard:.*'))
+          || (source == 'accountingCustom' && request.resource.data.taskId.matches('^accounting-custom:.*'))
+          || (source == 'customTask' && request.resource.data.taskId.matches('^custom:.*')))
+        && (request.resource.data.section == null
+          || request.resource.data.section in ['venue', 'flyer', 'web', 'tickets', 'reception', 'accounting'])
+        && eventType in ['taskCreated', 'statusChanged', 'taskCompleted', 'taskReopened']
+        && validTaskEventStatus(afterStatus)
+        && ((eventType == 'taskCreated' && source == 'customTask'
+            && beforeStatus == null && afterStatus == 'not_started')
+          || (eventType == 'taskCompleted' && validTaskEventStatus(beforeStatus)
+            && beforeStatus != 'completed' && afterStatus == 'completed')
+          || (eventType == 'taskReopened' && beforeStatus == 'completed'
+            && afterStatus != 'completed')
+          || (eventType == 'statusChanged' && validTaskEventStatus(beforeStatus)
+            && beforeStatus != afterStatus
+            && beforeStatus != 'completed' && afterStatus != 'completed'))
+        && request.resource.data.occurredAt == request.time
+        && request.resource.data.userUid == request.auth.uid
+        && request.resource.data.taskTitle is string
+        && request.resource.data.taskTitle.size() > 0
+        && request.resource.data.taskTitle.size() <= 500
+        && (request.resource.data.performanceDateSnapshot == null
+          || (request.resource.data.performanceDateSnapshot is string
+            && request.resource.data.performanceDateSnapshot.matches('^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$')));
+    }
+
     function validFeedbackStatus(value) {
       return value in ['unreviewed', 'planned', 'resolved', 'wontfix'];
     }
@@ -584,6 +633,12 @@ service cloud.firestore {
       match /activityLogs/{logId} {
         allow read: if isMember(projectId);
         allow create: if canEdit(projectId) && validActivityLog();
+        allow update, delete: if false;
+      }
+
+      match /taskEvents/{eventId} {
+        allow read: if isMember(projectId);
+        allow create: if canEdit(projectId) && validTaskEvent();
         allow update, delete: if false;
       }
 

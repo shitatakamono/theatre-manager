@@ -149,6 +149,26 @@ function activityData(actorUid, action = "update") {
   };
 }
 
+function taskEventRef(db, id = "task-event-a", targetProjectId = projectId) {
+  return doc(db, "projects", targetProjectId, "taskEvents", id);
+}
+
+function taskEventData(userUid, overrides = {}) {
+  return {
+    taskId: "standard:flyer:information:proofread",
+    taskSource: "standard",
+    section: "flyer",
+    eventType: "taskCompleted",
+    beforeStatus: "not_started",
+    afterStatus: "completed",
+    occurredAt: serverTimestamp(),
+    userUid,
+    taskTitle: "校正",
+    performanceDateSnapshot: "2026-11-15",
+    ...overrides,
+  };
+}
+
 function inviteRef(db, email = invitedEmail, targetProjectId = projectId) {
   return doc(db, "projects", targetProjectId, "memberInvites", email);
 }
@@ -934,6 +954,51 @@ describe("activity logs", () => {
 
   it("denies actorUid impersonation", async () => {
     await assertFails(setDoc(activityRef(firestoreFor(editorUid)), activityData(ownerUid)));
+  });
+});
+
+describe("task events", () => {
+  it("allows owners and editors to create valid events", async () => {
+    await assertSucceeds(setDoc(taskEventRef(firestoreFor(ownerUid), "owner-event"), taskEventData(ownerUid)));
+    await assertSucceeds(setDoc(taskEventRef(firestoreFor(editorUid), "editor-event"), taskEventData(editorUid, {
+      taskId: "custom:task-a",
+      taskSource: "customTask",
+      section: null,
+      eventType: "taskCreated",
+      beforeStatus: null,
+      afterStatus: "not_started",
+    })));
+  });
+
+  it("allows members to read and denies nonmembers", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(taskEventRef(context.firestore()), { ...taskEventData(ownerUid), occurredAt: new Date() });
+    });
+    await assertSucceeds(getDocs(collection(firestoreFor(ownerUid), "projects", projectId, "taskEvents")));
+    await assertSucceeds(getDocs(collection(firestoreFor(viewerUid), "projects", projectId, "taskEvents")));
+    await assertFails(getDoc(taskEventRef(firestoreFor(outsiderUid))));
+  });
+
+  it("denies viewers, nonmembers, and user impersonation", async () => {
+    await assertFails(setDoc(taskEventRef(firestoreFor(viewerUid), "viewer-event"), taskEventData(viewerUid)));
+    await assertFails(setDoc(taskEventRef(firestoreFor(outsiderUid), "outsider-event"), taskEventData(outsiderUid)));
+    await assertFails(setDoc(taskEventRef(firestoreFor(editorUid), "forged-event"), taskEventData(ownerUid)));
+  });
+
+  it("enforces event semantics and source IDs", async () => {
+    const db = firestoreFor(ownerUid);
+    await assertFails(setDoc(taskEventRef(db, "duplicate-event"), taskEventData(ownerUid, { eventType: "statusChanged" })));
+    await assertFails(setDoc(taskEventRef(db, "bad-source"), taskEventData(ownerUid, { taskSource: "customTask" })));
+    await assertFails(setDoc(taskEventRef(db, "client-time"), taskEventData(ownerUid, { occurredAt: new Date() })));
+  });
+
+  it("keeps task events append-only", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(taskEventRef(context.firestore()), { ...taskEventData(ownerUid), occurredAt: new Date() });
+    });
+    const ref = taskEventRef(firestoreFor(ownerUid));
+    await assertFails(updateDoc(ref, { taskTitle: "改ざん" }));
+    await assertFails(deleteDoc(ref));
   });
 });
 

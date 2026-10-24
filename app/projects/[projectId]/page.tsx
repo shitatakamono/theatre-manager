@@ -183,7 +183,7 @@ export default function ProjectPage({ params }: ProjectPageProps) {
   const { projectId } = use(params);
   const router = useRouter();
   const { profile } = useAuth();
-  const { canEdit, role } = useProjectAccess();
+  const { canEdit, role, actor } = useProjectAccess();
   const [project, setProject] = useState<ProjectPerformanceRecord | null>();
   const [dashboard, setDashboard] = useState<DashboardData>();
   const [expandedSections, setExpandedSections] = useState<ProductionSectionSlug[]>([]);
@@ -290,7 +290,7 @@ export default function ProjectPage({ params }: ProjectPageProps) {
     setSavingTask(true);
     try {
       const done = task.status !== "complete";
-      await toggleTask(projectId, task.customTaskId, done);
+      await toggleTask(projectId, task.customTaskId, done, actor.uid);
       const next = { ...task, status: done ? "complete" as const : "not-started" as const };
       setDashboard((current) => current ? { ...current, tasks: current.tasks.map((item) => item.id === task.customTaskId ? { ...item, done } : item) } : current);
       setSelectedTask(next);

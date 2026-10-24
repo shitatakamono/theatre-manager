@@ -12,6 +12,7 @@ import {
   type ActivityActor,
   type ActivityDefinition,
 } from "./activity.ts";
+import { buildTaskEventPayload, type TaskEventDraft } from "./task-events.ts";
 
 export const REVISION_KEYS = [
   "performanceInfo",
@@ -76,6 +77,7 @@ export type RevisionTransactionInput = {
   readCurrentValue: (project: DocumentData) => unknown;
   actor: ActivityActor;
   activity: ActivityDefinition;
+  buildTaskEvents?: (project: DocumentData) => TaskEventDraft[];
 };
 
 export type RevisionTransactionResult = {
@@ -94,6 +96,7 @@ export async function runProjectRevisionTransaction({
   readCurrentValue,
   actor,
   activity,
+  buildTaskEvents,
 }: RevisionTransactionInput): Promise<RevisionTransactionResult> {
   const projectRef = doc(firestore, "projects", projectId);
   const activityRef = doc(collection(projectRef, "activityLogs"));
@@ -135,6 +138,12 @@ export async function runProjectRevisionTransaction({
       changedFields,
       createdAt: serverTimestamp(),
     });
+    for (const taskEvent of buildTaskEvents?.(project) ?? []) {
+      transaction.set(
+        doc(collection(projectRef, "taskEvents")),
+        buildTaskEventPayload(taskEvent, serverTimestamp())
+      );
+    }
 
     return { changed: true, revision: nextRevision, changedFields };
   });

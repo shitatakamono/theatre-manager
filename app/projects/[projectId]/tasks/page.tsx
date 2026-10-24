@@ -22,7 +22,7 @@ export default function TasksPage({ params }: TasksPageProps) {
   const { projectId } = use(params);
   const router = useRouter();
   const { profile } = useAuth();
-  const { canEdit } = useProjectAccess();
+  const { canEdit, actor } = useProjectAccess();
   const [project, setProject] = useState<ProjectPerformanceRecord | null>(null);
   const [customTasks, setCustomTasks] = useState<Task[]>([]);
   const [filter, setFilter] = useState<TaskListFilter>("all");
@@ -54,7 +54,7 @@ export default function TasksPage({ params }: TasksPageProps) {
     setSaving(true);
     try {
       const done = task.status !== "complete";
-      await toggleTask(projectId, task.customTaskId, done);
+      await toggleTask(projectId, task.customTaskId, done, actor.uid);
       setCustomTasks((current) => current.map((item) => item.id === task.customTaskId ? { ...item, done } : item));
       const next = { ...task, status: done ? "complete" as const : "not-started" as const };
       setSelectedTask(next);
@@ -73,7 +73,7 @@ export default function TasksPage({ params }: TasksPageProps) {
     if (!values) { setError("タスク名を入力してください。"); return; }
     setCreating(true); setError("");
     try {
-      const id = await addTask(projectId, values);
+      const id = await addTask(projectId, values, actor.uid);
       setCustomTasks((current) => [...current, { id, ...values, done: false }]);
       setTaskInput(emptyTaskInput); setShowCreate(false);
     } catch { setError("タスクを追加できませんでした。"); }
