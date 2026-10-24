@@ -21,7 +21,8 @@ import {
 } from "@/lib/attendance-management";
 import { buildFutureRehearsalDays, findSelfParticipant, formatRehearsalDayItem } from "@/lib/attendance-view";
 import { getProjectMembers } from "@/lib/firestore";
-import { getProjectParticipants, SPECIAL_PRACTICE_LABELS, type Participant } from "@/lib/participants";
+import { SPECIAL_PRACTICE_LABELS, type Participant } from "@/lib/participants";
+import { getProjectAttendanceParticipants } from "@/lib/people";
 import { getAttendanceManagementAccess } from "@/lib/project-navigation";
 import { getAllProjectRehearsals, type Rehearsal } from "@/lib/rehearsals";
 import { useProjectAccess } from "../../ProjectAccess";
@@ -75,7 +76,7 @@ function memberName(member: ProjectMember | undefined, uid: string): string {
 
 async function fetchManagementData(projectId: string) {
   const [participants, rehearsals, records, members] = await Promise.all([
-    getProjectParticipants(projectId),
+    getProjectAttendanceParticipants(projectId),
     getAllProjectRehearsals(projectId),
     getProjectAttendanceRecords(projectId),
     getProjectMembers(projectId),

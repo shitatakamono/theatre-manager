@@ -18,9 +18,9 @@ import {
   type AttendanceDraft,
 } from "@/lib/attendance-view";
 import {
-  getProjectParticipants,
   type Participant,
 } from "@/lib/participants";
+import { getProjectAttendanceParticipants } from "@/lib/people";
 import { getAllProjectRehearsals, type Rehearsal } from "@/lib/rehearsals";
 import styles from "./attendance.module.css";
 
@@ -47,7 +47,7 @@ function formatDate(date: string): string {
 
 async function fetchAttendancePageData(projectId: string) {
   const [participants, rehearsals, records] = await Promise.all([
-    getProjectParticipants(projectId),
+    getProjectAttendanceParticipants(projectId),
     getAllProjectRehearsals(projectId),
     getProjectAttendanceRecords(projectId),
   ]);

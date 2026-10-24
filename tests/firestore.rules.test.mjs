@@ -102,6 +102,26 @@ function participantData(uid, overrides = {}) {
   };
 }
 
+function personRef(db, id = "participant-a", targetProjectId = projectId) {
+  return doc(db, "projects", targetProjectId, "people", id);
+}
+
+function personData(uid, overrides = {}) {
+  return {
+    displayName: "人物A",
+    attendanceTarget: true,
+    specialPractice: "none",
+    linkedUserUid: null,
+    publicNote: "公開備考",
+    active: true,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    createdByUid: uid,
+    updatedByUid: uid,
+    ...overrides,
+  };
+}
+
 function attendanceRef(db, date = "2026-11-03", participantId = "participant-a", targetProjectId = projectId) {
   return doc(db, "projects", targetProjectId, "attendanceRecords", `${date}_${participantId}`);
 }
@@ -722,6 +742,106 @@ describe("participants", () => {
       updatedByUid: ownerUid,
     }));
     await assertFails(deleteDoc(participantRef(db)));
+  });
+});
+
+describe("people", () => {
+  it("allows members to read and owners or editors to create and update", async () => {
+    const ownerDb = firestoreFor(ownerUid);
+    const editorDb = firestoreFor(editorUid);
+    await assertSucceeds(setDoc(personRef(ownerDb, "owner-person"), personData(ownerUid)));
+    await assertSucceeds(setDoc(personRef(editorDb, "editor-person"), personData(editorUid, {
+      attendanceTarget: false,
+      specialPractice: "stage_combat",
+    })));
+    await assertSucceeds(updateDoc(personRef(editorDb, "owner-person"), {
+      attendanceTarget: false,
+      publicNote: "更新",
+      updatedAt: serverTimestamp(),
+      updatedByUid: editorUid,
+    }));
+    await assertSucceeds(getDocs(collection(firestoreFor(viewerUid), "projects", projectId, "people")));
+  });
+
+  it("keeps viewers read-only and denies nonmembers", async () => {
+    const ownerDb = firestoreFor(ownerUid);
+    await assertSucceeds(setDoc(personRef(ownerDb), personData(ownerUid)));
+    const viewerDb = firestoreFor(viewerUid);
+    await assertFails(setDoc(personRef(viewerDb, "viewer-person"), personData(viewerUid)));
+    await assertFails(updateDoc(personRef(viewerDb), {
+      active: false,
+      updatedAt: serverTimestamp(),
+      updatedByUid: viewerUid,
+    }));
+    await assertFails(deleteDoc(personRef(viewerDb)));
+    const outsiderDb = firestoreFor(outsiderUid);
+    await assertFails(getDocs(collection(outsiderDb, "projects", projectId, "people")));
+    await assertFails(setDoc(personRef(outsiderDb, "outsider-person"), personData(outsiderUid)));
+  });
+
+  it("validates schema, special practice, attendance target, and linked project members", async () => {
+    const db = firestoreFor(ownerUid);
+    await assertFails(setDoc(personRef(db, "empty-name"), personData(ownerUid, { displayName: "" })));
+    await assertFails(setDoc(personRef(db, "bad-target"), personData(ownerUid, { attendanceTarget: "yes" })));
+    await assertFails(setDoc(personRef(db, "bad-special"), personData(ownerUid, { specialPractice: "acting" })));
+    await assertFails(setDoc(personRef(db, "bad-link"), personData(ownerUid, { linkedUserUid: outsiderUid })));
+    await assertFails(setDoc(personRef(db, "extra"), personData(ownerUid, { privateNote: "不可" })));
+    await assertSucceeds(setDoc(personRef(db, "linked"), personData(ownerUid, { linkedUserUid: editorUid })));
+  });
+
+  it("protects creator metadata and prohibits deletion", async () => {
+    const db = firestoreFor(ownerUid);
+    await assertSucceeds(setDoc(personRef(db), personData(ownerUid)));
+    await assertFails(updateDoc(personRef(db), {
+      createdByUid: editorUid,
+      updatedAt: serverTimestamp(),
+      updatedByUid: ownerUid,
+    }));
+    await assertFails(updateDoc(personRef(db), {
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      updatedByUid: ownerUid,
+    }));
+    await assertFails(deleteDoc(personRef(db)));
+  });
+
+  it("allows an owner to preserve participant metadata during same-ID migration", async () => {
+    const db = firestoreFor(ownerUid);
+    const createdAt = new Date("2026-01-01T00:00:00Z");
+    const updatedAt = new Date("2026-02-01T00:00:00Z");
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(participantRef(context.firestore(), "migration-person"), {
+        ...participantData(editorUid, {
+          displayName: "移行対象",
+          specialPractice: "japanese_dance",
+          linkedUserUid: viewerUid,
+          active: false,
+        }),
+        createdAt,
+        updatedAt,
+        createdByUid: editorUid,
+        updatedByUid: ownerUid,
+      });
+    });
+    await assertSucceeds(setDoc(personRef(db, "migration-person"), {
+      displayName: "移行対象",
+      attendanceTarget: false,
+      specialPractice: "japanese_dance",
+      linkedUserUid: viewerUid,
+      publicNote: "公開備考",
+      active: false,
+      createdAt,
+      updatedAt,
+      createdByUid: editorUid,
+      updatedByUid: ownerUid,
+    }));
+    await assertFails(setDoc(personRef(db, "wrong-migration"), {
+      ...personData(ownerUid),
+      createdAt,
+      updatedAt,
+      createdByUid: editorUid,
+      updatedByUid: ownerUid,
+    }));
   });
 });
 

@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getProjectActivityLogs, getProjectPerformanceData, getTasks, toggleTask, type ProjectPerformanceRecord, type Task } from "@/lib/firestore";
 import { getProjectAttendanceRecords, type AttendanceRecord } from "@/lib/attendance";
-import { getProjectParticipants, type Participant } from "@/lib/participants";
+import type { Participant } from "@/lib/participants";
+import { getProjectAttendanceParticipants } from "@/lib/people";
 import { buildDashboardAttendanceSummary } from "@/lib/project-dashboard";
 import { hasEnteredPerformanceInformation } from "@/lib/project-navigation";
 import { getProjectRehearsals, timestampToTokyoInput, type Rehearsal } from "@/lib/rehearsals";
@@ -198,7 +199,7 @@ export default function ProjectPage({ params }: ProjectPageProps) {
     let active = true;
     void Promise.all([
       getProjectRehearsals(projectId),
-      getProjectParticipants(projectId),
+      getProjectAttendanceParticipants(projectId),
       getProjectAttendanceRecords(projectId),
       getProjectActivityLogs(projectId),
       getTasks(projectId),

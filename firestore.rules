@@ -266,6 +266,74 @@ service cloud.firestore {
         && oldParticipantLinkReleased(projectId);
     }
 
+    function validPersonData() {
+      return request.resource.data.keys().hasOnly([
+          'displayName', 'attendanceTarget', 'specialPractice', 'linkedUserUid',
+          'publicNote', 'active', 'createdAt', 'updatedAt', 'createdByUid', 'updatedByUid'
+        ])
+        && request.resource.data.keys().hasAll([
+          'displayName', 'attendanceTarget', 'specialPractice', 'linkedUserUid',
+          'publicNote', 'active', 'createdAt', 'updatedAt', 'createdByUid', 'updatedByUid'
+        ])
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() > 0
+        && request.resource.data.displayName.size() <= 100
+        && request.resource.data.attendanceTarget is bool
+        && validSpecialPractice(request.resource.data.specialPractice)
+        && (request.resource.data.linkedUserUid == null
+          || (request.resource.data.linkedUserUid is string
+            && request.resource.data.linkedUserUid.size() > 0
+            && request.resource.data.linkedUserUid.size() <= 128))
+        && request.resource.data.publicNote is string
+        && request.resource.data.publicNote.size() <= 2000
+        && request.resource.data.active is bool
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt is timestamp
+        && request.resource.data.createdByUid is string
+        && request.resource.data.updatedByUid is string;
+    }
+
+    function personLinkedUserIsMember(projectId) {
+      return request.resource.data.linkedUserUid == null
+        || exists(projectMemberPath(projectId, request.resource.data.linkedUserUid));
+    }
+
+    function validPersonCreate(projectId) {
+      return validPersonData()
+        && personLinkedUserIsMember(projectId)
+        && request.resource.data.createdByUid == request.auth.uid
+        && request.resource.data.updatedByUid == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function validPersonMigrationCreate(projectId, personId) {
+      let participant = get(participantPath(projectId, personId)).data;
+      return isOwner(projectId)
+        && exists(participantPath(projectId, personId))
+        && validPersonData()
+        && personLinkedUserIsMember(projectId)
+        && request.resource.data.displayName == participant.displayName
+        && request.resource.data.attendanceTarget == participant.active
+        && request.resource.data.specialPractice == participant.specialPractice
+        && request.resource.data.linkedUserUid == participant.linkedUserUid
+        && request.resource.data.publicNote == participant.publicNote
+        && request.resource.data.active == participant.active
+        && request.resource.data.createdAt == participant.get('createdAt', request.time)
+        && request.resource.data.updatedAt == participant.get('updatedAt', request.time)
+        && request.resource.data.createdByUid == participant.get('createdByUid', request.auth.uid)
+        && request.resource.data.updatedByUid == participant.get('updatedByUid', request.auth.uid);
+    }
+
+    function validPersonUpdate(projectId) {
+      return validPersonData()
+        && personLinkedUserIsMember(projectId)
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.createdByUid == resource.data.createdByUid
+        && request.resource.data.updatedByUid == request.auth.uid
+        && request.resource.data.updatedAt == request.time;
+    }
+
     function validParticipantLinkedUserData(projectId, uid) {
       return request.resource.data.keys().hasOnly(['participantId'])
         && request.resource.data.keys().hasAll(['participantId'])
@@ -605,6 +673,14 @@ service cloud.firestore {
         allow read: if isMember(projectId);
         allow create: if canEdit(projectId) && validParticipantCreate(projectId, participantId);
         allow update: if canEdit(projectId) && validParticipantUpdate(projectId, participantId);
+        allow delete: if false;
+      }
+
+      match /people/{personId} {
+        allow read: if isMember(projectId);
+        allow create: if canEdit(projectId)
+          && (validPersonCreate(projectId) || validPersonMigrationCreate(projectId, personId));
+        allow update: if canEdit(projectId) && validPersonUpdate(projectId);
         allow delete: if false;
       }
 

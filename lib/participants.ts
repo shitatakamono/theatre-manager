@@ -117,6 +117,19 @@ function activityPayload(actor: ActivityActor, action: "create" | "update", chan
   };
 }
 
+function personSyncValues(values: ParticipantValues, actorUid: string) {
+  return {
+    displayName: values.displayName,
+    attendanceTarget: values.active,
+    specialPractice: values.specialPractice,
+    linkedUserUid: values.linkedUserUid,
+    publicNote: values.publicNote,
+    active: values.active,
+    updatedAt: serverTimestamp(),
+    updatedByUid: actorUid,
+  };
+}
+
 export async function getProjectParticipants(projectId: string, firestore?: Firestore): Promise<Participant[]> {
   const database = await resolveFirestore(firestore);
   const snapshot = await getDocs(collection(database, "projects", projectId, "participants"));
@@ -169,12 +182,16 @@ export async function updateProjectParticipant(
   const database = await resolveFirestore(firestore);
   const projectRef = doc(database, "projects", projectId);
   const participantRef = doc(projectRef, "participants", participantId);
+  const personRef = doc(projectRef, "people", participantId);
   const activityRef = doc(collection(projectRef, "activityLogs"));
 
   return runTransaction(database, async (transaction) => {
-    const snapshot = await transaction.get(participantRef);
-    if (!snapshot.exists()) throw new Error("参加者が見つかりません");
-    const current = mapParticipant(snapshot);
+    const [participantSnapshot, personSnapshot] = await Promise.all([
+      transaction.get(participantRef),
+      transaction.get(personRef),
+    ]);
+    if (!participantSnapshot.exists()) throw new Error("参加者が見つかりません");
+    const current = mapParticipant(participantSnapshot);
     const changedFields = getParticipantChangedFields(current, values);
     if (changedFields.length === 0) return false;
 
@@ -196,6 +213,9 @@ export async function updateProjectParticipant(
       updatedAt: serverTimestamp(),
       updatedByUid: actor.uid,
     });
+    if (personSnapshot.exists()) {
+      transaction.update(personRef, personSyncValues(values, actor.uid));
+    }
     if (oldLinkedUserRef && current.linkedUserUid !== values.linkedUserUid) transaction.delete(oldLinkedUserRef);
     if (newLinkedUserRef && current.linkedUserUid !== values.linkedUserUid) {
       transaction.set(newLinkedUserRef, { participantId });
