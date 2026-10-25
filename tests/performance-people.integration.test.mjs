@@ -1,0 +1,279 @@
+import { readFile } from "node:fs/promises";
+import { rejects, strictEqual } from "node:assert/strict";
+import { after, before, beforeEach, describe, it } from "node:test";
+import { initializeTestEnvironment } from "@firebase/rules-unit-testing";
+import { collection, doc, getDoc, getDocs, setDoc } from "firebase/firestore";
+import { upsertProjectAttendanceRecord } from "../lib/attendance.ts";
+import { buildAttendanceManagementMatrix } from "../lib/attendance-management.ts";
+import { findSelfParticipant } from "../lib/attendance-view.ts";
+import { getProjectAttendanceParticipants } from "../lib/people.ts";
+import { updateProjectPerformancePeopleSection } from "../lib/performance-people-writes.ts";
+
+const emulatorProjectId = "seisakuboard-conflict-test";
+const projectId = "performance-people-integration";
+const ownerUid = "performance-owner";
+const editorUid = "performance-editor";
+const viewerUid = "performance-viewer";
+let testEnv;
+
+function firestoreFor(uid) { return testEnv.authenticatedContext(uid).firestore(); }
+function actor(uid) { return { uid, displayName: uid }; }
+function personDraft(id, overrides = {}) {
+  return {
+    id,
+    values: {
+      displayName: `人物 ${id}`,
+      attendanceTarget: true,
+      specialPractice: "none",
+      linkedUserUid: null,
+      publicNote: "",
+      active: true,
+      ...overrides,
+    },
+  };
+}
+
+async function seed() {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "projects", projectId), {
+      title: "人物関連付けテスト",
+      cast: [],
+      staff: [],
+      memberUids: [ownerUid, editorUid, viewerUid],
+    });
+    await setDoc(doc(db, "projects", projectId, "members", ownerUid), { uid: ownerUid, role: "owner" });
+    await setDoc(doc(db, "projects", projectId, "members", editorUid), { uid: editorUid, role: "editor" });
+    await setDoc(doc(db, "projects", projectId, "members", viewerUid), { uid: viewerUid, role: "viewer" });
+  });
+}
+
+before(async () => {
+  testEnv = await initializeTestEnvironment({ projectId: emulatorProjectId, firestore: { rules: await readFile("firestore.rules", "utf8") } });
+});
+beforeEach(async () => { await testEnv.clearFirestore(); await seed(); });
+after(async () => { await testEnv.cleanup(); });
+
+describe("performance people atomic writes", () => {
+  it("creates a new person, compatibility participant, cast link, revision, and activity atomically", async () => {
+    const db = firestoreFor(ownerUid);
+    const cast = [{ id: "cast-a", order: 1, name: "旧互換名", personId: "person-a" }];
+    const result = await updateProjectPerformancePeopleSection(
+      projectId,
+      "cast",
+      cast,
+      [personDraft("person-a", { specialPractice: "stage_combat" })],
+      { actor: actor(ownerUid), expectedRevision: 0 },
+      db
+    );
+
+    strictEqual(result.revision, 1);
+    strictEqual((await getDoc(doc(db, "projects", projectId))).data()?.cast[0].personId, "person-a");
+    strictEqual((await getDoc(doc(db, "projects", projectId, "people", "person-a"))).data()?.specialPractice, "stage_combat");
+    strictEqual((await getDoc(doc(db, "projects", projectId, "participants", "person-a"))).data()?.active, true);
+    strictEqual((await getDocs(collection(db, "projects", projectId, "activityLogs"))).size, 1);
+  });
+
+  it("keeps a new person active while disabling only its attendance compatibility participant", async () => {
+    const db = firestoreFor(ownerUid);
+    await updateProjectPerformancePeopleSection(
+      projectId,
+      "cast",
+      [{ id: "cast-a", order: 1, name: "A", personId: "person-a" }],
+      [personDraft("person-a", { active: true, attendanceTarget: false })],
+      { actor: actor(ownerUid), expectedRevision: 0 },
+      db
+    );
+
+    const person = (await getDoc(doc(db, "projects", projectId, "people", "person-a"))).data();
+    const participant = (await getDoc(doc(db, "projects", projectId, "participants", "person-a"))).data();
+    strictEqual(person?.active, true);
+    strictEqual(person?.attendanceTarget, false);
+    strictEqual(participant?.active, false);
+  });
+
+  it("synchronizes an existing person's attendanceTarget both ways without deactivating the person", async () => {
+    const db = firestoreFor(ownerUid);
+    const cast = [{ id: "cast-a", order: 1, name: "A", personId: "person-a" }];
+    await updateProjectPerformancePeopleSection(
+      projectId,
+      "cast",
+      cast,
+      [personDraft("person-a", { active: true, attendanceTarget: true })],
+      { actor: actor(ownerUid), expectedRevision: 0 },
+      db
+    );
+    await updateProjectPerformancePeopleSection(
+      projectId,
+      "cast",
+      cast,
+      [personDraft("person-a", { active: true, attendanceTarget: false })],
+      { actor: actor(ownerUid), expectedRevision: 1 },
+      db
+    );
+    let person = (await getDoc(doc(db, "projects", projectId, "people", "person-a"))).data();
+    let participant = (await getDoc(doc(db, "projects", projectId, "participants", "person-a"))).data();
+    strictEqual(person?.active, true);
+    strictEqual(person?.attendanceTarget, false);
+    strictEqual(participant?.active, false);
+
+    await updateProjectPerformancePeopleSection(
+      projectId,
+      "cast",
+      cast,
+      [personDraft("person-a", { active: true, attendanceTarget: true })],
+      { actor: actor(ownerUid), expectedRevision: 1 },
+      db
+    );
+    person = (await getDoc(doc(db, "projects", projectId, "people", "person-a"))).data();
+    participant = (await getDoc(doc(db, "projects", projectId, "participants", "person-a"))).data();
+    strictEqual(person?.active, true);
+    strictEqual(person?.attendanceTarget, true);
+    strictEqual(participant?.active, true);
+  });
+
+  it("lets an editor reuse one person in multiple staff roles without duplicating people", async () => {
+    const db = firestoreFor(editorUid);
+    const staff = [
+      { id: "role-a", role: "演出", members: [{ id: "staff-a", name: "A", personId: "person-a" }] },
+      { id: "role-b", role: "制作", members: [{ id: "staff-b", name: "A", personId: "person-a" }] },
+    ];
+    await updateProjectPerformancePeopleSection(
+      projectId,
+      "staff",
+      staff,
+      [personDraft("person-a")],
+      { actor: actor(editorUid), expectedRevision: 0 },
+      db
+    );
+
+    strictEqual((await getDocs(collection(db, "projects", projectId, "people"))).size, 1);
+    strictEqual((await getDoc(doc(db, "projects", projectId))).data()?.staff[1].members[0].personId, "person-a");
+  });
+
+  it("keeps people when a cast link is removed", async () => {
+    const db = firestoreFor(ownerUid);
+    await updateProjectPerformancePeopleSection(
+      projectId,
+      "cast",
+      [{ id: "cast-a", order: 1, name: "A", personId: "person-a" }],
+      [personDraft("person-a")],
+      { actor: actor(ownerUid), expectedRevision: 0 },
+      db
+    );
+    await updateProjectPerformancePeopleSection(
+      projectId,
+      "cast",
+      [],
+      [],
+      { actor: actor(ownerUid), expectedRevision: 1 },
+      db
+    );
+
+    const person = await getDoc(doc(db, "projects", projectId, "people", "person-a"));
+    strictEqual(person.exists(), true);
+    strictEqual(person.data()?.active, true);
+    strictEqual(person.data()?.attendanceTarget, true);
+    strictEqual((await getDoc(doc(db, "projects", projectId))).data()?.cast.length, 0);
+  });
+
+  it("keeps people when a staff entry is removed", async () => {
+    const db = firestoreFor(ownerUid);
+    await updateProjectPerformancePeopleSection(
+      projectId,
+      "staff",
+      [{ id: "role-a", role: "演出", members: [{ id: "staff-a", name: "A", personId: "person-a" }] }],
+      [personDraft("person-a")],
+      { actor: actor(ownerUid), expectedRevision: 0 },
+      db
+    );
+    await updateProjectPerformancePeopleSection(
+      projectId,
+      "staff",
+      [{ id: "role-a", role: "演出", members: [] }],
+      [],
+      { actor: actor(ownerUid), expectedRevision: 1 },
+      db
+    );
+
+    const person = await getDoc(doc(db, "projects", projectId, "people", "person-a"));
+    strictEqual(person.exists(), true);
+    strictEqual(person.data()?.active, true);
+    strictEqual(person.data()?.attendanceTarget, true);
+    strictEqual((await getDoc(doc(db, "projects", projectId))).data()?.staff[0].members.length, 0);
+  });
+
+  it("keeps attendance matrix, attendance writes, and viewer self resolution compatible", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      const common = {
+        displayName: "連携人物",
+        specialPractice: "none",
+        linkedUserUid: viewerUid,
+        publicNote: "",
+        active: true,
+        createdAt: new Date("2026-01-01T00:00:00Z"),
+        updatedAt: new Date("2026-01-01T00:00:00Z"),
+        createdByUid: ownerUid,
+        updatedByUid: ownerUid,
+      };
+      await setDoc(doc(db, "projects", projectId, "participants", "person-linked"), common);
+      await setDoc(doc(db, "projects", projectId, "people", "person-linked"), { ...common, attendanceTarget: true });
+      await setDoc(doc(db, "projects", projectId, "participantLinkedUsers", viewerUid), { participantId: "person-linked" });
+    });
+    const ownerDb = firestoreFor(ownerUid);
+    await updateProjectPerformancePeopleSection(
+      projectId,
+      "cast",
+      [{ id: "cast-a", order: 1, name: "旧互換名", personId: "person-linked" }],
+      [personDraft("person-linked", { displayName: "連携人物", linkedUserUid: viewerUid })],
+      { actor: actor(ownerUid), expectedRevision: 0 },
+      ownerDb
+    );
+    const attendancePeople = await getProjectAttendanceParticipants(projectId, ownerDb);
+    strictEqual(buildAttendanceManagementMatrix(attendancePeople, [{ date: "2026-11-15" }], []).length, 1);
+    strictEqual(findSelfParticipant(attendancePeople, viewerUid)?.id, "person-linked");
+
+    const viewerDb = firestoreFor(viewerUid);
+    await upsertProjectAttendanceRecord(projectId, {
+      participantId: "person-linked",
+      date: "2026-11-15",
+      status: "absent",
+      availableFrom: null,
+      availableUntil: null,
+      publicNote: "",
+    }, viewerUid, viewerDb);
+    strictEqual((await getDoc(doc(viewerDb, "projects", projectId, "attendanceRecords", "2026-11-15_person-linked"))).exists(), true);
+  });
+
+  it("rejects viewers and leaves every target unchanged", async () => {
+    const db = firestoreFor(viewerUid);
+    await rejects(() => updateProjectPerformancePeopleSection(
+      projectId,
+      "cast",
+      [{ id: "cast-a", order: 1, name: "A", personId: "person-a" }],
+      [personDraft("person-a")],
+      { actor: actor(viewerUid), expectedRevision: 0 },
+      db
+    ));
+
+    strictEqual((await getDoc(doc(db, "projects", projectId))).data()?.cast.length, 0);
+    strictEqual((await getDoc(doc(db, "projects", projectId, "people", "person-a"))).exists(), false);
+    strictEqual((await getDoc(doc(db, "projects", projectId, "participants", "person-a"))).exists(), false);
+  });
+
+  it("does not partially write when linked-user compatibility validation fails", async () => {
+    const db = firestoreFor(ownerUid);
+    await rejects(() => updateProjectPerformancePeopleSection(
+      projectId,
+      "cast",
+      [{ id: "cast-a", order: 1, name: "A", personId: "person-a" }],
+      [personDraft("person-a", { linkedUserUid: editorUid })],
+      { actor: actor(ownerUid), expectedRevision: 0 },
+      db
+    ), /参加者管理/);
+
+    strictEqual((await getDoc(doc(db, "projects", projectId))).data()?.cast.length, 0);
+    strictEqual((await getDoc(doc(db, "projects", projectId, "people", "person-a"))).exists(), false);
+  });
+});

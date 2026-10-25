@@ -163,6 +163,14 @@
 .memberList { display: grid; gap: 8px; }
 .memberRow { display: grid; grid-template-columns: 1fr 1fr auto; align-items: end; gap: 8px; border-top: 1px solid #edf0ee; padding-top: 8px; }
 .memberRow > button { min-height: 39px; padding: 0 5px; }
+.personLinkEditor { display: grid; grid-column: 1 / -1; gap: 9px; margin-top: 10px; border-top: 1px solid #edf0ee; padding-top: 10px; }
+.personDetails { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; border-radius: 8px; background: #f4f7f5; padding: 11px; }
+.personDetails .fullField,
+.personLinkStatus { grid-column: 1 / -1; }
+.personLinkStatus { display: grid; gap: 2px; color: #4f615a; font-size: 11px; font-weight: 700; }
+.personLinkStatus small { color: #76847e; font-size: 10px; font-weight: 500; }
+.personCreateButton { justify-self: start; color: #567068; font-size: 11px; font-weight: 700; text-decoration: underline; text-decoration-color: #afc1ba; text-underline-offset: 3px; }
+.personCreateButton:hover { color: #24644f; text-decoration-color: #4d806d; }
 .addButton,
 .subAddButton { border: 1px dashed #8eb2a4; border-radius: 8px; color: #24644f; padding: 10px; font-size: 12px; font-weight: 800; }
 .addButton:hover,
@@ -211,4 +219,7 @@
   .fullField { grid-column: 1; }
   .memberRow { grid-template-columns: 1fr; }
   .memberRow > button { min-height: 32px; justify-self: end; }
+  .personDetails { grid-template-columns: 1fr; }
+  .personDetails .fullField,
+  .personLinkStatus { grid-column: 1; }
 }

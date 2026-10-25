@@ -5,6 +5,7 @@ import {
   serverTimestamp,
   type DocumentData,
   type Firestore,
+  type Transaction,
 } from "firebase/firestore";
 import {
   getActivityActorName,
@@ -78,6 +79,10 @@ export type RevisionTransactionInput = {
   actor: ActivityActor;
   activity: ActivityDefinition;
   buildTaskEvents?: (project: DocumentData) => TaskEventDraft[];
+  prepareAdditionalChanges?: (
+    transaction: Transaction,
+    project: DocumentData
+  ) => Promise<{ changedFields: string[]; apply: () => void }>;
 };
 
 export type RevisionTransactionResult = {
@@ -97,6 +102,7 @@ export async function runProjectRevisionTransaction({
   actor,
   activity,
   buildTaskEvents,
+  prepareAdditionalChanges,
 }: RevisionTransactionInput): Promise<RevisionTransactionResult> {
   const projectRef = doc(firestore, "projects", projectId);
   const activityRef = doc(collection(projectRef, "activityLogs"));
@@ -115,20 +121,31 @@ export async function runProjectRevisionTransaction({
       throw new ConflictError(expectedRevision, revision);
     }
 
-    const changedFields = getChangedFields(
+    const sectionChangedFields = getChangedFields(
       readCurrentValue(project),
       nextValue,
       activity.fields
     );
+    const additionalChanges = prepareAdditionalChanges
+      ? await prepareAdditionalChanges(transaction, project)
+      : { changedFields: [], apply: () => undefined };
+    const changedFields = [...new Set([
+      ...sectionChangedFields,
+      ...additionalChanges.changedFields,
+    ])];
     if (changedFields.length === 0) {
       return { changed: false, revision, changedFields };
     }
 
-    const nextRevision = revision + 1;
-    transaction.update(projectRef, {
-      ...updates,
-      [`revisions.${revisionKey}`]: nextRevision,
-    });
+    const sectionChanged = sectionChangedFields.length > 0;
+    const nextRevision = sectionChanged ? revision + 1 : revision;
+    additionalChanges.apply();
+    if (sectionChanged) {
+      transaction.update(projectRef, {
+        ...updates,
+        [`revisions.${revisionKey}`]: nextRevision,
+      });
+    }
     transaction.set(activityRef, {
       actorUid: actor.uid,
       actorName: getActivityActorName(actor),

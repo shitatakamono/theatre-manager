@@ -4,8 +4,22 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { ProjectPerformanceRecord } from "@/lib/firestore";
 import { updateProjectPerformanceSection } from "@/lib/firestore";
+import { updateProjectPerformancePeopleSection } from "@/lib/performance-people-writes";
 import { getProjectRevision, isConflictError } from "@/lib/project-revisions";
 import { formatInformationValue, PERFORMANCE_INFORMATION_SECTIONS } from "@/lib/management-view";
+import {
+  buildNewPerformancePerson,
+  projectPersonToPerformanceDraft,
+  resolveCastMemberPerson,
+  resolveStaffMemberPerson,
+  type PerformancePersonDraft,
+} from "@/lib/performance-people";
+import {
+  getProjectPeopleWithFallback,
+  type ProjectPerson,
+  type ProjectPersonValues,
+} from "@/lib/people";
+import { SPECIAL_PRACTICE_OPTIONS } from "@/lib/participants";
 import { useProjectAccess } from "../ProjectAccess";
 import {
   calculateEndTime,
@@ -169,10 +183,98 @@ function TextareaField({ label, value, onChange, rows = 3 }: TextareaFieldProps)
   );
 }
 
+type PersonLinkEditorProps = {
+  personId?: string;
+  people: readonly ProjectPerson[];
+  allDrafts: Readonly<Record<string, PerformancePersonDraft>>;
+  draftPerson?: PerformancePersonDraft;
+  onSelect: (personId: string) => void;
+  onCreate: () => void;
+  onUpdate: (patch: Partial<ProjectPersonValues>) => void;
+};
+
+function PersonLinkEditor({
+  personId,
+  people,
+  allDrafts,
+  draftPerson,
+  onSelect,
+  onCreate,
+  onUpdate,
+}: PersonLinkEditorProps) {
+  return (
+    <div className={styles.personLinkEditor}>
+      <label className={styles.field}>
+        <span>人物情報</span>
+        <select value={personId ?? ""} onChange={(event) => onSelect(event.target.value)}>
+          <option value="">未登録</option>
+          {people.map((person) => (
+            <option key={person.id} value={person.id}>
+              {person.displayName}{person.active ? "" : "（終了）"}
+            </option>
+          ))}
+          {Object.values(allDrafts)
+            .filter((draft) => !people.some(({ id }) => id === draft.id))
+            .map((draft) => (
+              <option key={draft.id} value={draft.id}>{draft.values.displayName}（新規）</option>
+            ))}
+        </select>
+      </label>
+      {!personId && (
+        <button type="button" className={styles.personCreateButton} onClick={onCreate}>
+          新しい人物として登録
+        </button>
+      )}
+      {personId && draftPerson && (
+        <div className={styles.personDetails}>
+          <Field
+            label="共通の氏名"
+            value={draftPerson.values.displayName}
+            onChange={(displayName) => onUpdate({ displayName })}
+          />
+          <label className={styles.field}>
+            <span>特別稽古</span>
+            <select
+              value={draftPerson.values.specialPractice}
+              onChange={(event) => onUpdate({
+                specialPractice: event.target.value as ProjectPersonValues["specialPractice"],
+              })}
+            >
+              {SPECIAL_PRACTICE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className={styles.checkboxField}>
+            <input
+              type="checkbox"
+              checked={draftPerson.values.attendanceTarget}
+              onChange={(event) => onUpdate({ attendanceTarget: event.target.checked })}
+            />
+            出欠管理の対象にする
+          </label>
+          <TextareaField
+            label="公開備考"
+            value={draftPerson.values.publicNote}
+            onChange={(publicNote) => onUpdate({ publicNote })}
+            rows={2}
+          />
+          <p className={styles.personLinkStatus}>
+            システム利用者: {draftPerson.values.linkedUserUid ? "連携済み" : "未連携"}
+            <small>連携の変更は参加者管理で行ってください。</small>
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function PerformanceInfoClient({
   project,
+  initialPeople,
 }: {
   project: ProjectPerformanceRecord;
+  initialPeople: ProjectPerson[];
 }) {
   const { canEdit, actor } = useProjectAccess();
   const [data, setData] = useState<ProjectPerformanceData>(() =>
@@ -190,6 +292,10 @@ export function PerformanceInfoClient({
   const [revision, setRevision] = useState(() => getProjectRevision(project.revisions, "performanceInfo"));
   const [expectedRevision, setExpectedRevision] = useState(revision);
   const [conflict, setConflict] = useState(false);
+  const [people, setPeople] = useState<ProjectPerson[]>(initialPeople);
+  const [personDrafts, setPersonDrafts] = useState<Record<string, PerformancePersonDraft>>(
+    () => Object.fromEntries(initialPeople.map((person) => [person.id, projectPersonToPerformanceDraft(person)]))
+  );
   const [configuredSections, setConfiguredSections] = useState<
     Set<PerformanceSection>
   >(
@@ -226,6 +332,9 @@ export function PerformanceInfoClient({
     }
 
     setDraft(nextDraft);
+    setPersonDrafts(Object.fromEntries(
+      people.map((person) => [person.id, projectPersonToPerformanceDraft(person)])
+    ));
     setSaveError("");
     setSavedMessage("");
     setConflict(false);
@@ -243,10 +352,18 @@ export function PerformanceInfoClient({
     setConflict(false);
 
     try {
-      const result = await updateProjectPerformanceSection(project.id, activeEditor, value, {
-        actor,
-        expectedRevision,
-      });
+      const result = activeEditor === "cast" || activeEditor === "staff"
+        ? await updateProjectPerformancePeopleSection(
+          project.id,
+          activeEditor,
+          value as CastMember[] | StaffRole[],
+          Object.values(personDrafts),
+          { actor, expectedRevision }
+        )
+        : await updateProjectPerformanceSection(project.id, activeEditor, value as never, {
+          actor,
+          expectedRevision,
+        });
 
       if (result.changed) {
         setData((current) => ({ ...current, [activeEditor]: value }));
@@ -257,6 +374,9 @@ export function PerformanceInfoClient({
           next.add(activeEditor);
           return next;
         });
+      }
+      if (activeEditor === "cast" || activeEditor === "staff") {
+        setPeople(await getProjectPeopleWithFallback(project.id));
       }
       setSavedMessage(result.changed ? `${editorLabels[activeEditor]}を保存しました` : "変更はありません");
       setActiveEditor(null);
@@ -274,6 +394,36 @@ export function PerformanceInfoClient({
     if (confirm("最新の内容を読み込むと、現在入力中の未保存内容は失われます。読み込みますか？")) {
       window.location.reload();
     }
+  }
+
+  function selectPerson(personId: string, apply: (personId: string | undefined) => void) {
+    apply(personId || undefined);
+  }
+
+  function createPerson(displayName: string, apply: (personId: string) => void) {
+    const normalizedName = displayName.trim();
+    if (!normalizedName) {
+      setSaveError("先に氏名を入力してください");
+      return;
+    }
+    const person = buildNewPerformancePerson(createId(), normalizedName);
+    setPersonDrafts((current) => ({ ...current, [person.id]: person }));
+    apply(person.id);
+    setSaveError("");
+  }
+
+  function updatePersonDraft(personId: string, patch: Partial<ProjectPersonValues>) {
+    setPersonDrafts((current) => {
+      const draftPerson = current[personId];
+      if (!draftPerson) return current;
+      return {
+        ...current,
+        [personId]: {
+          ...draftPerson,
+          values: { ...draftPerson.values, ...patch },
+        },
+      };
+    });
   }
 
   function patchBasic(patch: Partial<PerformanceInfo>) {
@@ -477,7 +627,7 @@ export function PerformanceInfoClient({
             <ul className={styles.peopleList}>
               {cast.map((member) => (
                 <li key={member.id}>
-                  <span><strong>{member.displayName || member.name}</strong>{member.affiliation && <small>{member.affiliation}</small>}</span>
+                  <span><strong>{resolveCastMemberPerson(member, people).creditName}</strong>{member.affiliation && <small>{member.affiliation}</small>}</span>
                   {member.role && <em>{member.role}</em>}
                 </li>
               ))}
@@ -494,7 +644,7 @@ export function PerformanceInfoClient({
           {staff.length === 0 ? <p className={styles.empty}>スタッフは未設定です</p> : (
             <dl className={styles.staffList}>
               {staff.map((role) => (
-                <div key={role.id}><dt>{role.role || "役職未設定"}</dt><dd>{role.members.map((member) => member.creditName || member.name).filter(Boolean).join(" / ") || "担当者未設定"}</dd></div>
+                <div key={role.id}><dt>{role.role || "役職未設定"}</dt><dd>{role.members.map((member) => resolveStaffMemberPerson(member, people).creditName).filter(Boolean).join(" / ") || "担当者未設定"}</dd></div>
               ))}
             </dl>
           )}
@@ -645,6 +795,15 @@ export function PerformanceInfoClient({
                   <Field label="役名" value={member.role ?? ""} onChange={(value) => updateCast(index, { role: value })} />
                   <Field label="掲載名" value={member.displayName ?? ""} onChange={(value) => updateCast(index, { displayName: value })} placeholder="空欄時は氏名を表示" />
                 </div>
+                <PersonLinkEditor
+                  personId={member.personId}
+                  people={people}
+                  allDrafts={personDrafts}
+                  draftPerson={member.personId ? personDrafts[member.personId] : undefined}
+                  onSelect={(personId) => selectPerson(personId, (nextPersonId) => updateCast(index, { personId: nextPersonId }))}
+                  onCreate={() => createPerson(member.name, (personId) => updateCast(index, { personId }))}
+                  onUpdate={(patch) => member.personId && updatePersonDraft(member.personId, patch)}
+                />
               </div>
             ))}
             <button className={styles.addButton} onClick={() => setDraft((current) => ({ ...current, cast: [...(current.cast ?? []), { id: createId(), order: (current.cast?.length ?? 0) + 1, name: "" }] }))}>＋出演者を追加</button>
@@ -662,9 +821,18 @@ export function PerformanceInfoClient({
                       <Field label="氏名" value={member.name} onChange={(value) => updateStaffMember(roleIndex, memberIndex, { name: value })} />
                       <Field label="掲載名" value={member.creditName ?? ""} onChange={(value) => updateStaffMember(roleIndex, memberIndex, { creditName: value })} />
                       <button onClick={() => updateStaffRole(roleIndex, { members: role.members.filter((_, index) => index !== memberIndex) })}>削除</button>
+                      <PersonLinkEditor
+                        personId={member.personId}
+                        people={people}
+                        allDrafts={personDrafts}
+                        draftPerson={member.personId ? personDrafts[member.personId] : undefined}
+                        onSelect={(personId) => selectPerson(personId, (nextPersonId) => updateStaffMember(roleIndex, memberIndex, { personId: nextPersonId }))}
+                        onCreate={() => createPerson(member.name, (personId) => updateStaffMember(roleIndex, memberIndex, { personId }))}
+                        onUpdate={(patch) => member.personId && updatePersonDraft(member.personId, patch)}
+                      />
                     </div>
                   ))}
-                  <button className={styles.subAddButton} onClick={() => updateStaffRole(roleIndex, { members: [...role.members, { id: createId(), name: "" }] })}>＋担当者を追加</button>
+                  <button className={styles.subAddButton} onClick={() => updateStaffRole(roleIndex, { members: [...role.members, { id: createId(), name: "" }] })}>＋ この役職に担当者を追加</button>
                 </div>
               </div>
             ))}

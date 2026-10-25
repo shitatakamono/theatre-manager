@@ -44,6 +44,7 @@ export type TicketInfo = {
 
 export type CastMember = {
   id: string;
+  personId?: string;
   order: number;
   name: string;
   affiliation?: string;
@@ -53,6 +54,7 @@ export type CastMember = {
 
 export type StaffMember = {
   id: string;
+  personId?: string;
   name: string;
   creditName?: string;
 };
