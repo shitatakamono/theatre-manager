@@ -228,7 +228,7 @@ function PersonLinkEditor({
       {personId && draftPerson && (
         <div className={styles.personDetails}>
           <Field
-            label="共通の氏名"
+            label="本名（管理用）"
             value={draftPerson.values.displayName}
             onChange={(displayName) => onUpdate({ displayName })}
           />
@@ -793,7 +793,7 @@ export function PerformanceInfoClient({
                   <Field label="氏名" value={member.name} onChange={(value) => updateCast(index, { name: value })} />
                   <Field label="所属団体" value={member.affiliation ?? ""} onChange={(value) => updateCast(index, { affiliation: value })} />
                   <Field label="役名" value={member.role ?? ""} onChange={(value) => updateCast(index, { role: value })} />
-                  <Field label="掲載名" value={member.displayName ?? ""} onChange={(value) => updateCast(index, { displayName: value })} placeholder="空欄時は氏名を表示" />
+                  <Field label="掲載名・芸名" value={member.displayName ?? ""} onChange={(value) => updateCast(index, { displayName: value })} placeholder="空欄時は本名を表示" />
                 </div>
                 <PersonLinkEditor
                   personId={member.personId}
@@ -819,7 +819,7 @@ export function PerformanceInfoClient({
                   {role.members.map((member, memberIndex) => (
                     <div className={styles.memberRow} key={member.id}>
                       <Field label="氏名" value={member.name} onChange={(value) => updateStaffMember(roleIndex, memberIndex, { name: value })} />
-                      <Field label="掲載名" value={member.creditName ?? ""} onChange={(value) => updateStaffMember(roleIndex, memberIndex, { creditName: value })} />
+                      <Field label="掲載名（クレジット）" value={member.creditName ?? ""} onChange={(value) => updateStaffMember(roleIndex, memberIndex, { creditName: value })} placeholder="空欄時は本名を表示" />
                       <button onClick={() => updateStaffRole(roleIndex, { members: role.members.filter((_, index) => index !== memberIndex) })}>削除</button>
                       <PersonLinkEditor
                         personId={member.personId}

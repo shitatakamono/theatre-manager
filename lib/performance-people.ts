@@ -13,7 +13,7 @@ export type PerformancePersonDraft = {
 
 export type ResolvedPerformancePerson = {
   person: ProjectPerson | null;
-  internalName: string;
+  managementName: string;
   creditName: string;
 };
 
@@ -62,11 +62,11 @@ export function resolveCastMemberPerson(
 ): ResolvedPerformancePerson {
   const personId = normalizePersonId(member.personId);
   const person = personId ? people.find(({ id }) => id === personId) ?? null : null;
-  const internalName = person?.displayName || member.name;
+  const managementName = person?.displayName || member.name;
   return {
     person,
-    internalName,
-    creditName: member.displayName?.trim() || internalName,
+    managementName,
+    creditName: member.displayName?.trim() || managementName,
   };
 }
 
@@ -76,11 +76,11 @@ export function resolveStaffMemberPerson(
 ): ResolvedPerformancePerson {
   const personId = normalizePersonId(member.personId);
   const person = personId ? people.find(({ id }) => id === personId) ?? null : null;
-  const internalName = person?.displayName || member.name;
+  const managementName = person?.displayName || member.name;
   return {
     person,
-    internalName,
-    creditName: member.creditName?.trim() || internalName,
+    managementName,
+    creditName: member.creditName?.trim() || managementName,
   };
 }
 
