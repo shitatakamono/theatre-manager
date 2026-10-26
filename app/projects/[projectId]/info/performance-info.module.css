@@ -169,8 +169,7 @@
 .personLinkStatus { grid-column: 1 / -1; }
 .personLinkStatus { display: grid; gap: 2px; color: #4f615a; font-size: 11px; font-weight: 700; }
 .personLinkStatus small { color: #76847e; font-size: 10px; font-weight: 500; }
-.personCreateButton { justify-self: start; color: #567068; font-size: 11px; font-weight: 700; text-decoration: underline; text-decoration-color: #afc1ba; text-underline-offset: 3px; }
-.personCreateButton:hover { color: #24644f; text-decoration-color: #4d806d; }
+.personCreateHint { margin: 0; color: #667970; font-size: 11px; }
 .addButton,
 .subAddButton { border: 1px dashed #8eb2a4; border-radius: 8px; color: #24644f; padding: 10px; font-size: 12px; font-weight: 800; }
 .addButton:hover,

@@ -4,6 +4,7 @@ import {
   buildNewPerformancePerson,
   getCastPersonIds,
   getStaffPersonIds,
+  preparePerformancePeopleForSave,
   resolveCastMemberPerson,
   resolveStaffMemberPerson,
 } from "../lib/performance-people.ts";
@@ -89,5 +90,47 @@ describe("performance people linking", () => {
       },
     });
     throws(() => buildNewPerformancePerson("person-new", " "), /氏名/);
+  });
+
+  it("automatically prepares only newly added unlinked cast with the management name", () => {
+    let sequence = 0;
+    const prepared = preparePerformancePeopleForSave(
+      "cast",
+      [
+        { id: "cast-existing", order: 1, name: "旧データ" },
+        { id: "cast-new-a", order: 2, name: "田中裕介", displayName: "たなかゆうすけ" },
+        { id: "cast-new-b", order: 3, name: "田中裕介" },
+      ],
+      [{ id: "cast-existing", order: 1, name: "旧データ" }],
+      [],
+      () => `person-${++sequence}`
+    );
+
+    deepStrictEqual(prepared.createdPersonIds, ["person-1", "person-2"]);
+    strictEqual(prepared.value[0].personId, undefined);
+    strictEqual(prepared.value[1].personId, "person-1");
+    strictEqual(prepared.value[2].personId, "person-2");
+    deepStrictEqual(prepared.peopleDrafts.map(({ values }) => values), [
+      { displayName: "田中裕介", attendanceTarget: false, specialPractice: "none", linkedUserUid: null, publicNote: "", active: true },
+      { displayName: "田中裕介", attendanceTarget: false, specialPractice: "none", linkedUserUid: null, publicNote: "", active: true },
+    ]);
+  });
+
+  it("prepares new staff but reuses an explicitly selected existing person", () => {
+    const prepared = preparePerformancePeopleForSave(
+      "staff",
+      [{ id: "role-a", role: "演出", members: [
+        { id: "staff-new", name: "スタッフ本名", creditName: "クレジット名" },
+        { id: "staff-linked", name: "既存関係者", personId: "person-existing" },
+      ] }],
+      [],
+      [buildNewPerformancePerson("person-existing", "既存関係者")],
+      () => "person-staff"
+    );
+
+    strictEqual(prepared.value[0].members[0].personId, "person-staff");
+    strictEqual(prepared.peopleDrafts[1].values.displayName, "スタッフ本名");
+    strictEqual(prepared.value[0].members[1].personId, "person-existing");
+    strictEqual(prepared.createdPersonIds.length, 1);
   });
 });

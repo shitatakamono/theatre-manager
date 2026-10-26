@@ -8,6 +8,7 @@ import { buildAttendanceManagementMatrix } from "../lib/attendance-management.ts
 import { findSelfParticipant } from "../lib/attendance-view.ts";
 import { getProjectAttendanceParticipants } from "../lib/people.ts";
 import { createProjectPerson, updateProjectPerson } from "../lib/people-management.ts";
+import { preparePerformancePeopleForSave } from "../lib/performance-people.ts";
 import { updateProjectPerformancePeopleSection } from "../lib/performance-people-writes.ts";
 
 const emulatorProjectId = "seisakuboard-conflict-test";
@@ -56,6 +57,85 @@ beforeEach(async () => { await testEnv.clearFirestore(); await seed(); });
 after(async () => { await testEnv.cleanup(); });
 
 describe("performance people atomic writes", () => {
+  it("automatically registers a newly added cast member without copying the credit name", async () => {
+    const db = firestoreFor(ownerUid);
+    const prepared = preparePerformancePeopleForSave(
+      "cast",
+      [{ id: "cast-new", order: 1, name: "本名", displayName: "芸名" }],
+      [],
+      [],
+      () => "person-auto-cast"
+    );
+    await updateProjectPerformancePeopleSection(
+      projectId,
+      "cast",
+      prepared.value,
+      prepared.peopleDrafts,
+      { actor: actor(ownerUid), expectedRevision: 0 },
+      db
+    );
+
+    const person = (await getDoc(doc(db, "projects", projectId, "people", "person-auto-cast"))).data();
+    const participant = (await getDoc(doc(db, "projects", projectId, "participants", "person-auto-cast"))).data();
+    const project = (await getDoc(doc(db, "projects", projectId))).data();
+    strictEqual(person?.displayName, "本名");
+    strictEqual(person?.attendanceTarget, false);
+    strictEqual(person?.specialPractice, "none");
+    strictEqual(person?.linkedUserUid, null);
+    strictEqual(participant?.active, false);
+    strictEqual(project?.cast[0].displayName, "芸名");
+    strictEqual(project?.cast[0].personId, "person-auto-cast");
+  });
+
+  it("automatically registers a newly added staff member without copying the credit name", async () => {
+    const db = firestoreFor(editorUid);
+    const prepared = preparePerformancePeopleForSave(
+      "staff",
+      [{ id: "role-a", role: "演出", members: [{ id: "staff-new", name: "スタッフ本名", creditName: "外部表記" }] }],
+      [],
+      [],
+      () => "person-auto-staff"
+    );
+    await updateProjectPerformancePeopleSection(
+      projectId,
+      "staff",
+      prepared.value,
+      prepared.peopleDrafts,
+      { actor: actor(editorUid), expectedRevision: 0 },
+      db
+    );
+
+    const person = (await getDoc(doc(db, "projects", projectId, "people", "person-auto-staff"))).data();
+    const project = (await getDoc(doc(db, "projects", projectId))).data();
+    strictEqual(person?.displayName, "スタッフ本名");
+    strictEqual(person?.attendanceTarget, false);
+    strictEqual(project?.staff[0].members[0].creditName, "外部表記");
+    strictEqual(project?.staff[0].members[0].personId, "person-auto-staff");
+  });
+
+  it("does not leave an automatically prepared person when the section save fails", async () => {
+    const db = firestoreFor(ownerUid);
+    const prepared = preparePerformancePeopleForSave(
+      "cast",
+      [{ id: "cast-new", order: 1, name: "ロールバック対象" }],
+      [],
+      [],
+      () => "person-rollback"
+    );
+    await rejects(() => updateProjectPerformancePeopleSection(
+      projectId,
+      "cast",
+      prepared.value,
+      prepared.peopleDrafts,
+      { actor: actor(ownerUid), expectedRevision: 1 },
+      db
+    ));
+
+    strictEqual((await getDoc(doc(db, "projects", projectId, "people", "person-rollback"))).exists(), false);
+    strictEqual((await getDoc(doc(db, "projects", projectId, "participants", "person-rollback"))).exists(), false);
+    strictEqual((await getDoc(doc(db, "projects", projectId))).data()?.cast.length, 0);
+  });
+
   it("creates people and same-ID compatibility participants for owner and editor", async () => {
     for (const [uid, attendanceTarget] of [[ownerUid, false], [editorUid, true]]) {
       const db = firestoreFor(uid);

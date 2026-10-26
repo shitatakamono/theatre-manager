@@ -8,7 +8,7 @@ import { updateProjectPerformancePeopleSection } from "@/lib/performance-people-
 import { getProjectRevision, isConflictError } from "@/lib/project-revisions";
 import { formatInformationValue, PERFORMANCE_INFORMATION_SECTIONS } from "@/lib/management-view";
 import {
-  buildNewPerformancePerson,
+  preparePerformancePeopleForSave,
   projectPersonToPerformanceDraft,
   resolveCastMemberPerson,
   resolveStaffMemberPerson,
@@ -186,20 +186,18 @@ function TextareaField({ label, value, onChange, rows = 3 }: TextareaFieldProps)
 type PersonLinkEditorProps = {
   personId?: string;
   people: readonly ProjectPerson[];
-  allDrafts: Readonly<Record<string, PerformancePersonDraft>>;
   draftPerson?: PerformancePersonDraft;
+  autoRegisterOnSave: boolean;
   onSelect: (personId: string) => void;
-  onCreate: () => void;
   onUpdate: (patch: Partial<ProjectPersonValues>) => void;
 };
 
 function PersonLinkEditor({
   personId,
   people,
-  allDrafts,
   draftPerson,
+  autoRegisterOnSave,
   onSelect,
-  onCreate,
   onUpdate,
 }: PersonLinkEditorProps) {
   return (
@@ -213,18 +211,9 @@ function PersonLinkEditor({
               {person.displayName}{person.active ? "" : "（終了）"}
             </option>
           ))}
-          {Object.values(allDrafts)
-            .filter((draft) => !people.some(({ id }) => id === draft.id))
-            .map((draft) => (
-              <option key={draft.id} value={draft.id}>{draft.values.displayName}（新規）</option>
-            ))}
         </select>
       </label>
-      {!personId && (
-        <button type="button" className={styles.personCreateButton} onClick={onCreate}>
-          新しい関係者として登録
-        </button>
-      )}
+      {!personId && autoRegisterOnSave && <p className={styles.personCreateHint}>新しい関係者として自動登録されます</p>}
       {personId && draftPerson && (
         <div className={styles.personDetails}>
           <Field
@@ -352,12 +341,22 @@ export function PerformanceInfoClient({
     setConflict(false);
 
     try {
-      const result = activeEditor === "cast" || activeEditor === "staff"
-        ? await updateProjectPerformancePeopleSection(
-          project.id,
+      const preparedPeople = activeEditor === "cast" || activeEditor === "staff"
+        ? preparePerformancePeopleForSave(
           activeEditor,
           value as CastMember[] | StaffRole[],
+          (data[activeEditor] ?? []) as CastMember[] | StaffRole[],
           Object.values(personDrafts),
+          createId
+        )
+        : null;
+      const valueToSave = preparedPeople?.value ?? value;
+      const result = preparedPeople
+        ? await updateProjectPerformancePeopleSection(
+          project.id,
+          activeEditor as "cast" | "staff",
+          valueToSave as CastMember[] | StaffRole[],
+          preparedPeople.peopleDrafts,
           { actor, expectedRevision }
         )
         : await updateProjectPerformanceSection(project.id, activeEditor, value as never, {
@@ -366,7 +365,7 @@ export function PerformanceInfoClient({
         });
 
       if (result.changed) {
-        setData((current) => ({ ...current, [activeEditor]: value }));
+        setData((current) => ({ ...current, [activeEditor]: valueToSave }));
         setRevision(result.revision);
         setExpectedRevision(result.revision);
         setConfiguredSections((current) => {
@@ -398,18 +397,6 @@ export function PerformanceInfoClient({
 
   function selectPerson(personId: string, apply: (personId: string | undefined) => void) {
     apply(personId || undefined);
-  }
-
-  function createPerson(displayName: string, apply: (personId: string) => void) {
-    const normalizedName = displayName.trim();
-    if (!normalizedName) {
-      setSaveError("先に氏名を入力してください");
-      return;
-    }
-    const person = buildNewPerformancePerson(createId(), normalizedName);
-    setPersonDrafts((current) => ({ ...current, [person.id]: person }));
-    apply(person.id);
-    setSaveError("");
   }
 
   function updatePersonDraft(personId: string, patch: Partial<ProjectPersonValues>) {
@@ -796,10 +783,9 @@ export function PerformanceInfoClient({
                 <PersonLinkEditor
                   personId={member.personId}
                   people={people}
-                  allDrafts={personDrafts}
                   draftPerson={member.personId ? personDrafts[member.personId] : undefined}
+                  autoRegisterOnSave={!(data.cast ?? []).some(({ id }) => id === member.id)}
                   onSelect={(personId) => selectPerson(personId, (nextPersonId) => updateCast(index, { personId: nextPersonId }))}
-                  onCreate={() => createPerson(member.name, (personId) => updateCast(index, { personId }))}
                   onUpdate={(patch) => member.personId && updatePersonDraft(member.personId, patch)}
                 />
               </div>
@@ -822,10 +808,9 @@ export function PerformanceInfoClient({
                       <PersonLinkEditor
                         personId={member.personId}
                         people={people}
-                        allDrafts={personDrafts}
                         draftPerson={member.personId ? personDrafts[member.personId] : undefined}
+                        autoRegisterOnSave={!(data.staff ?? []).some((savedRole) => savedRole.members.some(({ id }) => id === member.id))}
                         onSelect={(personId) => selectPerson(personId, (nextPersonId) => updateStaffMember(roleIndex, memberIndex, { personId: nextPersonId }))}
-                        onCreate={() => createPerson(member.name, (personId) => updateStaffMember(roleIndex, memberIndex, { personId }))}
                         onUpdate={(patch) => member.personId && updatePersonDraft(member.personId, patch)}
                       />
                     </div>

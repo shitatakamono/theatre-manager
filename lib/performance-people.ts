@@ -11,6 +11,12 @@ export type PerformancePersonDraft = {
   values: ProjectPersonValues;
 };
 
+export type PreparedPerformancePeople = {
+  value: CastMember[] | StaffRole[];
+  peopleDrafts: PerformancePersonDraft[];
+  createdPersonIds: string[];
+};
+
 export type ResolvedPerformancePerson = {
   person: ProjectPerson | null;
   managementName: string;
@@ -54,6 +60,37 @@ export function projectPersonToPerformanceDraft(person: ProjectPerson): Performa
       active: person.active,
     }),
   };
+}
+
+export function preparePerformancePeopleForSave(
+  section: "cast" | "staff",
+  value: readonly CastMember[] | readonly StaffRole[],
+  currentValue: readonly CastMember[] | readonly StaffRole[],
+  peopleDrafts: readonly PerformancePersonDraft[],
+  createPersonId: () => string
+): PreparedPerformancePeople {
+  const currentEntryIds = new Set(section === "cast"
+    ? (currentValue as readonly CastMember[]).map((member) => member.id)
+    : (currentValue as readonly StaffRole[]).flatMap((role) => role.members.map((member) => member.id)));
+  const nextDrafts = [...peopleDrafts];
+  const createdPersonIds: string[] = [];
+
+  function linkNewEntry<T extends CastMember | StaffMember>(member: T): T {
+    if (member.personId || currentEntryIds.has(member.id)) return { ...member };
+    const person = buildNewPerformancePerson(createPersonId(), member.name);
+    nextDrafts.push(person);
+    createdPersonIds.push(person.id);
+    return { ...member, personId: person.id };
+  }
+
+  const preparedValue = section === "cast"
+    ? (value as readonly CastMember[]).map(linkNewEntry)
+    : (value as readonly StaffRole[]).map((role) => ({
+      ...role,
+      members: role.members.map(linkNewEntry),
+    }));
+
+  return { value: preparedValue, peopleDrafts: nextDrafts, createdPersonIds };
 }
 
 export function resolveCastMemberPerson(
