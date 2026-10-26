@@ -8,6 +8,7 @@ import { updateProjectPerformancePeopleSection } from "@/lib/performance-people-
 import { getProjectRevision, isConflictError } from "@/lib/project-revisions";
 import { formatInformationValue, PERFORMANCE_INFORMATION_SECTIONS } from "@/lib/management-view";
 import {
+  getSelectablePerformancePeople,
   preparePerformancePeopleForSave,
   projectPersonToPerformanceDraft,
   resolveCastMemberPerson,
@@ -200,15 +201,16 @@ function PersonLinkEditor({
   onSelect,
   onUpdate,
 }: PersonLinkEditorProps) {
+  const selectablePeople = getSelectablePerformancePeople(people, personId);
   return (
     <div className={styles.personLinkEditor}>
       <label className={styles.field}>
         <span>関係者情報</span>
         <select value={personId ?? ""} onChange={(event) => onSelect(event.target.value)}>
           <option value="">未登録</option>
-          {people.map((person) => (
+          {selectablePeople.map((person) => (
             <option key={person.id} value={person.id}>
-              {person.displayName}{person.active ? "" : "（終了）"}
+              {person.displayName}{person.active ? "" : "（終了済み）"}
             </option>
           ))}
         </select>

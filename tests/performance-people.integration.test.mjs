@@ -7,7 +7,7 @@ import { upsertProjectAttendanceRecord } from "../lib/attendance.ts";
 import { buildAttendanceManagementMatrix } from "../lib/attendance-management.ts";
 import { findSelfParticipant } from "../lib/attendance-view.ts";
 import { getProjectAttendanceParticipants } from "../lib/people.ts";
-import { createProjectPerson, updateProjectPerson } from "../lib/people-management.ts";
+import { createProjectPerson, setProjectPersonEnded, updateProjectPerson } from "../lib/people-management.ts";
 import { preparePerformancePeopleForSave } from "../lib/performance-people.ts";
 import { updateProjectPerformancePeopleSection } from "../lib/performance-people-writes.ts";
 
@@ -453,6 +453,53 @@ describe("performance people atomic writes", () => {
       publicNote: "",
     }, viewerUid, viewerDb);
     strictEqual((await getDoc(doc(viewerDb, "projects", projectId, "attendanceRecords", "2026-11-15_person-linked"))).exists(), true);
+  });
+
+  it("ends and restores a person without deleting related records or links", async () => {
+    const ownerDb = firestoreFor(ownerUid);
+    const personId = await createProjectPerson(projectId, {
+      displayName: "終了確認",
+      attendanceTarget: true,
+      specialPractice: "stage_combat",
+      linkedUserUid: viewerUid,
+      publicNote: "保持する備考",
+    }, actor(ownerUid), ownerDb);
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "projects", projectId), {
+        cast: [{ id: "cast-ended", order: 1, name: "終了確認", personId }],
+        staff: [{ id: "role-ended", role: "演出", members: [{ id: "staff-ended", name: "終了確認", personId }] }],
+      }, { merge: true });
+    });
+    await upsertProjectAttendanceRecord(projectId, {
+      participantId: personId,
+      date: "2026-10-01",
+      status: "absent",
+      availableFrom: null,
+      availableUntil: null,
+      publicNote: "過去記録",
+    }, ownerUid, ownerDb);
+
+    strictEqual(await setProjectPersonEnded(projectId, personId, true, actor(ownerUid), ownerDb), true);
+    let person = (await getDoc(doc(ownerDb, "projects", projectId, "people", personId))).data();
+    let participant = (await getDoc(doc(ownerDb, "projects", projectId, "participants", personId))).data();
+    strictEqual(person?.active, false);
+    strictEqual(person?.linkedUserUid, viewerUid);
+    strictEqual(person?.publicNote, "保持する備考");
+    strictEqual(participant?.active, false);
+    strictEqual((await getDoc(doc(ownerDb, "projects", projectId, "attendanceRecords", `2026-10-01_${personId}`))).exists(), true);
+    strictEqual((await getDoc(doc(ownerDb, "projects", projectId, "participantLinkedUsers", viewerUid))).data()?.participantId, personId);
+    const project = (await getDoc(doc(ownerDb, "projects", projectId))).data();
+    strictEqual(project?.cast[0].personId, personId);
+    strictEqual(project?.staff[0].members[0].personId, personId);
+    strictEqual(buildAttendanceManagementMatrix(await getProjectAttendanceParticipants(projectId, ownerDb), [{ date: "2026-11-15" }], []).length, 0);
+
+    await rejects(() => setProjectPersonEnded(projectId, personId, false, actor(viewerUid), firestoreFor(viewerUid)));
+    strictEqual(await setProjectPersonEnded(projectId, personId, false, actor(editorUid), firestoreFor(editorUid)), true);
+    person = (await getDoc(doc(ownerDb, "projects", projectId, "people", personId))).data();
+    participant = (await getDoc(doc(ownerDb, "projects", projectId, "participants", personId))).data();
+    strictEqual(person?.active, true);
+    strictEqual(participant?.active, true);
+    strictEqual((await getDocs(collection(ownerDb, "projects", projectId, "activityLogs"))).size, 3);
   });
 
   it("rejects viewers and leaves every target unchanged", async () => {

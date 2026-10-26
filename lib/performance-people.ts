@@ -62,6 +62,13 @@ export function projectPersonToPerformanceDraft(person: ProjectPerson): Performa
   };
 }
 
+export function getSelectablePerformancePeople(
+  people: readonly ProjectPerson[],
+  selectedPersonId?: string
+): ProjectPerson[] {
+  return people.filter((person) => person.active || person.id === selectedPersonId);
+}
+
 export function preparePerformancePeopleForSave(
   section: "cast" | "staff",
   value: readonly CastMember[] | readonly StaffRole[],

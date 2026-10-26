@@ -252,3 +252,67 @@ export async function updateProjectPerson(
     return true;
   });
 }
+
+export async function setProjectPersonEnded(
+  projectId: string,
+  personId: string,
+  ended: boolean,
+  actor: ActivityActor,
+  firestore?: Firestore
+): Promise<boolean> {
+  const database = await resolveFirestore(firestore);
+  const projectRef = doc(database, "projects", projectId);
+  const personRef = doc(projectRef, "people", personId);
+  const participantRef = doc(projectRef, "participants", personId);
+  const activityRef = doc(collection(projectRef, "activityLogs"));
+
+  return runTransaction(database, async (transaction) => {
+    const [personSnapshot, participantSnapshot] = await Promise.all([
+      transaction.get(personRef),
+      transaction.get(participantRef),
+    ]);
+    if (!personSnapshot.exists() && !participantSnapshot.exists()) throw new Error("関係者が見つかりません");
+
+    const source = personSnapshot.exists() ? personSnapshot.data() : participantSnapshot.data()!;
+    const current = buildProjectPersonValues({
+      displayName: typeof source.displayName === "string" ? source.displayName : "",
+      attendanceTarget: personSnapshot.exists() ? source.attendanceTarget === true : source.active === true,
+      specialPractice: source.specialPractice,
+      linkedUserUid: typeof source.linkedUserUid === "string" ? source.linkedUserUid : null,
+      publicNote: typeof source.publicNote === "string" ? source.publicNote : "",
+      active: personSnapshot.exists() ? source.active === true : source.active !== false,
+    });
+    const active = !ended;
+    if (current.active === active) return false;
+
+    const values = { ...current, active };
+    const compatValues = participantValues(values);
+    const metadata = { updatedAt: serverTimestamp(), updatedByUid: actor.uid };
+    if (personSnapshot.exists()) {
+      transaction.update(personRef, { active, ...metadata });
+    } else {
+      transaction.set(personRef, {
+        ...values,
+        createdAt: serverTimestamp(),
+        ...metadata,
+        createdByUid: actor.uid,
+      });
+    }
+    if (participantSnapshot.exists()) {
+      transaction.update(participantRef, { active: compatValues.active, ...metadata });
+    } else {
+      transaction.set(participantRef, {
+        ...compatValues,
+        createdAt: serverTimestamp(),
+        ...metadata,
+        createdByUid: actor.uid,
+      });
+    }
+    transaction.set(activityRef, activityPayload(
+      actor,
+      "update",
+      [ended ? "終了済みにする" : "終了済みを解除"]
+    ));
+    return true;
+  });
+}

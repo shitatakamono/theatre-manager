@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   buildNewPerformancePerson,
   getCastPersonIds,
+  getSelectablePerformancePeople,
   getStaffPersonIds,
   preparePerformancePeopleForSave,
   resolveCastMemberPerson,
@@ -22,6 +23,12 @@ const people = [{
 }];
 
 describe("performance people linking", () => {
+  it("hides ended people from new selections while keeping an existing ended selection", () => {
+    const ended = { ...people[0], id: "ended", active: false };
+    deepStrictEqual(getSelectablePerformancePeople([...people, ended]).map(({ id }) => id), ["person-a"]);
+    deepStrictEqual(getSelectablePerformancePeople([...people, ended], "ended").map(({ id }) => id), ["person-a", "ended"]);
+  });
+
   it("resolves only an explicit personId and never matches by name", () => {
     strictEqual(resolveCastMemberPerson({ id: "cast-a", order: 1, name: "人物マスタ名" }, people).person, null);
     strictEqual(resolveCastMemberPerson({ id: "cast-a", order: 1, name: "旧氏名", personId: "person-a" }, people).managementName, "人物マスタ名");

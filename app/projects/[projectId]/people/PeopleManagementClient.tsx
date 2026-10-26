@@ -9,6 +9,7 @@ import {
   createProjectPerson,
   filterManagedPeople,
   getPersonAssociations,
+  setProjectPersonEnded,
   updateProjectPerson,
   type ManagedPersonInput,
 } from "@/lib/people-management";
@@ -93,6 +94,28 @@ export function PeopleManagementClient({
     }
   }
 
+  async function toggleEnded() {
+    if (!canEdit || !editing || saving) return;
+    const ending = editing.active;
+    const confirmed = window.confirm(ending
+      ? "この関係者を終了済みにします。\n過去の出欠やキャスト・スタッフ情報は削除されません。"
+      : "この関係者を通常の関係者へ戻します。");
+    if (!confirmed) return;
+    setSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      await setProjectPersonEnded(project.id, editing.id, ending, actor);
+      setPeople(await getProjectPeopleWithFallback(project.id));
+      setEditing(undefined);
+      setNotice(ending ? "関係者を終了済みにしました" : "終了済みを解除しました");
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "関係者の状態を変更できませんでした");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return <main className={styles.page}>
     <header className={styles.header}>
       <div><Link href={`/projects/${project.id}`}>← 公演トップ</Link><p>PEOPLE</p><h1>関係者管理</h1><span>公演に関わる実在の人と、出欠・システム利用者との連携を管理します。</span></div>
@@ -141,6 +164,9 @@ export function PeopleManagementClient({
           </select></label>
           <label><span>公開備考</span><textarea rows={5} maxLength={2000} value={draft.publicNote} onChange={(event) => setDraft((current) => ({ ...current, publicNote: event.target.value }))} /></label>
           {error && <p className={styles.error} role="alert">{error}</p>}
+          {editing && <button className={editing.active ? styles.endButton : styles.resumeButton} type="button" onClick={() => void toggleEnded()} disabled={saving}>
+            {editing.active ? "終了済みにする" : "終了済みを解除"}
+          </button>}
           <footer><button type="button" onClick={closeEditor} disabled={saving}>キャンセル</button><button type="submit" disabled={saving}>{saving ? "保存中…" : "保存"}</button></footer>
         </form>
       </section>
