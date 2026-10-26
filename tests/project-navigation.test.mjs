@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   buildProjectNavigation,
   getAttendanceManagementAccess,
+  getLegacyParticipantManagementAccess,
   hasEnteredPerformanceInformation,
   isCurrentProjectNavigationItem,
 } from "../lib/project-navigation.ts";
@@ -22,6 +23,7 @@ describe("project navigation", () => {
     strictEqual(groups[2].items[0].href, "/projects/project-1#production-roadmap");
     strictEqual(groups[2].items[1].href, "/projects/project-1/tasks");
     strictEqual(groups[3].items[0].href, "/projects/project-1/people");
+    strictEqual(groups[3].items.find(({ label }) => label === "参加者管理（補助）")?.href, "/projects/project-1/participants");
   });
 
   it("shows owner, editor, and viewer items using existing role boundaries", () => {
@@ -38,7 +40,7 @@ describe("project navigation", () => {
     strictEqual(viewer.includes("全体出欠"), true);
     strictEqual(viewer.includes("関係者管理"), true);
     strictEqual(viewer.includes("システム利用者"), true);
-    strictEqual(viewer.includes("参加者管理（補助）"), false);
+    strictEqual(viewer.includes("参加者管理（補助）"), true);
     strictEqual(viewer.includes("更新履歴"), true);
     strictEqual(canManageMembers("owner"), true);
     strictEqual(canManageMembers("editor"), false);
@@ -52,6 +54,13 @@ describe("project navigation", () => {
     deepStrictEqual(getAttendanceManagementAccess("owner"), { canView: true, canEdit: true });
     deepStrictEqual(getAttendanceManagementAccess("editor"), { canView: true, canEdit: true });
     deepStrictEqual(getAttendanceManagementAccess("viewer"), { canView: true, canEdit: false });
+  });
+
+  it("keeps the legacy participant page readable but not editable for every member role", () => {
+    deepStrictEqual(getLegacyParticipantManagementAccess("owner"), { canView: true, canEdit: false });
+    deepStrictEqual(getLegacyParticipantManagementAccess("editor"), { canView: true, canEdit: false });
+    deepStrictEqual(getLegacyParticipantManagementAccess("viewer"), { canView: true, canEdit: false });
+    deepStrictEqual(getLegacyParticipantManagementAccess(undefined), { canView: false, canEdit: false });
   });
 
   it("does not mark the roadmap anchor current at the same time as the project top", () => {
