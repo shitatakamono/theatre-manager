@@ -7,6 +7,7 @@ import type { ProjectPerformanceRecord } from "@/lib/firestore";
 import {
   EMPTY_MANAGED_PERSON_INPUT,
   createProjectPerson,
+  filterManagedPeople,
   getPersonAssociations,
   updateProjectPerson,
   type ManagedPersonInput,
@@ -36,12 +37,14 @@ export function PeopleManagementClient({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [showInactive, setShowInactive] = useState(false);
   const memberByUid = useMemo(() => new Map(members.map((member) => [member.uid, member])), [members]);
   const linkedPersonByUid = useMemo(() => new Map(people.flatMap((person) => person.linkedUserUid
     ? [[person.linkedUserUid, person.id] as const]
     : [])), [people]);
   const cast = project.data.cast ?? [];
   const staff = project.data.staff ?? [];
+  const visiblePeople = useMemo(() => filterManagedPeople(people, showInactive), [people, showInactive]);
 
   function openCreate() {
     if (!canEdit) return;
@@ -96,15 +99,19 @@ export function PeopleManagementClient({
       {canEdit && <button type="button" onClick={openCreate}>その他の関係者を追加</button>}
     </header>
     {notice && <p className={styles.success} role="status">{notice}</p>}
+    <label className={styles.inactiveFilter}>
+      <input type="checkbox" checked={showInactive} onChange={(event) => setShowInactive(event.target.checked)} />
+      <span>終了した関係者も表示</span>
+    </label>
     {people.length === 0 ? <p className={styles.empty}>関係者はまだ登録されていません。通常は公演情報のキャスト・スタッフから登録できます。</p> : (
       <div className={styles.tableWrap}>
         <table className={styles.table}>
           <thead><tr><th>本名（管理用）</th><th>出欠</th><th>特別稽古</th><th>システム利用者との連携</th><th>キャスト</th><th>スタッフ</th><th>操作</th></tr></thead>
-          <tbody>{people.map((person) => {
+          <tbody>{visiblePeople.map((person) => {
             const association = getPersonAssociations(person.id, person.displayName, cast, staff);
             const member = person.linkedUserUid ? memberByUid.get(person.linkedUserUid) : undefined;
             return <tr key={person.id}>
-              <td data-label="本名（管理用）"><strong>{person.displayName}</strong></td>
+              <td data-label="本名（管理用）"><strong>{person.displayName}</strong>{!person.active && <span className={styles.inactiveBadge}>終了済み</span>}</td>
               <td data-label="出欠">{person.attendanceTarget ? "対象" : "対象外"}</td>
               <td data-label="特別稽古">{SPECIAL_PRACTICE_LABELS[person.specialPractice]}</td>
               <td data-label="システム利用者との連携">{person.linkedUserUid ? `連携済：${member ? memberLabel(member) : person.linkedUserUid}` : "未連携"}</td>

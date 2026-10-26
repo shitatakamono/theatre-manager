@@ -250,7 +250,7 @@ function PersonLinkEditor({
           />
           <p className={styles.personLinkStatus}>
             システム利用者: {draftPerson.values.linkedUserUid ? "連携済み" : "未連携"}
-            <small>連携の変更は参加者管理で行ってください。</small>
+            <small>連携の変更は関係者管理で行ってください。</small>
           </p>
         </div>
       )}

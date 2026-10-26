@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import {
   buildProjectNavigation,
   getAttendanceManagementAccess,
-  getLegacyParticipantManagementAccess,
+  getLegacyParticipantRedirectPath,
   hasEnteredPerformanceInformation,
   isCurrentProjectNavigationItem,
 } from "../lib/project-navigation.ts";
@@ -15,7 +15,7 @@ function labels(groups) {
 
 describe("project navigation", () => {
   it("builds the four groups and stable primary URLs", () => {
-    const groups = buildProjectNavigation("project-1", "owner");
+    const groups = buildProjectNavigation("project-1");
     deepStrictEqual(groups.map(({ label }) => label), ["公演", "稽古", "制作", "管理"]);
     strictEqual(groups[0].items[0].href, "/projects/project-1");
     strictEqual(groups[0].items[1].href, "/projects/project-1/info");
@@ -23,25 +23,15 @@ describe("project navigation", () => {
     strictEqual(groups[2].items[0].href, "/projects/project-1#production-roadmap");
     strictEqual(groups[2].items[1].href, "/projects/project-1/tasks");
     strictEqual(groups[3].items[0].href, "/projects/project-1/people");
-    strictEqual(groups[3].items.find(({ label }) => label === "参加者管理（補助）")?.href, "/projects/project-1/participants");
+    strictEqual(labels(groups).includes("参加者管理（補助）"), false);
   });
 
   it("shows owner, editor, and viewer items using existing role boundaries", () => {
-    const owner = labels(buildProjectNavigation("p", "owner"));
-    const editor = labels(buildProjectNavigation("p", "editor"));
-    const viewer = labels(buildProjectNavigation("p", "viewer"));
-    strictEqual(owner.includes("関係者管理"), true);
-    strictEqual(owner.includes("システム利用者"), true);
-    strictEqual(owner.includes("全体出欠"), true);
-    strictEqual(editor.includes("システム利用者"), true);
-    strictEqual(editor.includes("関係者管理"), true);
-    strictEqual(editor.includes("全体出欠"), true);
-    strictEqual(editor.includes("参加者管理（補助）"), true);
-    strictEqual(viewer.includes("全体出欠"), true);
-    strictEqual(viewer.includes("関係者管理"), true);
-    strictEqual(viewer.includes("システム利用者"), true);
-    strictEqual(viewer.includes("参加者管理（補助）"), true);
-    strictEqual(viewer.includes("更新履歴"), true);
+    const member = labels(buildProjectNavigation("p"));
+    strictEqual(member.includes("関係者管理"), true);
+    strictEqual(member.includes("システム利用者"), true);
+    strictEqual(member.includes("全体出欠"), true);
+    strictEqual(member.includes("更新履歴"), true);
     strictEqual(canManageMembers("owner"), true);
     strictEqual(canManageMembers("editor"), false);
     strictEqual(canManageMembers("viewer"), false);
@@ -56,11 +46,8 @@ describe("project navigation", () => {
     deepStrictEqual(getAttendanceManagementAccess("viewer"), { canView: true, canEdit: false });
   });
 
-  it("keeps the legacy participant page readable but not editable for every member role", () => {
-    deepStrictEqual(getLegacyParticipantManagementAccess("owner"), { canView: true, canEdit: false });
-    deepStrictEqual(getLegacyParticipantManagementAccess("editor"), { canView: true, canEdit: false });
-    deepStrictEqual(getLegacyParticipantManagementAccess("viewer"), { canView: true, canEdit: false });
-    deepStrictEqual(getLegacyParticipantManagementAccess(undefined), { canView: false, canEdit: false });
+  it("redirects the removed participant page to people management", () => {
+    strictEqual(getLegacyParticipantRedirectPath("project-1"), "/projects/project-1/people");
   });
 
   it("does not mark the roadmap anchor current at the same time as the project top", () => {

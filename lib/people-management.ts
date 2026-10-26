@@ -9,6 +9,7 @@ import { getActivityActorName, type ActivityActor } from "./activity.ts";
 import type { CastMember, StaffRole } from "./performance.ts";
 import {
   buildProjectPersonValues,
+  type ProjectPerson,
   type ProjectPersonInput,
   type ProjectPersonValues,
 } from "./people.ts";
@@ -75,6 +76,13 @@ export function getManagedPersonChangedFields(
   if (before.linkedUserUid !== after.linkedUserUid) changed.push("システム利用者連携");
   if (before.publicNote !== after.publicNote) changed.push("公開備考");
   return changed;
+}
+
+export function filterManagedPeople(
+  people: readonly ProjectPerson[],
+  includeInactive: boolean
+): ProjectPerson[] {
+  return people.filter((person) => includeInactive || person.active);
 }
 
 export function getPersonAssociations(

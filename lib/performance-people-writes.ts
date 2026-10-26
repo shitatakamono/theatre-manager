@@ -101,11 +101,11 @@ export async function updateProjectPerformancePeopleSection(
           active: values.active && values.attendanceTarget,
         });
         if (!participantSnapshot.exists() && values.linkedUserUid) {
-          throw new Error("システム利用者との紐付けは参加者管理から設定してください");
+          throw new Error("システム利用者との紐付けは関係者管理から設定してください");
         }
         if (participantSnapshot.exists()
           && (participantSnapshot.data().linkedUserUid ?? null) !== values.linkedUserUid) {
-          throw new Error("システム利用者との紐付けは参加者管理から設定してください");
+          throw new Error("システム利用者との紐付けは関係者管理から設定してください");
         }
 
         const personChanged = !personSnapshot.exists() || !samePersonFields(

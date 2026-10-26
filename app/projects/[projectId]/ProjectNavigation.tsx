@@ -4,14 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { buildProjectNavigation, isCurrentProjectNavigationItem } from "@/lib/project-navigation";
-import { useProjectAccess } from "./ProjectAccess";
 import styles from "./project-navigation.module.css";
 
 export function ProjectNavigation({ projectId }: { projectId: string }) {
   const pathname = usePathname();
-  const { role } = useProjectAccess();
   const [showHelp, setShowHelp] = useState(false);
-  const groups = buildProjectNavigation(projectId, role);
+  const groups = buildProjectNavigation(projectId);
 
   return <>
     <div className={styles.shell}>
@@ -23,7 +21,6 @@ export function ProjectNavigation({ projectId }: { projectId: string }) {
             <div className={styles.menu}>
               {group.items.map((item) => item.href ? <Link
                 aria-current={isCurrentProjectNavigationItem(pathname, item.href) ? "page" : undefined}
-                data-auxiliary={item.auxiliary || undefined}
                 href={item.href}
                 key={item.label}
               >{item.label}</Link> : <button type="button" onClick={() => setShowHelp(true)} key={item.label}>{item.label}</button>)}

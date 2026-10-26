@@ -2,6 +2,7 @@ import { deepStrictEqual, strictEqual, throws } from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   buildManagedPersonValues,
+  filterManagedPeople,
   getManagedPersonChangedFields,
   getPersonAssociations,
 } from "../lib/people-management.ts";
@@ -36,6 +37,15 @@ describe("people management values", () => {
       linkedUserUid: "member-a",
     });
     deepStrictEqual(getManagedPersonChangedFields(before, after), ["出欠管理対象", "システム利用者連携"]);
+  });
+
+  it("shows active people by default and can include ended people", () => {
+    const people = [
+      { id: "active", active: true },
+      { id: "inactive", active: false },
+    ];
+    deepStrictEqual(filterManagedPeople(people, false).map(({ id }) => id), ["active"]);
+    deepStrictEqual(filterManagedPeople(people, true).map(({ id }) => id), ["active", "inactive"]);
   });
 
   it("derives cast and staff registration from personId without copying it to people", () => {

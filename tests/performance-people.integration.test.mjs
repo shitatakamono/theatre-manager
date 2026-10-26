@@ -480,7 +480,7 @@ describe("performance people atomic writes", () => {
       [personDraft("person-a", { linkedUserUid: editorUid })],
       { actor: actor(ownerUid), expectedRevision: 0 },
       db
-    ), /参加者管理/);
+    ), /関係者管理/);
 
     strictEqual((await getDoc(doc(db, "projects", projectId))).data()?.cast.length, 0);
     strictEqual((await getDoc(doc(db, "projects", projectId, "people", "person-a"))).exists(), false);
