@@ -2,35 +2,34 @@ import { deepStrictEqual, strictEqual } from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   buildProjectNavigation,
+  buildRehearsalSectionNavigation,
   getAttendanceManagementAccess,
   getLegacyParticipantRedirectPath,
   hasEnteredPerformanceInformation,
+  isCurrentProjectPrimaryNavigationItem,
+  isManagementMenuVisible,
   isCurrentProjectNavigationItem,
+  reduceManagementMenuState,
 } from "../lib/project-navigation.ts";
 import { canEditProject, canManageMembers } from "../lib/auth.ts";
 
-function labels(groups) {
-  return groups.flatMap((group) => group.items.map((item) => item.label));
-}
-
 describe("project navigation", () => {
-  it("builds the four groups and stable primary URLs", () => {
-    const groups = buildProjectNavigation("project-1");
-    deepStrictEqual(groups.map(({ label }) => label), ["公演", "稽古", "制作", "管理"]);
-    strictEqual(groups[0].items[0].href, "/projects/project-1");
-    strictEqual(groups[0].items[1].href, "/projects/project-1/info");
-    strictEqual(groups[1].items[0].href, "/projects/project-1/rehearsals");
-    strictEqual(groups[2].items[0].href, "/projects/project-1#production-roadmap");
-    strictEqual(groups[2].items[1].href, "/projects/project-1/tasks");
-    strictEqual(groups[3].items[0].href, "/projects/project-1/people");
-    strictEqual(labels(groups).includes("参加者管理（補助）"), false);
+  it("uses three direct links and keeps only management as a menu", () => {
+    const navigation = buildProjectNavigation("project-1");
+    deepStrictEqual(navigation.primary, [
+      { label: "公演トップ", href: "/projects/project-1" },
+      { label: "稽古", href: "/projects/project-1/rehearsals" },
+      { label: "制作タスク", href: "/projects/project-1/tasks" },
+    ]);
+    deepStrictEqual(navigation.management.map(({ label }) => label), ["関係者管理", "システム利用者", "更新履歴", "使い方"]);
+    strictEqual([...navigation.primary, ...navigation.management].some(({ label }) => label === "制作ロードマップ"), false);
+    strictEqual([...navigation.primary, ...navigation.management].some(({ label }) => label === "公演情報"), false);
   });
 
   it("shows owner, editor, and viewer items using existing role boundaries", () => {
-    const member = labels(buildProjectNavigation("p"));
+    const member = buildProjectNavigation("p").management.map(({ label }) => label);
     strictEqual(member.includes("関係者管理"), true);
     strictEqual(member.includes("システム利用者"), true);
-    strictEqual(member.includes("全体出欠"), true);
     strictEqual(member.includes("更新履歴"), true);
     strictEqual(canManageMembers("owner"), true);
     strictEqual(canManageMembers("editor"), false);
@@ -48,6 +47,27 @@ describe("project navigation", () => {
 
   it("redirects the removed participant page to people management", () => {
     strictEqual(getLegacyParticipantRedirectPath("project-1"), "/projects/project-1/people");
+  });
+
+  it("links all three rehearsal and attendance screens in both directions", () => {
+    deepStrictEqual(buildRehearsalSectionNavigation("project-1"), [
+      { label: "稽古スケジュール", href: "/projects/project-1/rehearsals" },
+      { label: "自分の出欠", href: "/projects/project-1/attendance" },
+      { label: "全体出欠", href: "/projects/project-1/attendance/manage" },
+    ]);
+    strictEqual(isCurrentProjectPrimaryNavigationItem("/projects/project-1/rehearsals", "/projects/project-1/rehearsals"), true);
+    strictEqual(isCurrentProjectPrimaryNavigationItem("/projects/project-1/attendance", "/projects/project-1/rehearsals"), true);
+    strictEqual(isCurrentProjectPrimaryNavigationItem("/projects/project-1/attendance/manage", "/projects/project-1/rehearsals"), true);
+  });
+
+  it("toggles management and closes it for every navigation dismissal", () => {
+    strictEqual(reduceManagementMenuState(false, "toggle"), true);
+    strictEqual(reduceManagementMenuState(true, "toggle"), false);
+    for (const reason of ["management item", "direct link", "outside click", "Escape", "route change"]) {
+      strictEqual(reduceManagementMenuState(true, "close"), false, reason);
+    }
+    strictEqual(isManagementMenuVisible(true, "/projects/p", "/projects/p"), true);
+    strictEqual(isManagementMenuVisible(true, "/projects/p", "/projects/p/tasks"), false);
   });
 
   it("does not mark the roadmap anchor current at the same time as the project top", () => {

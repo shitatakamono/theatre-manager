@@ -1,0 +1,14 @@
+.navigation { width: fit-content; max-width: calc(100% - 64px); display: grid; grid-template-columns: repeat(3, minmax(118px, 1fr)); margin: 12px 32px 20px; overflow: hidden; border: 1px solid #b9ccc4; border-radius: 7px; background: #fff; }
+.navigation a { min-height: 38px; display: flex; align-items: center; justify-content: center; border-left: 1px solid #cddad5; padding: 7px 14px; color: #42574e; font-size: 12px; font-weight: 800; white-space: nowrap; transition: background-color .15s ease, color .15s ease; }
+.navigation a:first-child { border-left: 0; }
+.navigation a:hover { background: #edf5f1; color: #1f654e; }
+.navigation a[aria-current="page"] { background: #286b53; color: #fff; }
+
+@media (max-width: 700px) {
+  .navigation { width: calc(100% - 24px); max-width: none; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 10px 12px 14px; }
+  .navigation a { min-width: 0; padding-inline: 4px; font-size: 12px; }
+}
+
+@media print {
+  .navigation { display: none !important; }
+}

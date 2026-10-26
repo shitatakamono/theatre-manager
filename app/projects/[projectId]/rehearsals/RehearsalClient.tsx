@@ -229,7 +229,6 @@ export function RehearsalClient({ projectId }: { projectId: string }) {
             />}
           </>}
           <Link className={styles.actionLink} href={`/projects/${projectId}/rehearsals/print`}>印刷</Link>
-          <details className={styles.attendanceMenu}><summary>出欠</summary><div><Link href={`/projects/${projectId}/attendance`}>出欠入力</Link><Link href={`/projects/${projectId}/attendance/manage`}>全体出欠</Link></div></details>
         </div>
       </header>
 

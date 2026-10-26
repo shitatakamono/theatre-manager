@@ -22,6 +22,7 @@ import {
 } from "@/lib/participants";
 import { getProjectAttendanceParticipants } from "@/lib/people";
 import { getAllProjectRehearsals, type Rehearsal } from "@/lib/rehearsals";
+import { RehearsalSectionNavigation } from "../RehearsalSectionNavigation";
 import styles from "./attendance.module.css";
 
 const STATUS_OPTIONS: { value: AttendanceStatus; label: string; mark: string }[] = [
@@ -148,7 +149,9 @@ export default function AttendancePage({ params }: { params: Promise<{ projectId
   }
 
   return (
-    <main className={styles.page}>
+    <>
+      <RehearsalSectionNavigation projectId={projectId} />
+      <main className={styles.page}>
       <header className={styles.header}>
         <div><Link href={`/projects/${projectId}`}>← 公演トップ</Link><p>ATTENDANCE</p><h1>出欠入力</h1></div>
         <Link className={styles.manageLink} href={`/projects/${projectId}/attendance/manage`}>全体出欠</Link>
@@ -179,6 +182,7 @@ export default function AttendancePage({ params }: { params: Promise<{ projectId
           {saveError && <p className={styles.error} role="alert">{saveError}</p>}
         </section>
       </>}
-    </main>
+      </main>
+    </>
   );
 }

@@ -8,13 +8,6 @@
 .header button, .dialog footer button, .conflict button { min-height: 42px; border: 1px solid #21634f; border-radius: 8px; background: #21634f; color: #fff; padding: 8px 16px; font-weight: 800; cursor: pointer; }
 .actionLink { display: inline-flex !important; align-items: center; min-height: 42px; margin: 0 !important; border: 1px solid #21634f; border-radius: 8px; color: #21634f !important; padding: 8px 16px; text-decoration: none; }
 .secondaryButton { background: #fff !important; color: #285c4b !important; }
-.attendanceMenu { position: relative; }
-.attendanceMenu summary { display: inline-flex; align-items: center; min-height: 42px; border: 1px solid #21634f; border-radius: 8px; color: #21634f; padding: 8px 16px; font-size: 13px; font-weight: 800; cursor: pointer; list-style: none; }
-.attendanceMenu summary::-webkit-details-marker { display: none; }
-.attendanceMenu summary::after { content: "⌄"; margin-left: 7px; }
-.attendanceMenu > div { position: absolute; right: 0; z-index: 12; display: grid; min-width: 150px; margin-top: 5px; border: 1px solid #cbd5d1; border-radius: 8px; background: #fff; padding: 5px; box-shadow: 0 10px 28px rgb(20 45 36 / 14%); }
-.attendanceMenu > div a { margin: 0; border-radius: 6px; padding: 9px 10px; color: #285c4b; white-space: nowrap; }
-.attendanceMenu > div a:hover { background: #edf3f0; }
 .success, .error { margin-top: 16px; border-radius: 8px; padding: 11px 14px; font-size: 13px; }
 .success { border: 1px solid #9dc9b8; background: #edf8f3; color: #205c49; }
 .error, .formError { border: 1px solid #e2b1b1; background: #fff4f4; color: #8b2929; }
@@ -116,9 +109,8 @@
   .header { align-items: start; flex-direction: column; }
   .headerActions { width: 100%; }
   .headerActions { flex-wrap: wrap; }
-  .headerActions > button, .headerActions > .actionLink, .headerActions > .attendanceMenu { flex: 1 1 calc(50% - 4px); }
-  .headerActions button, .headerActions .actionLink, .attendanceMenu summary { width: 100%; justify-content: center; padding-inline: 10px; }
-  .attendanceMenu > div { right: auto; left: 0; width: 100%; }
+  .headerActions > button, .headerActions > .actionLink { flex: 1 1 calc(50% - 4px); }
+  .headerActions button, .headerActions .actionLink { width: 100%; justify-content: center; padding-inline: 10px; }
   .viewSwitch button { flex: 1; }
   .tableWrap { overflow: visible; border: 0; }
   .table, .table tbody { display: block; }

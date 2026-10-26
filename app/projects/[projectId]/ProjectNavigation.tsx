@@ -2,30 +2,85 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
-import { buildProjectNavigation, isCurrentProjectNavigationItem } from "@/lib/project-navigation";
+import { useEffect, useRef, useState } from "react";
+import {
+  buildProjectNavigation,
+  isCurrentProjectPrimaryNavigationItem,
+  isManagementMenuVisible,
+  isCurrentProjectNavigationItem,
+  reduceManagementMenuState,
+} from "@/lib/project-navigation";
 import styles from "./project-navigation.module.css";
 
 export function ProjectNavigation({ projectId }: { projectId: string }) {
   const pathname = usePathname();
   const [showHelp, setShowHelp] = useState(false);
-  const groups = buildProjectNavigation(projectId);
+  const [managementOpen, setManagementOpen] = useState(false);
+  const [managementPathname, setManagementPathname] = useState(pathname);
+  const managementRef = useRef<HTMLDivElement>(null);
+  const navigation = buildProjectNavigation(projectId);
+  const managementVisible = isManagementMenuVisible(managementOpen, managementPathname, pathname);
+  const managementCurrent = navigation.management.some((item) => item.href && isCurrentProjectNavigationItem(pathname, item.href));
+
+  useEffect(() => {
+    if (!managementVisible) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (!managementRef.current?.contains(event.target as Node)) {
+        setManagementOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setManagementOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [managementVisible]);
+
+  const closeManagement = () => setManagementOpen((current) => reduceManagementMenuState(current, "close"));
+  const toggleManagement = () => {
+    if (managementPathname !== pathname) {
+      setManagementPathname(pathname);
+      setManagementOpen(true);
+      return;
+    }
+    setManagementOpen((current) => reduceManagementMenuState(current, "toggle"));
+  };
 
   return <>
     <div className={styles.shell}>
       <div className={styles.bar}>
         <Link className={styles.brand} href="/">SeisakuBoard</Link>
         <nav className={styles.groups} aria-label="公演内ナビゲーション">
-          {groups.map((group) => <details className={styles.group} key={group.label}>
-            <summary>{group.label}<span aria-hidden="true">⌄</span></summary>
-            <div className={styles.menu}>
-              {group.items.map((item) => item.href ? <Link
+          {navigation.primary.map((item) => <Link
+            className={styles.directLink}
+            aria-current={isCurrentProjectPrimaryNavigationItem(pathname, item.href) ? "page" : undefined}
+            href={item.href}
+            key={item.label}
+            onClick={closeManagement}
+          >{item.label}</Link>)}
+          <div className={styles.management} ref={managementRef}>
+            <button
+              className={styles.managementButton}
+              type="button"
+              aria-expanded={managementVisible}
+              aria-current={managementCurrent ? "page" : undefined}
+              aria-haspopup="menu"
+              onClick={toggleManagement}
+            >管理<span aria-hidden="true">▼</span></button>
+            {managementVisible && <div className={styles.menu} role="menu">
+              {navigation.management.map((item) => item.href ? <Link
                 aria-current={isCurrentProjectNavigationItem(pathname, item.href) ? "page" : undefined}
                 href={item.href}
                 key={item.label}
-              >{item.label}</Link> : <button type="button" onClick={() => setShowHelp(true)} key={item.label}>{item.label}</button>)}
-            </div>
-          </details>)}
+                onClick={closeManagement}
+                role="menuitem"
+              >{item.label}</Link> : <button type="button" onClick={() => { closeManagement(); setShowHelp(true); }} key={item.label} role="menuitem">{item.label}</button>)}
+            </div>}
+          </div>
         </nav>
         <Link className={styles.projectList} href="/">公演一覧</Link>
       </div>

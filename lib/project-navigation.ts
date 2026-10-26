@@ -6,39 +6,55 @@ export type ProjectNavigationItem = {
   action?: "help";
 };
 
-export type ProjectNavigationGroup = {
-  label: "公演" | "稽古" | "制作" | "管理";
-  items: ProjectNavigationItem[];
+export type ProjectNavigationModel = {
+  primary: Array<Required<Pick<ProjectNavigationItem, "label" | "href">>>;
+  management: ProjectNavigationItem[];
 };
 
-export function buildProjectNavigation(projectId: string): ProjectNavigationGroup[] {
+export function buildProjectNavigation(projectId: string): ProjectNavigationModel {
   const base = `/projects/${projectId}`;
-  return [
-    { label: "公演", items: [
+  return {
+    primary: [
       { label: "公演トップ", href: base },
-      { label: "公演情報", href: `${base}/info` },
-    ] },
-    { label: "稽古", items: [
-      { label: "稽古スケジュール", href: `${base}/rehearsals` },
-      { label: "出欠入力", href: `${base}/attendance` },
-      { label: "全体出欠", href: `${base}/attendance/manage` },
-    ] },
-    { label: "制作", items: [
-      { label: "制作ロードマップ", href: `${base}#production-roadmap` },
-      { label: "タスク一覧", href: `${base}/tasks` },
-    ] },
-    { label: "管理", items: [
+      { label: "稽古", href: `${base}/rehearsals` },
+      { label: "制作タスク", href: `${base}/tasks` },
+    ],
+    management: [
       { label: "関係者管理", href: `${base}/people` },
       { label: "システム利用者", href: `${base}/members` },
       { label: "更新履歴", href: `${base}/activity` },
       { label: "使い方", action: "help" as const },
-    ] },
+    ],
+  };
+}
+
+export function buildRehearsalSectionNavigation(projectId: string) {
+  const base = `/projects/${projectId}`;
+  return [
+    { label: "稽古スケジュール", href: `${base}/rehearsals` },
+    { label: "自分の出欠", href: `${base}/attendance` },
+    { label: "全体出欠", href: `${base}/attendance/manage` },
   ];
+}
+
+export function reduceManagementMenuState(current: boolean, action: "toggle" | "close"): boolean {
+  return action === "toggle" ? !current : false;
+}
+
+export function isManagementMenuVisible(open: boolean, openedPathname: string, currentPathname: string): boolean {
+  return open && openedPathname === currentPathname;
 }
 
 export function isCurrentProjectNavigationItem(pathname: string, href: string): boolean {
   if (href.includes("#")) return false;
   return pathname === href;
+}
+
+export function isCurrentProjectPrimaryNavigationItem(pathname: string, href: string): boolean {
+  if (isCurrentProjectNavigationItem(pathname, href)) return true;
+  if (!href.endsWith("/rehearsals")) return false;
+  const projectBase = href.slice(0, -"/rehearsals".length);
+  return pathname === `${projectBase}/attendance` || pathname === `${projectBase}/attendance/manage`;
 }
 
 export function getAttendanceManagementAccess(role?: ProjectRole): { canView: boolean; canEdit: boolean } {

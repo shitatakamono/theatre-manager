@@ -26,6 +26,7 @@ import { getProjectAttendanceParticipants } from "@/lib/people";
 import { getAttendanceManagementAccess } from "@/lib/project-navigation";
 import { getAllProjectRehearsals, type Rehearsal } from "@/lib/rehearsals";
 import { useProjectAccess } from "../../ProjectAccess";
+import { RehearsalSectionNavigation } from "../../RehearsalSectionNavigation";
 import styles from "./attendance-manage.module.css";
 
 const STATUS_OPTIONS: { value: AttendanceStatus; label: string; mark: string }[] = [
@@ -193,7 +194,9 @@ export default function AttendanceManagePage({ params }: { params: Promise<{ pro
 
   if (!canView) return <main className={styles.page}><section className={styles.denied}><h1>全体出欠</h1><p>この画面を閲覧する権限がありません。</p><Link href={`/projects/${projectId}/attendance`}>出欠入力へ戻る</Link></section></main>;
 
-  return <main className={styles.page}>
+  return <>
+    <RehearsalSectionNavigation projectId={projectId} />
+    <main className={styles.page}>
     <header className={styles.header}>
       <div><Link href={`/projects/${projectId}/attendance`}>← 出欠入力へ戻る</Link><p>TEAM ATTENDANCE</p><h1>全体出欠</h1></div>
       <span>参加者 {participants.filter(({ active }) => active).length}名 / 稽古日 {days.length}日</span>
@@ -236,5 +239,6 @@ export default function AttendanceManagePage({ params }: { params: Promise<{ pro
         </form>
       </section>
     </div>}
-  </main>;
+    </main>
+  </>;
 }
