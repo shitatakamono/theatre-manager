@@ -20,6 +20,7 @@ describe("feedback labels", () => {
   it("converts project routes to readable page labels", () => {
     strictEqual(getFeedbackPageLabel("/projects/project-a"), "公演トップ");
     strictEqual(getFeedbackPageLabel("/projects/project-a/info"), "公演情報");
+    strictEqual(getFeedbackPageLabel("/projects/project-a/people"), "関係者管理");
     strictEqual(getFeedbackPageLabel("/projects/project-a/rehearsals"), "稽古");
     strictEqual(getFeedbackPageLabel("/projects/project-a/production/flyer"), "チラシ・ポスター");
     strictEqual(getFeedbackPageLabel("/projects/project-a/production/accounting"), "会計");

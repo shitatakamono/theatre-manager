@@ -205,7 +205,7 @@ function PersonLinkEditor({
   return (
     <div className={styles.personLinkEditor}>
       <label className={styles.field}>
-        <span>人物情報</span>
+        <span>関係者情報</span>
         <select value={personId ?? ""} onChange={(event) => onSelect(event.target.value)}>
           <option value="">未登録</option>
           {people.map((person) => (
@@ -222,7 +222,7 @@ function PersonLinkEditor({
       </label>
       {!personId && (
         <button type="button" className={styles.personCreateButton} onClick={onCreate}>
-          新しい人物として登録
+          新しい関係者として登録
         </button>
       )}
       {personId && draftPerson && (
@@ -531,9 +531,7 @@ export function PerformanceInfoClient({
 
       <nav className={styles.sectionNav} aria-label="公演情報のセクション">
         {PERFORMANCE_INFORMATION_SECTIONS.map((link) => (
-          <a key={link.id} href={`#${link.id}`}>
-            {link.label}
-          </a>
+          <a key={link.id} href={`#${link.id}`}>{link.label}</a>
         ))}
       </nav>
 

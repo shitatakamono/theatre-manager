@@ -21,18 +21,22 @@ describe("project navigation", () => {
     strictEqual(groups[1].items[0].href, "/projects/project-1/rehearsals");
     strictEqual(groups[2].items[0].href, "/projects/project-1#production-roadmap");
     strictEqual(groups[2].items[1].href, "/projects/project-1/tasks");
+    strictEqual(groups[3].items[0].href, "/projects/project-1/people");
   });
 
   it("shows owner, editor, and viewer items using existing role boundaries", () => {
     const owner = labels(buildProjectNavigation("p", "owner"));
     const editor = labels(buildProjectNavigation("p", "editor"));
     const viewer = labels(buildProjectNavigation("p", "viewer"));
+    strictEqual(owner.includes("関係者管理"), true);
     strictEqual(owner.includes("システム利用者"), true);
     strictEqual(owner.includes("全体出欠"), true);
     strictEqual(editor.includes("システム利用者"), true);
+    strictEqual(editor.includes("関係者管理"), true);
     strictEqual(editor.includes("全体出欠"), true);
     strictEqual(editor.includes("参加者管理（補助）"), true);
     strictEqual(viewer.includes("全体出欠"), true);
+    strictEqual(viewer.includes("関係者管理"), true);
     strictEqual(viewer.includes("システム利用者"), true);
     strictEqual(viewer.includes("参加者管理（補助）"), false);
     strictEqual(viewer.includes("更新履歴"), true);

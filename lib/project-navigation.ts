@@ -30,6 +30,7 @@ export function buildProjectNavigation(projectId: string, role?: ProjectRole): P
       { label: "タスク一覧", href: `${base}/tasks` },
     ] },
     { label: "管理", items: [
+      { label: "関係者管理", href: `${base}/people` },
       { label: "システム利用者", href: `${base}/members` },
       { label: "更新履歴", href: `${base}/activity` },
       ...(canEdit ? [{ label: "参加者管理（補助）", href: `${base}/participants`, auxiliary: true }] : []),

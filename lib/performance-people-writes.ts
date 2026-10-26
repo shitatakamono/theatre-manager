@@ -49,16 +49,16 @@ export async function updateProjectPerformancePeopleSection(
   for (const draft of peopleDrafts) {
     const personId = draft.id.trim();
     if (!personId || personId.includes("/") || personId.length > 128) {
-      throw new Error("人物IDが不正です");
+      throw new Error("関係者IDが不正です");
     }
-    if (draftById.has(personId)) throw new Error("同じ人物が重複して指定されています");
+    if (draftById.has(personId)) throw new Error("同じ関係者が重複して指定されています");
     draftById.set(personId, {
       id: personId,
       values: buildProjectPersonValues(draft.values),
     });
   }
   if (referencedPersonIds.some((personId) => !draftById.has(personId))) {
-    throw new Error("関連付けた人物情報を確認できません");
+    throw new Error("関連付けた関係者情報を確認できません");
   }
 
   return runProjectRevisionTransaction({
@@ -163,8 +163,8 @@ export async function updateProjectPerformancePeopleSection(
 
       return {
         changedFields: [
-          ...(personCreated ? ["人物を追加"] : []),
-          ...(personUpdated ? ["人物情報"] : []),
+          ...(personCreated ? ["関係者を追加"] : []),
+          ...(personUpdated ? ["関係者情報"] : []),
         ],
         apply: () => operations.forEach((operation) => operation()),
       };

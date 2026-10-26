@@ -63,6 +63,7 @@ export function getFeedbackPageLabel(path: string): string {
   if (/\/production\/accounting\/?$/.test(path)) return "会計";
   if (/\/info\/?$/.test(path)) return "公演情報";
   if (/\/activity\/?$/.test(path)) return "更新履歴";
+  if (/\/people\/?$/.test(path)) return "関係者管理";
   if (/\/members\/?$/.test(path)) return "メンバー管理";
   if (/\/participants\/?$/.test(path)) return "参加者管理";
   if (/\/tasks\/?$/.test(path)) return "タスク一覧";

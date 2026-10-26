@@ -4,8 +4,10 @@ import {
   getDocs,
   runTransaction,
   serverTimestamp,
+  type DocumentReference,
   type Firestore,
   type QueryDocumentSnapshot,
+  type Transaction,
 } from "firebase/firestore";
 import { getActivityActorName, type ActivityActor } from "./activity.ts";
 
@@ -130,6 +132,38 @@ function personSyncValues(values: ParticipantValues, actorUid: string) {
   };
 }
 
+export async function synchronizeParticipantLinkedUser(
+  transaction: Transaction,
+  projectRef: DocumentReference,
+  participantId: string,
+  currentLinkedUserUid: string | null,
+  nextLinkedUserUid: string | null
+): Promise<void> {
+  if (currentLinkedUserUid === nextLinkedUserUid) return;
+
+  const oldLinkedUserRef = currentLinkedUserUid
+    ? doc(projectRef, "participantLinkedUsers", currentLinkedUserUid)
+    : null;
+  const newLinkedUserRef = nextLinkedUserUid
+    ? doc(projectRef, "participantLinkedUsers", nextLinkedUserUid)
+    : null;
+
+  if (newLinkedUserRef && nextLinkedUserUid) {
+    const memberRef = doc(projectRef, "members", nextLinkedUserUid);
+    const [member, linkedUser] = await Promise.all([
+      transaction.get(memberRef),
+      transaction.get(newLinkedUserRef),
+    ]);
+    if (!member.exists()) throw new Error("このシステム利用者は公演メンバーではありません");
+    if (linkedUser.exists() && linkedUser.data().participantId !== participantId) {
+      throw new Error("このアカウントは別の参加者または関係者に紐付いています");
+    }
+  }
+
+  if (oldLinkedUserRef) transaction.delete(oldLinkedUserRef);
+  if (newLinkedUserRef) transaction.set(newLinkedUserRef, { participantId });
+}
+
 export async function getProjectParticipants(projectId: string, firestore?: Firestore): Promise<Participant[]> {
   const database = await resolveFirestore(firestore);
   const snapshot = await getDocs(collection(database, "projects", projectId, "participants"));
@@ -148,16 +182,16 @@ export async function createProjectParticipant(
   const database = await resolveFirestore(firestore);
   const projectRef = doc(database, "projects", projectId);
   const participantRef = doc(collection(projectRef, "participants"));
-  const linkedUserRef = values.linkedUserUid
-    ? doc(projectRef, "participantLinkedUsers", values.linkedUserUid)
-    : null;
   const activityRef = doc(collection(projectRef, "activityLogs"));
 
   await runTransaction(database, async (transaction) => {
-    if (linkedUserRef) {
-      const linkedUser = await transaction.get(linkedUserRef);
-      if (linkedUser.exists()) throw new Error("このアカウントは別の参加者に紐付いています");
-    }
+    await synchronizeParticipantLinkedUser(
+      transaction,
+      projectRef,
+      participantRef.id,
+      null,
+      values.linkedUserUid
+    );
     transaction.set(participantRef, {
       ...values,
       createdAt: serverTimestamp(),
@@ -165,7 +199,6 @@ export async function createProjectParticipant(
       createdByUid: actor.uid,
       updatedByUid: actor.uid,
     });
-    if (linkedUserRef) transaction.set(linkedUserRef, { participantId: participantRef.id });
     transaction.set(activityRef, activityPayload(actor, "create", [`参加者を追加（${values.displayName}）`]));
   });
   return participantRef.id;
@@ -195,18 +228,13 @@ export async function updateProjectParticipant(
     const changedFields = getParticipantChangedFields(current, values);
     if (changedFields.length === 0) return false;
 
-    const oldLinkedUserRef = current.linkedUserUid
-      ? doc(projectRef, "participantLinkedUsers", current.linkedUserUid)
-      : null;
-    const newLinkedUserRef = values.linkedUserUid
-      ? doc(projectRef, "participantLinkedUsers", values.linkedUserUid)
-      : null;
-    if (newLinkedUserRef && values.linkedUserUid !== current.linkedUserUid) {
-      const linkedUser = await transaction.get(newLinkedUserRef);
-      if (linkedUser.exists() && linkedUser.data().participantId !== participantId) {
-        throw new Error("このアカウントは別の参加者に紐付いています");
-      }
-    }
+    await synchronizeParticipantLinkedUser(
+      transaction,
+      projectRef,
+      participantId,
+      current.linkedUserUid,
+      values.linkedUserUid
+    );
 
     transaction.update(participantRef, {
       ...values,
@@ -215,10 +243,6 @@ export async function updateProjectParticipant(
     });
     if (personSnapshot.exists()) {
       transaction.update(personRef, personSyncValues(values, actor.uid));
-    }
-    if (oldLinkedUserRef && current.linkedUserUid !== values.linkedUserUid) transaction.delete(oldLinkedUserRef);
-    if (newLinkedUserRef && current.linkedUserUid !== values.linkedUserUid) {
-      transaction.set(newLinkedUserRef, { participantId });
     }
     transaction.set(activityRef, activityPayload(actor, "update", changedFields));
     return true;

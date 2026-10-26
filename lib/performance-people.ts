@@ -28,7 +28,7 @@ export function buildNewPerformancePerson(
   input: Partial<Omit<ProjectPersonInput, "displayName">> = {}
 ): PerformancePersonDraft {
   const personId = id.trim();
-  if (!personId) throw new Error("人物IDが不正です");
+  if (!personId) throw new Error("関係者IDが不正です");
   return {
     id: personId,
     values: buildProjectPersonValues({
