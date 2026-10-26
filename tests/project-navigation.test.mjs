@@ -18,7 +18,7 @@ describe("project navigation", () => {
     const navigation = buildProjectNavigation("project-1");
     deepStrictEqual(navigation.primary, [
       { label: "公演トップ", href: "/projects/project-1" },
-      { label: "稽古", href: "/projects/project-1/rehearsals" },
+      { label: "稽古スケジュール", href: "/projects/project-1/rehearsals" },
       { label: "制作タスク", href: "/projects/project-1/tasks" },
     ]);
     deepStrictEqual(navigation.management.map(({ label }) => label), ["関係者管理", "システム利用者", "更新履歴", "使い方"]);

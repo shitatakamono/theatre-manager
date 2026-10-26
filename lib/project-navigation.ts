@@ -16,7 +16,7 @@ export function buildProjectNavigation(projectId: string): ProjectNavigationMode
   return {
     primary: [
       { label: "公演トップ", href: base },
-      { label: "稽古", href: `${base}/rehearsals` },
+      { label: "稽古スケジュール", href: `${base}/rehearsals` },
       { label: "制作タスク", href: `${base}/tasks` },
     ],
     management: [
