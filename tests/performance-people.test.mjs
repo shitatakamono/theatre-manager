@@ -91,6 +91,7 @@ describe("performance people linking", () => {
         displayName: "新規 人物",
         attendanceTarget: false,
         specialPractice: "none",
+        rehearsalParticipationTypes: [],
         linkedUserUid: null,
         publicNote: "",
         active: true,
@@ -118,8 +119,8 @@ describe("performance people linking", () => {
     strictEqual(prepared.value[1].personId, "person-1");
     strictEqual(prepared.value[2].personId, "person-2");
     deepStrictEqual(prepared.peopleDrafts.map(({ values }) => values), [
-      { displayName: "田中裕介", attendanceTarget: false, specialPractice: "none", linkedUserUid: null, publicNote: "", active: true },
-      { displayName: "田中裕介", attendanceTarget: false, specialPractice: "none", linkedUserUid: null, publicNote: "", active: true },
+      { displayName: "田中裕介", attendanceTarget: false, specialPractice: "none", rehearsalParticipationTypes: ["acting"], linkedUserUid: null, publicNote: "", active: true },
+      { displayName: "田中裕介", attendanceTarget: false, specialPractice: "none", rehearsalParticipationTypes: ["acting"], linkedUserUid: null, publicNote: "", active: true },
     ]);
   });
 
@@ -131,13 +132,32 @@ describe("performance people linking", () => {
         { id: "staff-linked", name: "既存関係者", personId: "person-existing" },
       ] }],
       [],
-      [buildNewPerformancePerson("person-existing", "既存関係者")],
+      [buildNewPerformancePerson("person-existing", "既存関係者", {
+        rehearsalParticipationTypes: ["stage_combat"],
+      })],
       () => "person-staff"
     );
 
     strictEqual(prepared.value[0].members[0].personId, "person-staff");
     strictEqual(prepared.peopleDrafts[1].values.displayName, "スタッフ本名");
+    deepStrictEqual(prepared.peopleDrafts[1].values.rehearsalParticipationTypes, []);
     strictEqual(prepared.value[0].members[1].personId, "person-existing");
+    deepStrictEqual(prepared.peopleDrafts[0].values.rehearsalParticipationTypes, ["stage_combat"]);
     strictEqual(prepared.createdPersonIds.length, 1);
+  });
+
+  it("keeps an existing person's rehearsal participation when adding them as cast", () => {
+    const prepared = preparePerformancePeopleForSave(
+      "cast",
+      [{ id: "cast-linked", order: 1, name: "既存関係者", personId: "person-existing" }],
+      [],
+      [buildNewPerformancePerson("person-existing", "既存関係者", {
+        rehearsalParticipationTypes: ["japanese_dance"],
+      })],
+      () => "unused-person"
+    );
+
+    deepStrictEqual(prepared.createdPersonIds, []);
+    deepStrictEqual(prepared.peopleDrafts[0].values.rehearsalParticipationTypes, ["japanese_dance"]);
   });
 });

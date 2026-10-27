@@ -20,7 +20,10 @@ import {
   type ProjectPerson,
   type ProjectPersonValues,
 } from "@/lib/people";
-import { SPECIAL_PRACTICE_OPTIONS } from "@/lib/participants";
+import {
+  REHEARSAL_PARTICIPATION_OPTIONS,
+  toggleRehearsalParticipationType,
+} from "@/lib/rehearsal-participation";
 import { useProjectAccess } from "../ProjectAccess";
 import {
   calculateEndTime,
@@ -223,19 +226,23 @@ function PersonLinkEditor({
             value={draftPerson.values.displayName}
             onChange={(displayName) => onUpdate({ displayName })}
           />
-          <label className={styles.field}>
-            <span>特別稽古</span>
-            <select
-              value={draftPerson.values.specialPractice}
-              onChange={(event) => onUpdate({
-                specialPractice: event.target.value as ProjectPersonValues["specialPractice"],
-              })}
-            >
-              {SPECIAL_PRACTICE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-          </label>
+          <fieldset className={styles.participationFields}>
+            <legend>参加する稽古</legend>
+            <div>{REHEARSAL_PARTICIPATION_OPTIONS.map((option) => <label key={option.value}>
+              <input
+                type="checkbox"
+                checked={draftPerson.values.rehearsalParticipationTypes.includes(option.value)}
+                onChange={(event) => onUpdate({
+                  rehearsalParticipationTypes: toggleRehearsalParticipationType(
+                    draftPerson.values.rehearsalParticipationTypes,
+                    option.value,
+                    event.target.checked
+                  ),
+                })}
+              />
+              <span>{option.label}</span>
+            </label>)}</div>
+          </fieldset>
           <label className={styles.checkboxField}>
             <input
               type="checkbox"

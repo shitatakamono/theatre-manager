@@ -81,8 +81,10 @@ describe("performance people atomic writes", () => {
     strictEqual(person?.displayName, "本名");
     strictEqual(person?.attendanceTarget, false);
     strictEqual(person?.specialPractice, "none");
+    strictEqual(person?.rehearsalParticipationTypes.join("|"), "acting");
     strictEqual(person?.linkedUserUid, null);
     strictEqual(participant?.active, false);
+    strictEqual(participant?.rehearsalParticipationTypes.join("|"), "acting");
     strictEqual(project?.cast[0].displayName, "芸名");
     strictEqual(project?.cast[0].personId, "person-auto-cast");
   });
@@ -109,6 +111,7 @@ describe("performance people atomic writes", () => {
     const project = (await getDoc(doc(db, "projects", projectId))).data();
     strictEqual(person?.displayName, "スタッフ本名");
     strictEqual(person?.attendanceTarget, false);
+    strictEqual(person?.rehearsalParticipationTypes.length, 0);
     strictEqual(project?.staff[0].members[0].creditName, "外部表記");
     strictEqual(project?.staff[0].members[0].personId, "person-auto-staff");
   });
@@ -461,6 +464,7 @@ describe("performance people atomic writes", () => {
       displayName: "終了確認",
       attendanceTarget: true,
       specialPractice: "stage_combat",
+      rehearsalParticipationTypes: ["acting", "stage_combat"],
       linkedUserUid: viewerUid,
       publicNote: "保持する備考",
     }, actor(ownerUid), ownerDb);
@@ -485,7 +489,9 @@ describe("performance people atomic writes", () => {
     strictEqual(person?.active, false);
     strictEqual(person?.linkedUserUid, viewerUid);
     strictEqual(person?.publicNote, "保持する備考");
+    strictEqual(person?.rehearsalParticipationTypes.join("|"), "acting|stage_combat");
     strictEqual(participant?.active, false);
+    strictEqual(participant?.rehearsalParticipationTypes.join("|"), "acting|stage_combat");
     strictEqual((await getDoc(doc(ownerDb, "projects", projectId, "attendanceRecords", `2026-10-01_${personId}`))).exists(), true);
     strictEqual((await getDoc(doc(ownerDb, "projects", projectId, "participantLinkedUsers", viewerUid))).data()?.participantId, personId);
     const project = (await getDoc(doc(ownerDb, "projects", projectId))).data();
@@ -498,7 +504,9 @@ describe("performance people atomic writes", () => {
     person = (await getDoc(doc(ownerDb, "projects", projectId, "people", personId))).data();
     participant = (await getDoc(doc(ownerDb, "projects", projectId, "participants", personId))).data();
     strictEqual(person?.active, true);
+    strictEqual(person?.rehearsalParticipationTypes.join("|"), "acting|stage_combat");
     strictEqual(participant?.active, true);
+    strictEqual(participant?.rehearsalParticipationTypes.join("|"), "acting|stage_combat");
     strictEqual((await getDocs(collection(ownerDb, "projects", projectId, "activityLogs"))).size, 3);
   });
 

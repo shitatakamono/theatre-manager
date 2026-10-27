@@ -670,6 +670,18 @@ describe("participants", () => {
     await assertFails(setDoc(participantRef(db, "extra-field"), participantData(ownerUid, { privateNote: "不可" })));
     await assertSucceeds(setDoc(participantRef(db, "null-linked"), participantData(ownerUid, { linkedUserUid: null, active: false })));
     await assertSucceeds(setDoc(participantRef(db, "dance"), participantData(ownerUid, { specialPractice: "japanese_dance" })));
+    await assertSucceeds(setDoc(participantRef(db, "acting-combat"), participantData(ownerUid, {
+      rehearsalParticipationTypes: ["acting", "stage_combat"],
+    })));
+    await assertSucceeds(setDoc(participantRef(db, "dance-only"), participantData(ownerUid, {
+      rehearsalParticipationTypes: ["japanese_dance"],
+    })));
+    await assertFails(setDoc(participantRef(db, "bad-rehearsal-type"), participantData(ownerUid, {
+      rehearsalParticipationTypes: ["meeting"],
+    })));
+    await assertFails(setDoc(participantRef(db, "duplicate-rehearsal-type"), participantData(ownerUid, {
+      rehearsalParticipationTypes: ["acting", "acting"],
+    })));
   });
 
   it("requires a matching internal link and prevents duplicate linked users", async () => {
@@ -787,6 +799,12 @@ describe("people", () => {
     await assertFails(setDoc(personRef(db, "bad-link"), personData(ownerUid, { linkedUserUid: outsiderUid })));
     await assertFails(setDoc(personRef(db, "extra"), personData(ownerUid, { privateNote: "不可" })));
     await assertSucceeds(setDoc(personRef(db, "linked"), personData(ownerUid, { linkedUserUid: editorUid })));
+    await assertSucceeds(setDoc(personRef(db, "all-rehearsals"), personData(ownerUid, {
+      rehearsalParticipationTypes: ["acting", "japanese_dance", "stage_combat"],
+    })));
+    await assertFails(setDoc(personRef(db, "bad-rehearsal-type"), personData(ownerUid, {
+      rehearsalParticipationTypes: ["other"],
+    })));
   });
 
   it("protects creator metadata and prohibits deletion", async () => {

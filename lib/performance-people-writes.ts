@@ -26,7 +26,15 @@ function samePersonFields(
   next: Record<string, unknown>,
   fields: readonly string[]
 ): boolean {
-  return fields.every((field) => Object.is(current[field], next[field]));
+  return fields.every((field) => {
+    const currentValue = current[field];
+    const nextValue = next[field];
+    if (Array.isArray(currentValue) && Array.isArray(nextValue)) {
+      return currentValue.length === nextValue.length
+        && currentValue.every((value, index) => value === nextValue[index]);
+    }
+    return Object.is(currentValue, nextValue);
+  });
 }
 
 async function resolveFirestore(firestore?: Firestore): Promise<Firestore> {
@@ -96,6 +104,7 @@ export async function updateProjectPerformancePeopleSection(
         const participantValues = buildParticipantValues({
           displayName: values.displayName,
           specialPractice: values.specialPractice,
+          rehearsalParticipationTypes: values.rehearsalParticipationTypes,
           linkedUserUid: values.linkedUserUid,
           publicNote: values.publicNote,
           active: values.active && values.attendanceTarget,
@@ -111,12 +120,12 @@ export async function updateProjectPerformancePeopleSection(
         const personChanged = !personSnapshot.exists() || !samePersonFields(
           personSnapshot.data(),
           values,
-          ["displayName", "attendanceTarget", "specialPractice", "linkedUserUid", "publicNote", "active"]
+          ["displayName", "attendanceTarget", "specialPractice", "rehearsalParticipationTypes", "linkedUserUid", "publicNote", "active"]
         );
         const participantChanged = !participantSnapshot.exists() || !samePersonFields(
           participantSnapshot.data(),
           participantValues,
-          ["displayName", "specialPractice", "linkedUserUid", "publicNote", "active"]
+          ["displayName", "specialPractice", "rehearsalParticipationTypes", "linkedUserUid", "publicNote", "active"]
         );
 
         if (personChanged) {

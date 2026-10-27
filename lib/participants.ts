@@ -10,6 +10,11 @@ import {
   type Transaction,
 } from "firebase/firestore";
 import { getActivityActorName, type ActivityActor } from "./activity.ts";
+import {
+  buildRehearsalParticipationTypes,
+  normalizeRehearsalParticipationTypes,
+  type RehearsalParticipationType,
+} from "./rehearsal-participation.ts";
 
 export const SPECIAL_PRACTICE_OPTIONS = [
   { value: "none", label: "特別稽古なし" },
@@ -26,12 +31,15 @@ export const SPECIAL_PRACTICE_LABELS = Object.fromEntries(
 export type ParticipantInput = {
   displayName: string;
   specialPractice: SpecialPractice;
+  rehearsalParticipationTypes?: readonly RehearsalParticipationType[];
   linkedUserUid: string | null;
   publicNote: string;
   active: boolean;
 };
 
-export type ParticipantValues = ParticipantInput;
+export type ParticipantValues = Omit<ParticipantInput, "rehearsalParticipationTypes"> & {
+  rehearsalParticipationTypes: RehearsalParticipationType[];
+};
 
 export type Participant = ParticipantValues & {
   id: string;
@@ -44,6 +52,7 @@ export type Participant = ParticipantValues & {
 export const EMPTY_PARTICIPANT_INPUT: ParticipantInput = {
   displayName: "",
   specialPractice: "none",
+  rehearsalParticipationTypes: [],
   linkedUserUid: null,
   publicNote: "",
   active: true,
@@ -61,12 +70,23 @@ export function buildParticipantValues(input: ParticipantInput): ParticipantValu
   if (!SPECIAL_PRACTICE_OPTIONS.some(({ value }) => value === input.specialPractice)) {
     throw new Error("特別稽古の指定が不正です");
   }
+  const rehearsalParticipationTypes = buildRehearsalParticipationTypes(
+    input.rehearsalParticipationTypes,
+    input.specialPractice
+  );
   const linkedUserUid = input.linkedUserUid?.trim() || null;
   if (linkedUserUid && linkedUserUid.length > 128) throw new Error("アカウント情報が不正です");
   const publicNote = input.publicNote.trim();
   if (publicNote.length > 2000) throw new Error("公開備考は2000文字以内で入力してください");
   if (typeof input.active !== "boolean") throw new Error("参加状態が不正です");
-  return { displayName, specialPractice: input.specialPractice, linkedUserUid, publicNote, active: input.active };
+  return {
+    displayName,
+    specialPractice: input.specialPractice,
+    rehearsalParticipationTypes,
+    linkedUserUid,
+    publicNote,
+    active: input.active,
+  };
 }
 
 export function findLinkedUserDuplicate(
@@ -83,6 +103,9 @@ export function getParticipantChangedFields(before: ParticipantValues, after: Pa
   const changed: string[] = [];
   if (before.displayName !== after.displayName) changed.push("氏名");
   if (before.specialPractice !== after.specialPractice) changed.push("特別稽古");
+  if (before.rehearsalParticipationTypes.join("|") !== after.rehearsalParticipationTypes.join("|")) {
+    changed.push("参加する稽古");
+  }
   if (before.linkedUserUid !== after.linkedUserUid) changed.push("アカウント紐付け");
   if (before.publicNote !== after.publicNote) changed.push("公開備考");
   if (before.active !== after.active) changed.push(after.active ? "参加再開" : "参加終了");
@@ -97,6 +120,10 @@ function mapParticipant(snapshot: QueryDocumentSnapshot): Participant {
     specialPractice: SPECIAL_PRACTICE_OPTIONS.some(({ value }) => value === data.specialPractice)
       ? data.specialPractice as SpecialPractice
       : "none",
+    rehearsalParticipationTypes: normalizeRehearsalParticipationTypes(
+      data.rehearsalParticipationTypes,
+      data.specialPractice
+    ),
     linkedUserUid: typeof data.linkedUserUid === "string" ? data.linkedUserUid : null,
     publicNote: typeof data.publicNote === "string" ? data.publicNote : "",
     active: data.active !== false,
@@ -124,6 +151,7 @@ function personSyncValues(values: ParticipantValues, actorUid: string) {
     displayName: values.displayName,
     attendanceTarget: values.active,
     specialPractice: values.specialPractice,
+    rehearsalParticipationTypes: values.rehearsalParticipationTypes,
     linkedUserUid: values.linkedUserUid,
     publicNote: values.publicNote,
     active: values.active,

@@ -2,6 +2,7 @@ import { deepStrictEqual, strictEqual, throws } from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   buildManagedPersonValues,
+  EMPTY_MANAGED_PERSON_INPUT,
   filterManagedPeople,
   getManagedPersonChangedFields,
   getPersonAssociations,
@@ -21,12 +22,20 @@ describe("people management values", () => {
       displayName: "田中 裕介",
       attendanceTarget: false,
       specialPractice: "none",
+      rehearsalParticipationTypes: ["acting"],
       linkedUserUid: null,
       publicNote: "備考",
       active: true,
     });
     strictEqual(buildManagedPersonValues({ ...input, attendanceTarget: true }).attendanceTarget, true);
     throws(() => buildManagedPersonValues({ ...input, displayName: " " }), /氏名/);
+  });
+
+  it("keeps a directly added other person without rehearsal participation by default", () => {
+    deepStrictEqual(buildManagedPersonValues({
+      ...EMPTY_MANAGED_PERSON_INPUT,
+      displayName: "その他の関係者",
+    }).rehearsalParticipationTypes, []);
   });
 
   it("reports only editable people fields", () => {
@@ -37,6 +46,11 @@ describe("people management values", () => {
       linkedUserUid: "member-a",
     });
     deepStrictEqual(getManagedPersonChangedFields(before, after), ["出欠管理対象", "システム利用者連携"]);
+    const rehearsalsChanged = buildManagedPersonValues({
+      ...input,
+      rehearsalParticipationTypes: ["acting", "stage_combat"],
+    });
+    deepStrictEqual(getManagedPersonChangedFields(before, rehearsalsChanged), ["参加する稽古"]);
   });
 
   it("shows active people by default and can include ended people", () => {

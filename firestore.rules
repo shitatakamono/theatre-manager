@@ -210,9 +210,30 @@ service cloud.firestore {
       return value in ['none', 'stage_combat', 'japanese_dance'];
     }
 
+    function legacyRehearsalParticipationTypes(specialPractice) {
+      return specialPractice == 'stage_combat'
+        ? ['acting', 'stage_combat']
+        : specialPractice == 'japanese_dance'
+          ? ['acting', 'japanese_dance']
+          : ['acting'];
+    }
+
+    function validRehearsalParticipationTypes(value) {
+      return value == null
+        || (value is list
+          && value.size() <= 3
+          && value.toSet().size() == value.size()
+          && value.hasOnly(['acting', 'japanese_dance', 'stage_combat']));
+    }
+
+    function rehearsalParticipationTypesNotRemoved() {
+      return !resource.data.keys().hasAny(['rehearsalParticipationTypes'])
+        || request.resource.data.keys().hasAll(['rehearsalParticipationTypes']);
+    }
+
     function validParticipantData() {
       return request.resource.data.keys().hasOnly([
-          'displayName', 'specialPractice', 'linkedUserUid', 'publicNote', 'active',
+          'displayName', 'specialPractice', 'rehearsalParticipationTypes', 'linkedUserUid', 'publicNote', 'active',
           'createdAt', 'updatedAt', 'createdByUid', 'updatedByUid'
         ])
         && request.resource.data.keys().hasAll([
@@ -223,6 +244,7 @@ service cloud.firestore {
         && request.resource.data.displayName.size() > 0
         && request.resource.data.displayName.size() <= 100
         && validSpecialPractice(request.resource.data.specialPractice)
+        && validRehearsalParticipationTypes(request.resource.data.get('rehearsalParticipationTypes', null))
         && (request.resource.data.linkedUserUid == null
           || (request.resource.data.linkedUserUid is string
             && request.resource.data.linkedUserUid.size() > 0
@@ -258,6 +280,7 @@ service cloud.firestore {
 
     function validParticipantUpdate(projectId, participantId) {
       return validParticipantData()
+        && rehearsalParticipationTypesNotRemoved()
         && request.resource.data.createdAt == resource.data.createdAt
         && request.resource.data.createdByUid == resource.data.createdByUid
         && request.resource.data.updatedByUid == request.auth.uid
@@ -268,7 +291,7 @@ service cloud.firestore {
 
     function validPersonData() {
       return request.resource.data.keys().hasOnly([
-          'displayName', 'attendanceTarget', 'specialPractice', 'linkedUserUid',
+          'displayName', 'attendanceTarget', 'specialPractice', 'rehearsalParticipationTypes', 'linkedUserUid',
           'publicNote', 'active', 'createdAt', 'updatedAt', 'createdByUid', 'updatedByUid'
         ])
         && request.resource.data.keys().hasAll([
@@ -280,6 +303,7 @@ service cloud.firestore {
         && request.resource.data.displayName.size() <= 100
         && request.resource.data.attendanceTarget is bool
         && validSpecialPractice(request.resource.data.specialPractice)
+        && validRehearsalParticipationTypes(request.resource.data.get('rehearsalParticipationTypes', null))
         && (request.resource.data.linkedUserUid == null
           || (request.resource.data.linkedUserUid is string
             && request.resource.data.linkedUserUid.size() > 0
@@ -316,6 +340,8 @@ service cloud.firestore {
         && request.resource.data.displayName == participant.displayName
         && request.resource.data.attendanceTarget == participant.active
         && request.resource.data.specialPractice == participant.specialPractice
+        && request.resource.data.get('rehearsalParticipationTypes', legacyRehearsalParticipationTypes(request.resource.data.specialPractice))
+          == participant.get('rehearsalParticipationTypes', legacyRehearsalParticipationTypes(participant.specialPractice))
         && request.resource.data.linkedUserUid == participant.linkedUserUid
         && request.resource.data.publicNote == participant.publicNote
         && request.resource.data.active == participant.active
@@ -327,6 +353,7 @@ service cloud.firestore {
 
     function validPersonUpdate(projectId) {
       return validPersonData()
+        && rehearsalParticipationTypesNotRemoved()
         && personLinkedUserIsMember(projectId)
         && request.resource.data.createdAt == resource.data.createdAt
         && request.resource.data.createdByUid == resource.data.createdByUid

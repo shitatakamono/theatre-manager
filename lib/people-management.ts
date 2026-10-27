@@ -18,12 +18,15 @@ import {
   synchronizeParticipantLinkedUser,
 } from "./participants.ts";
 
-export type ManagedPersonInput = Omit<ProjectPersonInput, "active">;
+export type ManagedPersonInput = Omit<ProjectPersonInput, "active" | "rehearsalParticipationTypes"> & {
+  rehearsalParticipationTypes: ProjectPersonValues["rehearsalParticipationTypes"];
+};
 
 export const EMPTY_MANAGED_PERSON_INPUT: ManagedPersonInput = {
   displayName: "",
   attendanceTarget: false,
   specialPractice: "none",
+  rehearsalParticipationTypes: [],
   linkedUserUid: null,
   publicNote: "",
 };
@@ -44,6 +47,7 @@ function participantValues(values: ProjectPersonValues) {
   return buildParticipantValues({
     displayName: values.displayName,
     specialPractice: values.specialPractice,
+    rehearsalParticipationTypes: values.rehearsalParticipationTypes,
     linkedUserUid: values.linkedUserUid,
     publicNote: values.publicNote,
     active: values.active && values.attendanceTarget,
@@ -55,7 +59,15 @@ function sameFields(
   next: Record<string, unknown>,
   fields: readonly string[]
 ): boolean {
-  return fields.every((field) => Object.is(current[field], next[field]));
+  return fields.every((field) => {
+    const currentValue = current[field];
+    const nextValue = next[field];
+    if (Array.isArray(currentValue) && Array.isArray(nextValue)) {
+      return currentValue.length === nextValue.length
+        && currentValue.every((value, index) => value === nextValue[index]);
+    }
+    return Object.is(currentValue, nextValue);
+  });
 }
 
 export function buildManagedPersonValues(
@@ -72,7 +84,9 @@ export function getManagedPersonChangedFields(
   const changed: string[] = [];
   if (before.displayName !== after.displayName) changed.push("本名（管理用）");
   if (before.attendanceTarget !== after.attendanceTarget) changed.push("出欠管理対象");
-  if (before.specialPractice !== after.specialPractice) changed.push("特別稽古");
+  if (before.rehearsalParticipationTypes.join("|") !== after.rehearsalParticipationTypes.join("|")) {
+    changed.push("参加する稽古");
+  }
   if (before.linkedUserUid !== after.linkedUserUid) changed.push("システム利用者連携");
   if (before.publicNote !== after.publicNote) changed.push("公開備考");
   return changed;
@@ -189,6 +203,7 @@ export async function updateProjectPerson(
       displayName: typeof source.displayName === "string" ? source.displayName : "",
       attendanceTarget: personSnapshot.exists() ? source.attendanceTarget === true : source.active === true,
       specialPractice: source.specialPractice,
+      rehearsalParticipationTypes: source.rehearsalParticipationTypes,
       linkedUserUid: typeof source.linkedUserUid === "string" ? source.linkedUserUid : null,
       publicNote: typeof source.publicNote === "string" ? source.publicNote : "",
       active: personSnapshot.exists() ? source.active === true : source.active !== false,
@@ -199,7 +214,7 @@ export async function updateProjectPerson(
     const compatChanged = !participantSnapshot.exists() || !sameFields(
       participantSnapshot.data(),
       compatValues,
-      ["displayName", "specialPractice", "linkedUserUid", "publicNote", "active"]
+      ["displayName", "specialPractice", "rehearsalParticipationTypes", "linkedUserUid", "publicNote", "active"]
     );
     if (changedFields.length === 0 && !compatChanged) return false;
 
@@ -278,6 +293,7 @@ export async function setProjectPersonEnded(
       displayName: typeof source.displayName === "string" ? source.displayName : "",
       attendanceTarget: personSnapshot.exists() ? source.attendanceTarget === true : source.active === true,
       specialPractice: source.specialPractice,
+      rehearsalParticipationTypes: source.rehearsalParticipationTypes,
       linkedUserUid: typeof source.linkedUserUid === "string" ? source.linkedUserUid : null,
       publicNote: typeof source.publicNote === "string" ? source.publicNote : "",
       active: personSnapshot.exists() ? source.active === true : source.active !== false,

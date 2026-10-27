@@ -165,6 +165,11 @@
 .memberRow > button { min-height: 39px; padding: 0 5px; }
 .personLinkEditor { display: grid; grid-column: 1 / -1; gap: 9px; margin-top: 10px; border-top: 1px solid #edf0ee; padding-top: 10px; }
 .personDetails { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; border-radius: 8px; background: #f4f7f5; padding: 11px; }
+.participationFields { grid-column: 1 / -1; }
+.participationFields legend { margin-bottom: 6px; color: #596861; font-size: 11px; font-weight: 800; }
+.participationFields > div { display: flex; flex-wrap: wrap; gap: 7px 15px; border: 1px solid #cbd6d1; border-radius: 7px; background: #fff; padding: 9px 10px; }
+.participationFields label { display: flex; align-items: center; gap: 6px; color: #34443e; font-size: 12px; font-weight: 700; }
+.participationFields input { width: 16px; height: 16px; accent-color: #23684f; }
 .personDetails .fullField,
 .personLinkStatus { grid-column: 1 / -1; }
 .personLinkStatus { display: grid; gap: 2px; color: #4f615a; font-size: 11px; font-weight: 700; }

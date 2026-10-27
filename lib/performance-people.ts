@@ -41,6 +41,7 @@ export function buildNewPerformancePerson(
       displayName,
       attendanceTarget: input.attendanceTarget ?? false,
       specialPractice: input.specialPractice ?? "none",
+      rehearsalParticipationTypes: input.rehearsalParticipationTypes ?? [],
       linkedUserUid: input.linkedUserUid ?? null,
       publicNote: input.publicNote ?? "",
       active: input.active ?? true,
@@ -55,6 +56,7 @@ export function projectPersonToPerformanceDraft(person: ProjectPerson): Performa
       displayName: person.displayName,
       attendanceTarget: person.attendanceTarget,
       specialPractice: person.specialPractice,
+      rehearsalParticipationTypes: person.rehearsalParticipationTypes,
       linkedUserUid: person.linkedUserUid,
       publicNote: person.publicNote,
       active: person.active,
@@ -84,7 +86,9 @@ export function preparePerformancePeopleForSave(
 
   function linkNewEntry<T extends CastMember | StaffMember>(member: T): T {
     if (member.personId || currentEntryIds.has(member.id)) return { ...member };
-    const person = buildNewPerformancePerson(createPersonId(), member.name);
+    const person = buildNewPerformancePerson(createPersonId(), member.name, {
+      rehearsalParticipationTypes: section === "cast" ? ["acting"] : [],
+    });
     nextDrafts.push(person);
     createdPersonIds.push(person.id);
     return { ...member, personId: person.id };

@@ -14,7 +14,11 @@ import {
   type ManagedPersonInput,
 } from "@/lib/people-management";
 import { getProjectPeopleWithFallback, type ProjectPerson } from "@/lib/people";
-import { SPECIAL_PRACTICE_LABELS, SPECIAL_PRACTICE_OPTIONS } from "@/lib/participants";
+import {
+  formatRehearsalParticipationTypes,
+  REHEARSAL_PARTICIPATION_OPTIONS,
+  toggleRehearsalParticipationType,
+} from "@/lib/rehearsal-participation";
 import { useProjectAccess } from "../ProjectAccess";
 import styles from "./people.module.css";
 
@@ -61,6 +65,7 @@ export function PeopleManagementClient({
       displayName: person.displayName,
       attendanceTarget: person.attendanceTarget,
       specialPractice: person.specialPractice,
+      rehearsalParticipationTypes: person.rehearsalParticipationTypes,
       linkedUserUid: person.linkedUserUid,
       publicNote: person.publicNote,
     });
@@ -129,14 +134,14 @@ export function PeopleManagementClient({
     {people.length === 0 ? <p className={styles.empty}>関係者はまだ登録されていません。通常は公演情報のキャスト・スタッフから登録できます。</p> : (
       <div className={styles.tableWrap}>
         <table className={styles.table}>
-          <thead><tr><th>本名（管理用）</th><th>出欠</th><th>特別稽古</th><th>システム利用者との連携</th><th>キャスト</th><th>スタッフ</th><th>操作</th></tr></thead>
+          <thead><tr><th>本名（管理用）</th><th>出欠</th><th>参加する稽古</th><th>システム利用者との連携</th><th>キャスト</th><th>スタッフ</th><th>操作</th></tr></thead>
           <tbody>{visiblePeople.map((person) => {
             const association = getPersonAssociations(person.id, person.displayName, cast, staff);
             const member = person.linkedUserUid ? memberByUid.get(person.linkedUserUid) : undefined;
             return <tr key={person.id}>
               <td data-label="本名（管理用）"><strong>{person.displayName}</strong>{!person.active && <span className={styles.inactiveBadge}>終了済み</span>}</td>
               <td data-label="出欠">{person.attendanceTarget ? "対象" : "対象外"}</td>
-              <td data-label="特別稽古">{SPECIAL_PRACTICE_LABELS[person.specialPractice]}</td>
+              <td data-label="参加する稽古">{formatRehearsalParticipationTypes(person.rehearsalParticipationTypes)}</td>
               <td data-label="システム利用者との連携">{person.linkedUserUid ? `連携済：${member ? memberLabel(member) : person.linkedUserUid}` : "未連携"}</td>
               <td data-label="キャスト">{association.castLabels.join(" / ") || "—"}</td>
               <td data-label="スタッフ">{association.staffRoles.join(" / ") || "—"}</td>
@@ -153,7 +158,24 @@ export function PeopleManagementClient({
         <form onSubmit={(event) => void save(event)}>
           <label><span>本名（管理用） *</span><input required maxLength={100} value={draft.displayName} onChange={(event) => setDraft((current) => ({ ...current, displayName: event.target.value }))} /></label>
           <label className={styles.checkbox}><input type="checkbox" checked={draft.attendanceTarget} onChange={(event) => setDraft((current) => ({ ...current, attendanceTarget: event.target.checked }))} /><span>出欠管理の対象にする</span></label>
-          <label><span>特別稽古</span><select value={draft.specialPractice} onChange={(event) => setDraft((current) => ({ ...current, specialPractice: event.target.value as ManagedPersonInput["specialPractice"] }))}>{SPECIAL_PRACTICE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+          <fieldset className={styles.participationFields}>
+            <legend>参加する稽古</legend>
+            <div>{REHEARSAL_PARTICIPATION_OPTIONS.map((option) => <label key={option.value}>
+              <input
+                type="checkbox"
+                checked={draft.rehearsalParticipationTypes.includes(option.value)}
+                onChange={(event) => setDraft((current) => ({
+                  ...current,
+                  rehearsalParticipationTypes: toggleRehearsalParticipationType(
+                    current.rehearsalParticipationTypes,
+                    option.value,
+                    event.target.checked
+                  ),
+                }))}
+              />
+              <span>{option.label}</span>
+            </label>)}</div>
+          </fieldset>
           <label><span>システム利用者との連携</span><select value={draft.linkedUserUid ?? ""} onChange={(event) => setDraft((current) => ({ ...current, linkedUserUid: event.target.value || null }))}>
             <option value="">未連携</option>
             {members.map((member) => {

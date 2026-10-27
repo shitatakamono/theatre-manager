@@ -13,17 +13,24 @@ import {
   type Participant,
   type SpecialPractice,
 } from "./participants.ts";
+import {
+  normalizeRehearsalParticipationTypes,
+  type RehearsalParticipationType,
+} from "./rehearsal-participation.ts";
 
 export type ProjectPersonInput = {
   displayName: string;
   attendanceTarget: boolean;
   specialPractice: SpecialPractice;
+  rehearsalParticipationTypes?: readonly RehearsalParticipationType[];
   linkedUserUid: string | null;
   publicNote: string;
   active: boolean;
 };
 
-export type ProjectPersonValues = ProjectPersonInput;
+export type ProjectPersonValues = Omit<ProjectPersonInput, "rehearsalParticipationTypes"> & {
+  rehearsalParticipationTypes: RehearsalParticipationType[];
+};
 
 export type ProjectPerson = ProjectPersonValues & {
   id: string;
@@ -52,6 +59,7 @@ export function buildProjectPersonValues(input: ProjectPersonInput): ProjectPers
   const participantValues = buildParticipantValues({
     displayName: input.displayName,
     specialPractice: input.specialPractice,
+    rehearsalParticipationTypes: input.rehearsalParticipationTypes,
     linkedUserUid: input.linkedUserUid,
     publicNote: input.publicNote,
     active: input.active,
@@ -65,6 +73,10 @@ export function participantToProjectPerson(participant: Participant): ProjectPer
     displayName: participant.displayName,
     attendanceTarget: participant.active,
     specialPractice: participant.specialPractice,
+    rehearsalParticipationTypes: normalizeRehearsalParticipationTypes(
+      participant.rehearsalParticipationTypes,
+      participant.specialPractice
+    ),
     linkedUserUid: participant.linkedUserUid,
     publicNote: participant.publicNote,
     active: participant.active,
@@ -80,6 +92,10 @@ export function personToParticipantCompat(person: ProjectPerson): Participant {
     id: person.id,
     displayName: person.displayName,
     specialPractice: person.specialPractice,
+    rehearsalParticipationTypes: normalizeRehearsalParticipationTypes(
+      person.rehearsalParticipationTypes,
+      person.specialPractice
+    ),
     linkedUserUid: person.linkedUserUid,
     publicNote: person.publicNote,
     active: person.active && person.attendanceTarget,
@@ -96,6 +112,10 @@ function mapProjectPerson(snapshot: QueryDocumentSnapshot): ProjectPerson {
     displayName: typeof data.displayName === "string" ? data.displayName : "",
     attendanceTarget: data.attendanceTarget === true,
     specialPractice: data.specialPractice,
+    rehearsalParticipationTypes: normalizeRehearsalParticipationTypes(
+      data.rehearsalParticipationTypes,
+      data.specialPractice
+    ),
     linkedUserUid: typeof data.linkedUserUid === "string" ? data.linkedUserUid : null,
     publicNote: typeof data.publicNote === "string" ? data.publicNote : "",
     active: data.active === true,
@@ -164,6 +184,7 @@ export function buildPersonMigrationDocument(
     displayName: person.displayName,
     attendanceTarget: person.attendanceTarget,
     specialPractice: person.specialPractice,
+    rehearsalParticipationTypes: person.rehearsalParticipationTypes,
     linkedUserUid: person.linkedUserUid,
     publicNote: person.publicNote,
     active: person.active,

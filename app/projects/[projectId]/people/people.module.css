@@ -32,6 +32,11 @@
 .drawer textarea { resize: vertical; line-height: 1.55; }
 .drawer .checkbox { display: flex; align-items: center; gap: 8px; }
 .drawer .checkbox input { width: 17px; height: 17px; accent-color: #23684f; }
+.participationFields { margin-bottom: 13px; }
+.participationFields legend { margin-bottom: 7px; color: #52615b; font-size: 11px; font-weight: 800; }
+.participationFields > div { display: flex; flex-wrap: wrap; gap: 7px 16px; border: 1px solid #cbd6d1; border-radius: 7px; background: #fff; padding: 10px; }
+.participationFields label { display: flex; align-items: center; gap: 6px; color: #34463f; font-size: 12px; font-weight: 700; }
+.participationFields input { width: 16px; height: 16px; accent-color: #23684f; }
 .error { color: #b13838; font-size: 12px; }
 .endButton,
 .resumeButton { min-height: 36px; margin-top: 8px; border: 1px solid #c9d3ce; border-radius: 7px; background: #fff; padding: 8px 12px; font-size: 11px; font-weight: 800; }
