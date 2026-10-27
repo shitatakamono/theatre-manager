@@ -11,9 +11,11 @@
 .sectionHeading button { min-height: 42px; border-radius: 8px; background: #21634f; color: #fff; padding: 8px 18px; font-weight: 800; }
 .sectionHeading button:disabled, .timeFields button:disabled { cursor: not-allowed; opacity: .5; }
 .guidance, .empty { border: 1px solid #d2dcd8; border-radius: 8px; background: #fff; padding: 16px; color: #53645e; font-size: 13px; line-height: 1.6; }
+.optionalNote { margin-bottom: 12px; border-left: 3px solid #7b9b8e; background: #eef4f1; padding: 9px 12px; color: #4f625b; font-size: 12px; }
 .cards { display: grid; gap: 12px; }
 .card { border: 1px solid #cad5d1; border-radius: 10px; background: #fff; padding: 16px; }
 .card[data-status="unanswered"] { border-left: 4px solid #a7b1ad; }
+.card[data-status="optional"] { border-left: 4px solid #7b9b8e; }
 .card[data-status="attending"] { border-left: 4px solid #3f846c; }
 .card[data-status="absent"] { border-left: 4px solid #ad6262; }
 .card[data-status="tentative"] { border-left: 4px solid #b18a3e; }

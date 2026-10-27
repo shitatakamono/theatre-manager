@@ -20,10 +20,11 @@ import {
   type AttendanceManagementFilter,
 } from "@/lib/attendance-management";
 import { buildFutureRehearsalDays, findSelfParticipant, formatRehearsalDayItem } from "@/lib/attendance-view";
-import { getProjectMembers } from "@/lib/firestore";
-import { SPECIAL_PRACTICE_LABELS, type Participant } from "@/lib/participants";
-import { getProjectAttendanceParticipants } from "@/lib/people";
+import { getProjectMembers, getProjectPerformanceData } from "@/lib/firestore";
+import type { CastMember, StaffRole } from "@/lib/performance";
+import { getProjectPeopleWithFallback, type ProjectPerson } from "@/lib/people";
 import { getAttendanceManagementAccess } from "@/lib/project-navigation";
+import { formatRehearsalParticipationTypes } from "@/lib/rehearsal-participation";
 import { getAllProjectRehearsals, type Rehearsal } from "@/lib/rehearsals";
 import { useProjectAccess } from "../../ProjectAccess";
 import { RehearsalSectionNavigation } from "../../RehearsalSectionNavigation";
@@ -36,7 +37,7 @@ const STATUS_OPTIONS: { value: AttendanceStatus; label: string; mark: string }[]
 ];
 
 type EditingCell = {
-  participant: Participant;
+  participant: ProjectPerson;
   date: string;
   record: AttendanceRecord | null;
 };
@@ -76,13 +77,21 @@ function memberName(member: ProjectMember | undefined, uid: string): string {
 }
 
 async function fetchManagementData(projectId: string) {
-  const [participants, rehearsals, records, members] = await Promise.all([
-    getProjectAttendanceParticipants(projectId),
+  const [participants, rehearsals, records, members, project] = await Promise.all([
+    getProjectPeopleWithFallback(projectId),
     getAllProjectRehearsals(projectId),
     getProjectAttendanceRecords(projectId),
     getProjectMembers(projectId),
+    getProjectPerformanceData(projectId),
   ]);
-  return { participants, rehearsals, records, members };
+  return {
+    participants,
+    rehearsals,
+    records,
+    members,
+    cast: project?.data.cast ?? [],
+    staff: project?.data.staff ?? [],
+  };
 }
 
 export default function AttendanceManagePage({ params }: { params: Promise<{ projectId: string }> }) {
@@ -90,8 +99,10 @@ export default function AttendanceManagePage({ params }: { params: Promise<{ pro
   const { profile } = useAuth();
   const { role } = useProjectAccess();
   const { canView, canEdit } = getAttendanceManagementAccess(role);
-  const [participants, setParticipants] = useState<Participant[]>([]);
+  const [participants, setParticipants] = useState<ProjectPerson[]>([]);
   const [rehearsals, setRehearsals] = useState<Rehearsal[]>([]);
+  const [cast, setCast] = useState<CastMember[]>([]);
+  const [staff, setStaff] = useState<StaffRole[]>([]);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [filter, setFilter] = useState<AttendanceManagementFilter>("all");
@@ -105,8 +116,8 @@ export default function AttendanceManagePage({ params }: { params: Promise<{ pro
 
   const days = useMemo(() => buildFutureRehearsalDays(rehearsals), [rehearsals]);
   const rows = useMemo(
-    () => buildAttendanceManagementMatrix(participants, days, records, filter),
-    [days, filter, participants, records]
+    () => buildAttendanceManagementMatrix(participants, days, records, filter, cast, staff),
+    [cast, days, filter, participants, records, staff]
   );
   const memberByUid = useMemo(() => new Map(members.map((member) => [member.uid, member])), [members]);
   const selfParticipantId = useMemo(() => profile ? findSelfParticipant(participants, profile.uid)?.id : undefined, [participants, profile]);
@@ -121,6 +132,8 @@ export default function AttendanceManagePage({ params }: { params: Promise<{ pro
       setRehearsals(data.rehearsals);
       setRecords(data.records);
       setMembers(data.members);
+      setCast(data.cast);
+      setStaff(data.staff);
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : "出欠管理情報を読み込めませんでした");
     } finally {
@@ -137,6 +150,8 @@ export default function AttendanceManagePage({ params }: { params: Promise<{ pro
         setRehearsals(data.rehearsals);
         setRecords(data.records);
         setMembers(data.members);
+        setCast(data.cast);
+        setStaff(data.staff);
       })
       .catch((error: unknown) => {
         if (active) setLoadError(error instanceof Error ? error.message : "出欠管理情報を読み込めませんでした");
@@ -145,7 +160,7 @@ export default function AttendanceManagePage({ params }: { params: Promise<{ pro
     return () => { active = false; };
   }, [projectId]);
 
-  function openEditor(participant: Participant, date: string, record: AttendanceRecord | null) {
+  function openEditor(participant: ProjectPerson, date: string, record: AttendanceRecord | null) {
     if (!canEdit) return;
     setEditing({ participant, date, record });
     setDraft(buildManagementDraft(record));
@@ -199,7 +214,7 @@ export default function AttendanceManagePage({ params }: { params: Promise<{ pro
     <main className={styles.page}>
     <header className={styles.header}>
       <div><Link href={`/projects/${projectId}/attendance`}>← 出欠入力へ戻る</Link><p>TEAM ATTENDANCE</p><h1>全体出欠</h1></div>
-      <span>参加者 {participants.filter(({ active }) => active).length}名 / 稽古日 {days.length}日</span>
+      <span>関係者 {participants.filter(({ active }) => active).length}名 / 稽古日 {days.length}日</span>
     </header>
 
     <div className={styles.toolbar} role="group" aria-label="表示対象">
@@ -212,7 +227,11 @@ export default function AttendanceManagePage({ params }: { params: Promise<{ pro
       <section className={styles.matrixWrap} aria-label="参加者と稽古日の出欠表">
         <table className={styles.matrix}>
           <thead><tr><th>参加者</th>{days.map((day) => <th key={day.date}><b>{formatDate(day.date)}</b><small>{day.rehearsals.length}件</small></th>)}</tr></thead>
-          <tbody>{rows.map((row) => <tr data-self={row.participant.id === selfParticipantId} key={row.participant.id}><th><b>{row.participant.displayName}</b>{row.participant.specialPractice !== "none" && <small>{SPECIAL_PRACTICE_LABELS[row.participant.specialPractice]}</small>}</th>{row.cells.map(({ date, record }) => <td key={date}>{canEdit ? <button type="button" data-status={record?.status ?? "unanswered"} onClick={() => openEditor(row.participant, date, record)}>{formatAttendanceCell(record)}</button> : <span className={styles.cellDisplay} data-status={record?.status ?? "unanswered"}>{formatAttendanceCell(record)}</span>}</td>)}</tr>)}</tbody>
+          <tbody>{rows.map((row) => <tr data-self={row.participant.id === selfParticipantId} key={row.participant.id}><th><b>{row.participant.displayName}</b><small>{formatRehearsalParticipationTypes(row.participant.rehearsalParticipationTypes)}</small></th>{row.cells.map(({ date, record, requirement }) => {
+            const status = record?.status ?? (requirement === "required" ? "unanswered" : requirement);
+            const content = formatAttendanceCell(record, requirement);
+            return <td key={date}>{canEdit ? <button type="button" data-status={status} onClick={() => openEditor(row.participant, date, record)}>{content}</button> : <span className={styles.cellDisplay} data-status={status}>{content}</span>}</td>;
+          })}</tr>)}</tbody>
         </table>
       </section>
 
@@ -220,7 +239,8 @@ export default function AttendanceManagePage({ params }: { params: Promise<{ pro
         {days.map((day) => <article key={day.date}><header><h2>{formatDate(day.date, true)}</h2><ul>{day.rehearsals.map((rehearsal) => <li key={rehearsal.id}>{formatRehearsalDayItem(rehearsal)}</li>)}</ul></header>{rows.map((row) => {
           const cell = row.cells.find(({ date }) => date === day.date);
           if (!cell) return null;
-          const content = <><span><b>{row.participant.displayName}</b>{row.participant.specialPractice !== "none" && <small>{SPECIAL_PRACTICE_LABELS[row.participant.specialPractice]}</small>}</span><strong data-status={cell.record?.status ?? "unanswered"}>{formatAttendanceCell(cell.record)}</strong></>;
+          const status = cell.record?.status ?? (cell.requirement === "required" ? "unanswered" : cell.requirement);
+          const content = <><span><b>{row.participant.displayName}</b><small>{formatRehearsalParticipationTypes(row.participant.rehearsalParticipationTypes)}</small></span><strong data-status={status}>{formatAttendanceCell(cell.record, cell.requirement)}</strong></>;
           return canEdit ? <button className={styles.mobileRow} data-self={row.participant.id === selfParticipantId} type="button" onClick={() => openEditor(row.participant, day.date, cell.record)} key={row.participant.id}>{content}</button> : <div className={styles.mobileRow} data-self={row.participant.id === selfParticipantId} key={row.participant.id}>{content}</div>;
         })}</article>)}
       </section>

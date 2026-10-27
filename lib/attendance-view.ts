@@ -72,7 +72,7 @@ export function formatRehearsalDayItem(rehearsal: Rehearsal): string {
   return `${getRehearsalTypeLabel(rehearsal.type, rehearsal.customType)} ${start}〜${end}`;
 }
 
-export function findSelfParticipant(participants: readonly Participant[], uid: string): Participant | null {
+export function findSelfParticipant<T extends Pick<Participant, "linkedUserUid">>(participants: readonly T[], uid: string): T | null {
   return participants.find((participant) => participant.linkedUserUid === uid) ?? null;
 }
 

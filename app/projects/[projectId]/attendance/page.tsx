@@ -10,6 +10,10 @@ import {
   type AttendanceStatus,
 } from "@/lib/attendance";
 import {
+  getAttendanceParticipationMode,
+  getSelfAttendanceRehearsals,
+} from "@/lib/attendance-participation";
+import {
   buildAttendanceDrafts,
   buildFutureRehearsalDays,
   findSelfParticipant,
@@ -17,10 +21,9 @@ import {
   getChangedAttendanceInputs,
   type AttendanceDraft,
 } from "@/lib/attendance-view";
-import {
-  type Participant,
-} from "@/lib/participants";
-import { getProjectAttendanceParticipants } from "@/lib/people";
+import { getProjectPerformanceData } from "@/lib/firestore";
+import type { CastMember, StaffRole } from "@/lib/performance";
+import { getProjectPeopleWithFallback, type ProjectPerson } from "@/lib/people";
 import { getAllProjectRehearsals, type Rehearsal } from "@/lib/rehearsals";
 import { RehearsalSectionNavigation } from "../RehearsalSectionNavigation";
 import styles from "./attendance.module.css";
@@ -47,19 +50,28 @@ function formatDate(date: string): string {
 }
 
 async function fetchAttendancePageData(projectId: string) {
-  const [participants, rehearsals, records] = await Promise.all([
-    getProjectAttendanceParticipants(projectId),
+  const [participants, rehearsals, records, project] = await Promise.all([
+    getProjectPeopleWithFallback(projectId),
     getAllProjectRehearsals(projectId),
     getProjectAttendanceRecords(projectId),
+    getProjectPerformanceData(projectId),
   ]);
-  return { participants, rehearsals, records };
+  return {
+    participants,
+    rehearsals,
+    records,
+    cast: project?.data.cast ?? [],
+    staff: project?.data.staff ?? [],
+  };
 }
 
 export default function AttendancePage({ params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = use(params);
   const { profile } = useAuth();
-  const [participants, setParticipants] = useState<Participant[]>([]);
+  const [participants, setParticipants] = useState<ProjectPerson[]>([]);
   const [rehearsals, setRehearsals] = useState<Rehearsal[]>([]);
+  const [cast, setCast] = useState<CastMember[]>([]);
+  const [staff, setStaff] = useState<StaffRole[]>([]);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [drafts, setDrafts] = useState<Record<string, AttendanceDraft>>({});
   const [loading, setLoading] = useState(true);
@@ -68,22 +80,32 @@ export default function AttendancePage({ params }: { params: Promise<{ projectId
   const [saveError, setSaveError] = useState("");
   const [notice, setNotice] = useState("");
 
-  const days = useMemo(() => buildFutureRehearsalDays(rehearsals), [rehearsals]);
   const selfParticipant = useMemo(
     () => profile ? findSelfParticipant(participants, profile.uid) : null,
     [participants, profile]
   );
+  const participationMode = useMemo(() => selfParticipant
+    ? getAttendanceParticipationMode(selfParticipant, cast, staff)
+    : "disabled", [cast, selfParticipant, staff]);
+  const allFutureDays = useMemo(() => buildFutureRehearsalDays(rehearsals), [rehearsals]);
+  const days = useMemo(() => buildFutureRehearsalDays(selfParticipant
+    ? getSelfAttendanceRehearsals(selfParticipant, rehearsals, cast, staff)
+    : []), [cast, rehearsals, selfParticipant, staff]);
 
   async function load() {
     setLoading(true);
     setLoadError("");
     try {
-      const { participants: participantItems, rehearsals: rehearsalItems, records: attendanceItems } = await fetchAttendancePageData(projectId);
+      const { participants: participantItems, rehearsals: rehearsalItems, records: attendanceItems, cast: castItems, staff: staffItems } = await fetchAttendancePageData(projectId);
       setParticipants(participantItems);
       setRehearsals(rehearsalItems);
       setRecords(attendanceItems);
+      setCast(castItems);
+      setStaff(staffItems);
       const self = profile ? findSelfParticipant(participantItems, profile.uid) : null;
-      const futureDays = buildFutureRehearsalDays(rehearsalItems);
+      const futureDays = buildFutureRehearsalDays(self
+        ? getSelfAttendanceRehearsals(self, rehearsalItems, castItems, staffItems)
+        : []);
       setDrafts(self ? buildAttendanceDrafts(futureDays, self.id, attendanceItems) : {});
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : "出欠情報を読み込めませんでした");
@@ -95,13 +117,18 @@ export default function AttendancePage({ params }: { params: Promise<{ projectId
   useEffect(() => {
     let active = true;
     void fetchAttendancePageData(projectId)
-      .then(({ participants: participantItems, rehearsals: rehearsalItems, records: attendanceItems }) => {
+      .then(({ participants: participantItems, rehearsals: rehearsalItems, records: attendanceItems, cast: castItems, staff: staffItems }) => {
         if (!active) return;
         setParticipants(participantItems);
         setRehearsals(rehearsalItems);
         setRecords(attendanceItems);
+        setCast(castItems);
+        setStaff(staffItems);
         const self = profile ? findSelfParticipant(participantItems, profile.uid) : null;
-        setDrafts(self ? buildAttendanceDrafts(buildFutureRehearsalDays(rehearsalItems), self.id, attendanceItems) : {});
+        const selfRehearsals = self
+          ? getSelfAttendanceRehearsals(self, rehearsalItems, castItems, staffItems)
+          : [];
+        setDrafts(self ? buildAttendanceDrafts(buildFutureRehearsalDays(selfRehearsals), self.id, attendanceItems) : {});
       })
       .catch((error: unknown) => {
         if (active) setLoadError(error instanceof Error ? error.message : "出欠情報を読み込めませんでした");
@@ -126,7 +153,7 @@ export default function AttendancePage({ params }: { params: Promise<{ projectId
   }
 
   async function saveAll() {
-    if (!profile || !selfParticipant || !selfParticipant.active || saving) return;
+    if (!profile || !selfParticipant || !selfParticipant.active || !selfParticipant.attendanceTarget || saving) return;
     setSaving(true);
     setSaveError("");
     setNotice("");
@@ -160,14 +187,20 @@ export default function AttendancePage({ params }: { params: Promise<{ projectId
       {loadError && <p className={styles.error} role="alert">{loadError} <button type="button" onClick={() => void load()}>再読み込み</button></p>}
       {loading ? <p className={styles.empty}>読み込み中…</p> : <>
         <section className={styles.selfSection} aria-labelledby="self-attendance-title">
-          <div className={styles.sectionHeading}><div><p>MY ATTENDANCE</p><h2 id="self-attendance-title">自分の出欠予定</h2></div>{selfParticipant?.active && days.length > 0 && <button type="button" disabled={saving} onClick={() => void saveAll()}>{saving ? "保存中…" : "まとめて保存"}</button>}</div>
+          <div className={styles.sectionHeading}><div><p>MY ATTENDANCE</p><h2 id="self-attendance-title">自分の出欠予定</h2></div>{selfParticipant?.active && selfParticipant.attendanceTarget && days.length > 0 && <button type="button" disabled={saving} onClick={() => void saveAll()}>{saving ? "保存中…" : "まとめて保存"}</button>}</div>
           {!selfParticipant ? <p className={styles.guidance}>あなたのアカウントは参加者情報とまだ紐付けられていません。制作担当者にアカウント紐付けを依頼してください。</p>
-            : !selfParticipant.active ? <p className={styles.guidance}>参加者情報が終了状態のため、現在は出欠を入力できません。</p>
-              : days.length === 0 ? <p className={styles.empty}>今後の稽古予定はありません。</p>
-                : <div className={styles.cards}>{days.map((day) => {
+            : !selfParticipant.active ? <p className={styles.guidance}>関係者情報が終了済みのため、現在は出欠を入力できません。</p>
+              : !selfParticipant.attendanceTarget ? <p className={styles.guidance}>現在、出欠管理の対象外です。稽古スケジュールは引き続き確認できます。</p>
+                : days.length === 0 ? <p className={styles.empty}>{allFutureDays.length === 0
+                  ? "今後の稽古予定はありません。"
+                  : selfParticipant.rehearsalParticipationTypes.length === 0
+                    ? "出欠対象となる稽古が設定されていません。関係者管理で「参加する稽古」を設定してください。"
+                    : "回答対象となる今後の稽古予定はありません。"}</p>
+                  : <>{participationMode === "optional_staff" && <p className={styles.optionalNote}>スタッフとして全日程を確認できます。未入力の日は「参加予定なし」として扱われます。</p>}<div className={styles.cards}>{days.map((day) => {
                   const draft = drafts[day.date] ?? { status: null, availableFrom: null, availableUntil: null, publicNote: "" };
-                  return <article className={styles.card} data-status={draft.status ?? "unanswered"} key={day.date}>
-                    <div className={styles.cardHeader}><div><h3>{formatDate(day.date)}</h3><span>{draft.status ? STATUS_LABELS[draft.status] : "未回答"}</span></div><ul>{day.rehearsals.map((rehearsal) => <li key={rehearsal.id}>{formatRehearsalDayItem(rehearsal)}{rehearsal.venue ? ` / ${rehearsal.venue}` : ""}</li>)}</ul></div>
+                  const emptyLabel = participationMode === "optional_staff" ? "参加予定なし" : "未回答";
+                  return <article className={styles.card} data-status={draft.status ?? (participationMode === "optional_staff" ? "optional" : "unanswered")} key={day.date}>
+                    <div className={styles.cardHeader}><div><h3>{formatDate(day.date)}</h3><span>{draft.status ? STATUS_LABELS[draft.status] : emptyLabel}</span></div><ul>{day.rehearsals.map((rehearsal) => <li key={rehearsal.id}>{formatRehearsalDayItem(rehearsal)}{rehearsal.venue ? ` / ${rehearsal.venue}` : ""}</li>)}</ul></div>
                     <div className={styles.statusOptions} aria-label={`${formatDate(day.date)}の出欠`}>{STATUS_OPTIONS.map((option) => <button type="button" data-selected={draft.status === option.value} key={option.value} onClick={() => selectStatus(day.date, option.value)}><b>{option.mark}</b>{option.label}</button>)}</div>
                     {draft.status === "attending" && <div className={styles.timeFields}>
                       <label><span>参加可能時間</span><input type="time" value={draft.availableFrom ?? ""} onChange={(event) => patchDraft(day.date, { availableFrom: event.target.value || null })} /></label><span>〜</span><label><span className={styles.visuallyHidden}>終了時刻</span><input type="time" value={draft.availableUntil ?? ""} onChange={(event) => patchDraft(day.date, { availableUntil: event.target.value || null })} /></label>
@@ -177,7 +210,7 @@ export default function AttendancePage({ params }: { params: Promise<{ projectId
                     <label className={styles.noteField}><span>公開備考</span><textarea disabled={draft.status === null} maxLength={2000} rows={2} value={draft.publicNote} onChange={(event) => patchDraft(day.date, { publicNote: event.target.value })} placeholder={draft.status === null ? "先に出欠を選択してください" : "参加者全員に公開されます"} /></label>
                     {draft.status === null && <small className={styles.noteHint}>参加・不参加・未定を選択すると備考を入力できます。</small>}
                   </article>;
-                })}</div>}
+                })}</div></>}
           {notice && <p className={styles.success} role="status">{notice}</p>}
           {saveError && <p className={styles.error} role="alert">{saveError}</p>}
         </section>

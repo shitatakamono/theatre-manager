@@ -25,6 +25,8 @@
 .page [data-status="absent"] { color: #914343; }
 .page [data-status="tentative"] { color: #876116; }
 .page [data-status="unanswered"] { color: #75817d; }
+.page [data-status="optional"] { color: #4f7164; }
+.page [data-status="not_applicable"] { color: #89938f; }
 .mobileDays { display: none; }
 .empty, .error, .success { margin-top: 15px; border: 1px solid #d2dcd8; border-radius: 8px; background: #fff; padding: 15px; color: #53645e; font-size: 13px; }
 .error { border-color: #e2b1b1; background: #fff4f4; color: #8b2929; }

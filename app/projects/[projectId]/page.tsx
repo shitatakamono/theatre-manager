@@ -5,8 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getProjectActivityLogs, getProjectPerformanceData, getTasks, toggleTask, type ProjectPerformanceRecord, type Task } from "@/lib/firestore";
 import { getProjectAttendanceRecords, type AttendanceRecord } from "@/lib/attendance";
-import type { Participant } from "@/lib/participants";
-import { getProjectAttendanceParticipants } from "@/lib/people";
+import { buildFutureRehearsalDays } from "@/lib/attendance-view";
+import { getProjectPeopleWithFallback, type ProjectPerson } from "@/lib/people";
 import { buildDashboardAttendanceSummary } from "@/lib/project-dashboard";
 import { hasEnteredPerformanceInformation } from "@/lib/project-navigation";
 import { getProjectRehearsals, timestampToTokyoInput, type Rehearsal } from "@/lib/rehearsals";
@@ -24,7 +24,7 @@ type ProjectPageProps = {
 
 type DashboardData = {
   upcomingRehearsals: Rehearsal[];
-  participants: Participant[];
+  participants: ProjectPerson[];
   attendance: AttendanceRecord[];
   activity: ActivityLog[];
   tasks: Task[];
@@ -199,7 +199,7 @@ export default function ProjectPage({ params }: ProjectPageProps) {
     let active = true;
     void Promise.all([
       getProjectRehearsals(projectId),
-      getProjectAttendanceParticipants(projectId),
+      getProjectPeopleWithFallback(projectId),
       getProjectAttendanceRecords(projectId),
       getProjectActivityLogs(projectId),
       getTasks(projectId),
@@ -270,8 +270,17 @@ export default function ProjectPage({ params }: ProjectPageProps) {
     venueName: venue?.name,
     hasPerformanceDate: firstDate !== null,
   });
-  const upcomingDates = [...new Set((dashboard?.upcomingRehearsals ?? []).map((rehearsal) => timestampToTokyoInput(rehearsal.startAt).date))];
-  const attendanceSummary = buildDashboardAttendanceSummary(projectId, role, profile?.uid ?? "", dashboard?.participants ?? [], upcomingDates, dashboard?.attendance ?? []);
+  const upcomingDays = buildFutureRehearsalDays(dashboard?.upcomingRehearsals ?? []);
+  const attendanceSummary = buildDashboardAttendanceSummary(
+    projectId,
+    role,
+    profile?.uid ?? "",
+    dashboard?.participants ?? [],
+    upcomingDays,
+    dashboard?.attendance ?? [],
+    project.data.cast ?? [],
+    project.data.staff ?? []
+  );
   const nextRehearsal = formatNextRehearsal(dashboard?.upcomingRehearsals[0]);
   const latestActivity = dashboard?.activity[0];
   const taskToday = getTokyoDateString();

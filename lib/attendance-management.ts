@@ -1,16 +1,19 @@
 import type { AttendanceInput, AttendanceRecord, AttendanceStatus } from "./attendance.ts";
+import { getAttendanceDayRequirement, type AttendanceDayRequirement } from "./attendance-participation.ts";
 import type { RehearsalDaySummary } from "./attendance-view.ts";
-import type { Participant } from "./participants.ts";
+import type { CastMember, StaffRole } from "./performance.ts";
+import type { ProjectPerson } from "./people.ts";
 
 export type AttendanceManagementFilter = "all" | "unanswered" | "tentative";
 
 export type AttendanceManagementCell = {
   date: string;
   record: AttendanceRecord | null;
+  requirement: AttendanceDayRequirement;
 };
 
 export type AttendanceManagementRow = {
-  participant: Participant;
+  participant: ProjectPerson;
   cells: AttendanceManagementCell[];
 };
 
@@ -22,10 +25,12 @@ export type AttendanceManagementDraft = {
 };
 
 export function buildAttendanceManagementMatrix(
-  participants: readonly Participant[],
-  days: readonly Pick<RehearsalDaySummary, "date">[],
+  participants: readonly ProjectPerson[],
+  days: readonly RehearsalDaySummary[],
   records: readonly AttendanceRecord[],
-  filter: AttendanceManagementFilter = "all"
+  filter: AttendanceManagementFilter = "all",
+  cast: readonly CastMember[] = [],
+  staff: readonly StaffRole[] = []
 ): AttendanceManagementRow[] {
   const sortedDays = [...days].sort((left, right) => left.date.localeCompare(right.date));
   const recordByKey = new Map(records.map((record) => [`${record.date}_${record.participantId}`, record]));
@@ -34,13 +39,14 @@ export function buildAttendanceManagementMatrix(
     .sort((left, right) => left.displayName.localeCompare(right.displayName, "ja"))
     .map((participant) => ({
       participant,
-      cells: sortedDays.map(({ date }) => ({
+      cells: sortedDays.map(({ date, rehearsals }) => ({
         date,
         record: recordByKey.get(`${date}_${participant.id}`) ?? null,
+        requirement: getAttendanceDayRequirement(participant, rehearsals, cast, staff),
       })),
     }))
     .filter((row) => filter === "all"
-      || (filter === "unanswered" && row.cells.some(({ record }) => record === null))
+      || (filter === "unanswered" && row.cells.some(({ record, requirement }) => requirement === "required" && record === null))
       || (filter === "tentative" && row.cells.some(({ record }) => record?.status === "tentative")));
 }
 
@@ -84,8 +90,15 @@ export function getManagementDraftError(draft: AttendanceManagementDraft): strin
   return null;
 }
 
-export function formatAttendanceCell(record: AttendanceRecord | null): string {
-  if (!record) return "未回答";
+export function formatAttendanceCell(
+  record: AttendanceRecord | null,
+  requirement: AttendanceDayRequirement = "required"
+): string {
+  if (!record) {
+    if (requirement === "optional") return "参加予定なし";
+    if (requirement === "not_applicable") return "対象外";
+    return "未回答";
+  }
   if (record.status === "absent") return "× 不参加";
   if (record.status === "tentative") return "△ 未定";
   return `○ ${record.availableFrom ?? "--:--"}〜${record.availableUntil ?? "--:--"}`;

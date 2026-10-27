@@ -9,16 +9,19 @@ import {
 } from "../lib/attendance-management.ts";
 
 const participants = [
-  { id: "b", displayName: "田中", specialPractice: "none", linkedUserUid: null, publicNote: "", active: true, createdByUid: "owner", updatedByUid: "owner" },
-  { id: "a", displayName: "佐藤", specialPractice: "stage_combat", linkedUserUid: null, publicNote: "", active: true, createdByUid: "owner", updatedByUid: "owner" },
-  { id: "inactive", displayName: "終了", specialPractice: "none", linkedUserUid: null, publicNote: "", active: false, createdByUid: "owner", updatedByUid: "owner" },
+  { id: "b", displayName: "田中", attendanceTarget: true, specialPractice: "none", rehearsalParticipationTypes: ["acting"], linkedUserUid: null, publicNote: "", active: true, createdByUid: "owner", updatedByUid: "owner" },
+  { id: "a", displayName: "佐藤", attendanceTarget: true, specialPractice: "stage_combat", rehearsalParticipationTypes: ["acting", "stage_combat"], linkedUserUid: null, publicNote: "", active: true, createdByUid: "owner", updatedByUid: "owner" },
+  { id: "inactive", displayName: "終了", attendanceTarget: true, specialPractice: "none", rehearsalParticipationTypes: ["acting"], linkedUserUid: null, publicNote: "", active: false, createdByUid: "owner", updatedByUid: "owner" },
 ];
 const records = [
   { id: "2026-11-15_a", participantId: "a", date: "2026-11-15", status: "attending", availableFrom: "13:00", availableUntil: "17:00", publicNote: "", createdByUid: "owner", updatedByUid: "owner" },
   { id: "2026-11-22_a", participantId: "a", date: "2026-11-22", status: "absent", availableFrom: null, availableUntil: null, publicNote: "欠席", createdByUid: "owner", updatedByUid: "owner" },
   { id: "2026-11-15_b", participantId: "b", date: "2026-11-15", status: "tentative", availableFrom: null, availableUntil: null, publicNote: "確認中", createdByUid: "owner", updatedByUid: "owner" },
 ];
-const days = [{ date: "2026-11-22" }, { date: "2026-11-15" }];
+const days = [
+  { date: "2026-11-22", rehearsals: [{ type: "acting" }], fullTimeRange: null },
+  { date: "2026-11-15", rehearsals: [{ type: "acting" }], fullTimeRange: null },
+];
 
 describe("attendance management matrix", () => {
   it("sorts days and active participants and represents every status including unanswered", () => {
@@ -42,6 +45,21 @@ describe("attendance management matrix", () => {
     strictEqual(formatAttendanceCell(records[1]), "× 不参加");
     strictEqual(formatAttendanceCell(records[2]), "△ 未定");
     strictEqual(formatAttendanceCell(null), "未回答");
+    strictEqual(formatAttendanceCell(null, "optional"), "参加予定なし");
+    strictEqual(formatAttendanceCell(null, "not_applicable"), "対象外");
+  });
+
+  it("does not treat optional staff or non-target rehearsals as unanswered", () => {
+    const staffOnly = { ...participants[1], id: "staff", displayName: "スタッフ", rehearsalParticipationTypes: [] };
+    const disabled = { ...participants[1], id: "disabled", displayName: "対象外", attendanceTarget: false };
+    const cast = [{ id: "cast-a", order: 1, name: "田中", personId: "b" }];
+    const staff = [{ id: "role", role: "演出", members: [{ id: "staff-a", name: "スタッフ", personId: "staff" }] }];
+    const danceDay = [{ date: "2026-11-30", rehearsals: [{ type: "japanese_dance" }], fullTimeRange: null }];
+    const rows = buildAttendanceManagementMatrix([participants[0], staffOnly, disabled], danceDay, [], "all", cast, staff);
+    strictEqual(rows.find(({ participant }) => participant.id === "b")?.cells[0].requirement, "not_applicable");
+    strictEqual(rows.find(({ participant }) => participant.id === "staff")?.cells[0].requirement, "optional");
+    strictEqual(rows.find(({ participant }) => participant.id === "disabled")?.cells[0].requirement, "not_applicable");
+    deepStrictEqual(buildAttendanceManagementMatrix([participants[0], staffOnly, disabled], danceDay, [], "unanswered", cast, staff), []);
   });
 });
 

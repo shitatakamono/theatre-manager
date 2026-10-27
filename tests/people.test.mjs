@@ -99,17 +99,16 @@ describe("people fallback merge", () => {
       participant("a", { linkedUserUid: "viewer-a" }),
       participant("b", { linkedUserUid: "viewer-b" }),
     ];
-    const fallback = mergePeopleWithParticipantFallback([], legacyParticipants)
-      .map(personToParticipantCompat);
+    const fallback = mergePeopleWithParticipantFallback([], legacyParticipants);
+    const days = [{ date: "2026-11-15", rehearsals: [{ type: "acting" }], fullTimeRange: null }];
     strictEqual(findSelfParticipant(fallback, "viewer-a")?.id, "a");
     strictEqual(
-      buildDashboardAttendanceSummary("project-a", "viewer", "viewer-a", fallback, ["2026-11-15"], []).value,
+      buildDashboardAttendanceSummary("project-a", "viewer", "viewer-a", fallback, days, []).value,
       "1件"
     );
 
     const migrated = participantToProjectPerson(legacyParticipants[0]);
-    const partialMigration = mergePeopleWithParticipantFallback([migrated], legacyParticipants)
-      .map(personToParticipantCompat);
+    const partialMigration = mergePeopleWithParticipantFallback([migrated], legacyParticipants);
     strictEqual(findSelfParticipant(partialMigration, "viewer-a")?.id, "a");
     strictEqual(
       buildDashboardAttendanceSummary(
@@ -117,7 +116,7 @@ describe("people fallback merge", () => {
         "viewer",
         "viewer-a",
         partialMigration,
-        ["2026-11-15"],
+        days,
         []
       ).value,
       "1件"
