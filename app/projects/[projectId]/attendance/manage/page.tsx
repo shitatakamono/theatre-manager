@@ -24,6 +24,7 @@ import { getProjectMembers, getProjectPerformanceData } from "@/lib/firestore";
 import type { CastMember, StaffRole } from "@/lib/performance";
 import { getProjectPeopleWithFallback, type ProjectPerson } from "@/lib/people";
 import { getAttendanceManagementAccess } from "@/lib/project-navigation";
+import type { ManagedPeopleSort } from "@/lib/people-management";
 import { formatRehearsalParticipationTypes } from "@/lib/rehearsal-participation";
 import { getAllProjectRehearsals, type Rehearsal } from "@/lib/rehearsals";
 import { useProjectAccess } from "../../ProjectAccess";
@@ -106,6 +107,7 @@ export default function AttendanceManagePage({ params }: { params: Promise<{ pro
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [filter, setFilter] = useState<AttendanceManagementFilter>("all");
+  const [sortOrder, setSortOrder] = useState<ManagedPeopleSort>("cast_order");
   const [editing, setEditing] = useState<EditingCell | null>(null);
   const [draft, setDraft] = useState<AttendanceManagementDraft>(buildManagementDraft(null));
   const [loading, setLoading] = useState(true);
@@ -116,8 +118,8 @@ export default function AttendanceManagePage({ params }: { params: Promise<{ pro
 
   const days = useMemo(() => buildFutureRehearsalDays(rehearsals), [rehearsals]);
   const rows = useMemo(
-    () => buildAttendanceManagementMatrix(participants, days, records, filter, cast, staff),
-    [cast, days, filter, participants, records, staff]
+    () => buildAttendanceManagementMatrix(participants, days, records, filter, cast, staff, sortOrder),
+    [cast, days, filter, participants, records, sortOrder, staff]
   );
   const memberByUid = useMemo(() => new Map(members.map((member) => [member.uid, member])), [members]);
   const selfParticipantId = useMemo(() => profile ? findSelfParticipant(participants, profile.uid)?.id : undefined, [participants, profile]);
@@ -219,6 +221,16 @@ export default function AttendanceManagePage({ params }: { params: Promise<{ pro
 
     <div className={styles.toolbar} role="group" aria-label="表示対象">
       {([['all', '全員'], ['unanswered', '未回答あり'], ['tentative', '未定あり']] as const).map(([value, label]) => <button type="button" data-selected={filter === value} onClick={() => setFilter(value)} key={value}>{label}</button>)}
+      <label className={styles.sortControl}>
+        <span>並び順</span>
+        <select value={sortOrder} onChange={(event) => setSortOrder(event.target.value as ManagedPeopleSort)}>
+          <option value="cast_order">キャスト掲載順</option>
+          <option value="staff_order">スタッフ掲載順</option>
+          <option value="cast_first">キャスト優先</option>
+          <option value="staff_first">スタッフ優先</option>
+          <option value="name">本名順</option>
+        </select>
+      </label>
     </div>
     {notice && <p className={styles.success} role="status">{notice}</p>}
     {loadError && <p className={styles.error} role="alert">{loadError} <button type="button" onClick={() => void load()}>再読み込み</button></p>}

@@ -61,6 +61,36 @@ describe("attendance management matrix", () => {
     strictEqual(rows.find(({ participant }) => participant.id === "disabled")?.cells[0].requirement, "not_applicable");
     deepStrictEqual(buildAttendanceManagementMatrix([participants[0], staffOnly, disabled], danceDay, [], "unanswered", cast, staff), []);
   });
+
+  it("uses the shared people ordering for the rows consumed by PC and mobile views", () => {
+    const people = [
+      { ...participants[0], id: "other", displayName: "その他" },
+      { ...participants[0], id: "cast-later", displayName: "後のキャスト" },
+      { ...participants[0], id: "staff-first", displayName: "最初のスタッフ" },
+      { ...participants[0], id: "both", displayName: "兼任" },
+      { ...participants[0], id: "cast-first", displayName: "最初のキャスト" },
+    ];
+    const cast = [
+      { id: "cast-later", order: 20, name: "後", personId: "cast-later" },
+      { id: "cast-both", order: 10, name: "兼任", personId: "both" },
+      { id: "cast-first", order: 1, name: "先", personId: "cast-first" },
+    ];
+    const staff = [{ id: "role", role: "演出", members: [
+      { id: "staff-first", name: "先", personId: "staff-first" },
+      { id: "staff-both", name: "兼任", personId: "both" },
+    ] }];
+
+    deepStrictEqual(
+      buildAttendanceManagementMatrix(people, days, [], "all", cast, staff, "cast_order")
+        .map(({ participant }) => participant.id),
+      ["cast-first", "both", "cast-later", "staff-first", "other"]
+    );
+    deepStrictEqual(
+      buildAttendanceManagementMatrix(people, days, [], "all", cast, staff, "staff_order")
+        .map(({ participant }) => participant.id),
+      ["staff-first", "both", "cast-first", "cast-later", "other"]
+    );
+  });
 });
 
 describe("attendance management edit helpers", () => {

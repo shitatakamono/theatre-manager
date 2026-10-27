@@ -38,7 +38,12 @@ export type PersonAssociations = {
   staffRoles: string[];
 };
 
-export type ManagedPeopleSort = "cast_first" | "staff_first" | "name";
+export type ManagedPeopleSort =
+  | "cast_order"
+  | "staff_order"
+  | "cast_first"
+  | "staff_first"
+  | "name";
 
 const japaneseNameCollator = new Intl.Collator("ja");
 
@@ -136,9 +141,34 @@ export function sortManagedPeople(
     person.id,
     getPersonAssociations(person.id, person.displayName, cast, staff),
   ]));
+  const castPosition = new Map<string, number>();
+  [...cast]
+    .map((member, sourceIndex) => ({ member, sourceIndex }))
+    .sort((left, right) => left.member.order - right.member.order || left.sourceIndex - right.sourceIndex)
+    .forEach(({ member }, index) => {
+      if (member.personId && !castPosition.has(member.personId)) castPosition.set(member.personId, index);
+    });
+  const staffPosition = new Map<string, number>();
+  let nextStaffPosition = 0;
+  staff.forEach((role) => role.members.forEach((member) => {
+    if (member.personId && !staffPosition.has(member.personId)) {
+      staffPosition.set(member.personId, nextStaffPosition);
+    }
+    nextStaffPosition += 1;
+  }));
 
   function roleRank(person: ProjectPerson): number {
     const association = associations.get(person.id)!;
+    if (sort === "cast_order") {
+      if (castPosition.has(person.id)) return 0;
+      if (staffPosition.has(person.id)) return 1;
+      return 2;
+    }
+    if (sort === "staff_order") {
+      if (staffPosition.has(person.id)) return 0;
+      if (castPosition.has(person.id)) return 1;
+      return 2;
+    }
     if (sort === "cast_first") {
       if (association.cast) return 0;
       if (association.staff) return 1;
@@ -152,8 +182,19 @@ export function sortManagedPeople(
     return 0;
   }
 
+  function listingPosition(person: ProjectPerson): number {
+    if (sort === "cast_order") {
+      return castPosition.get(person.id) ?? staffPosition.get(person.id) ?? Number.MAX_SAFE_INTEGER;
+    }
+    if (sort === "staff_order") {
+      return staffPosition.get(person.id) ?? castPosition.get(person.id) ?? Number.MAX_SAFE_INTEGER;
+    }
+    return 0;
+  }
+
   return [...people].sort((left, right) => (
     roleRank(left) - roleRank(right)
+    || listingPosition(left) - listingPosition(right)
     || japaneseNameCollator.compare(left.displayName, right.displayName)
     || left.id.localeCompare(right.id)
   ));

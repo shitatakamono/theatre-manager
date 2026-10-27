@@ -129,4 +129,39 @@ describe("people management values", () => {
       ["both-i", "cast-sa", "staff-a", "staff-ka", "other-a"]
     );
   });
+
+  it("reuses cast order and the first staff appearance for published ordering", () => {
+    const managedPeople = [
+      { id: "other", displayName: "その他", active: true },
+      { id: "cast-2", displayName: "キャスト二", active: true },
+      { id: "staff-1", displayName: "スタッフ一", active: true },
+      { id: "both", displayName: "兼任", active: true },
+      { id: "multi", displayName: "複数役職", active: true },
+      { id: "cast-1", displayName: "キャスト一", active: true },
+      { id: "staff-2", displayName: "スタッフ二", active: true },
+    ];
+    const cast = [
+      { id: "cast-b", order: 20, name: "キャスト二", personId: "cast-2" },
+      { id: "cast-both", order: 10, name: "兼任", personId: "both" },
+      { id: "cast-a", order: 5, name: "キャスト一", personId: "cast-1" },
+    ];
+    const staff = [
+      { id: "role-1", role: "演出", members: [
+        { id: "staff-b", name: "スタッフ二", personId: "staff-2" },
+        { id: "staff-both", name: "兼任", personId: "both" },
+        { id: "staff-multi-1", name: "複数役職", personId: "multi" },
+      ] },
+      { id: "role-2", role: "舞台監督", members: [
+        { id: "staff-a", name: "スタッフ一", personId: "staff-1" },
+        { id: "staff-multi-2", name: "複数役職", personId: "multi" },
+      ] },
+    ];
+
+    deepStrictEqual(sortManagedPeople(managedPeople, cast, staff, "cast_order").map(({ id }) => id), [
+      "cast-1", "both", "cast-2", "staff-2", "multi", "staff-1", "other",
+    ]);
+    deepStrictEqual(sortManagedPeople(managedPeople, cast, staff, "staff_order").map(({ id }) => id), [
+      "staff-2", "both", "multi", "staff-1", "cast-1", "cast-2", "other",
+    ]);
+  });
 });

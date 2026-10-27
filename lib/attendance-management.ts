@@ -3,6 +3,7 @@ import { getAttendanceDayRequirement, type AttendanceDayRequirement } from "./at
 import type { RehearsalDaySummary } from "./attendance-view.ts";
 import type { CastMember, StaffRole } from "./performance.ts";
 import type { ProjectPerson } from "./people.ts";
+import { sortManagedPeople, type ManagedPeopleSort } from "./people-management.ts";
 
 export type AttendanceManagementFilter = "all" | "unanswered" | "tentative";
 
@@ -30,13 +31,17 @@ export function buildAttendanceManagementMatrix(
   records: readonly AttendanceRecord[],
   filter: AttendanceManagementFilter = "all",
   cast: readonly CastMember[] = [],
-  staff: readonly StaffRole[] = []
+  staff: readonly StaffRole[] = [],
+  sort: ManagedPeopleSort = "name"
 ): AttendanceManagementRow[] {
   const sortedDays = [...days].sort((left, right) => left.date.localeCompare(right.date));
   const recordByKey = new Map(records.map((record) => [`${record.date}_${record.participantId}`, record]));
-  return participants
-    .filter((participant) => participant.active)
-    .sort((left, right) => left.displayName.localeCompare(right.displayName, "ja"))
+  return sortManagedPeople(
+    participants.filter((participant) => participant.active),
+    cast,
+    staff,
+    sort
+  )
     .map((participant) => ({
       participant,
       cells: sortedDays.map(({ date, rehearsals }) => ({
