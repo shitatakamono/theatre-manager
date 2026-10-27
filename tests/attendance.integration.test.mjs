@@ -21,6 +21,19 @@ let testEnv;
 
 function firestoreFor(uid) { return testEnv.authenticatedContext(uid).firestore(); }
 
+function tokyoDateAfter(days) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const base = new Date(Date.UTC(Number(value.year), Number(value.month) - 1, Number(value.day)));
+  base.setUTCDate(base.getUTCDate() + days);
+  return base.toISOString().slice(0, 10);
+}
+
 async function seed() {
   await testEnv.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
@@ -90,9 +103,10 @@ describe("attendance transactions", () => {
 
   it("reuses the Phase 3C upsert boundary for viewer self-entry", async () => {
     const db = firestoreFor(viewerUid);
+    const date = tokyoDateAfter(11);
     const result = await upsertProjectAttendanceRecord(projectId, {
       participantId: participantA,
-      date: "2026-11-05",
+      date,
       status: "attending",
       availableFrom: "13:00",
       availableUntil: "17:00",

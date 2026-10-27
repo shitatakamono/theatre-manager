@@ -19,15 +19,19 @@
 .card[data-status="attending"] { border-left: 4px solid #3f846c; }
 .card[data-status="absent"] { border-left: 4px solid #ad6262; }
 .card[data-status="tentative"] { border-left: 4px solid #b18a3e; }
+.card[data-locked="true"] { background: #f8f9f8; }
 .cardHeader { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 16px; border-bottom: 1px solid #e0e6e3; padding-bottom: 11px; }
 .cardHeader > div { display: flex; align-items: center; gap: 9px; }
 .cardHeader h3 { font-size: 17px; font-weight: 850; }
 .cardHeader > div span { border-radius: 999px; background: #edf1ef; padding: 3px 8px; color: #53645e; font-size: 11px; font-weight: 800; }
 .cardHeader ul { display: flex; flex-wrap: wrap; gap: 5px 14px; color: #53645e; font-size: 12px; }
+.deadline { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; color: #66736e; font-size: 11px; }
+.deadline strong { color: #8b4a3d; font-weight: 800; }
 .statusOptions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 13px; }
 .statusOptions button { min-height: 48px; border: 1px solid #b9c8c2; border-radius: 8px; background: #fff; color: #35443f; font-weight: 800; }
 .statusOptions button b { margin-right: 6px; }
 .statusOptions button[data-selected="true"] { border-color: #21634f; background: #e5f3ed; color: #18513f; box-shadow: inset 0 0 0 1px #21634f; }
+.statusOptions button:disabled, .timeFields input:disabled { cursor: not-allowed; opacity: .62; }
 .timeFields { display: flex; align-items: end; flex-wrap: wrap; gap: 8px; margin-top: 13px; }
 .timeFields label, .noteField { display: grid; gap: 5px; }
 .timeFields label > span, .noteField > span { color: #53645e; font-size: 11px; font-weight: 800; }

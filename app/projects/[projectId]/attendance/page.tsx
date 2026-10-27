@@ -14,6 +14,10 @@ import {
   getSelfAttendanceRehearsals,
 } from "@/lib/attendance-participation";
 import {
+  getAttendanceLastEditableDate,
+  isSelfAttendanceLocked,
+} from "@/lib/attendance-deadline";
+import {
   buildAttendanceDrafts,
   buildFutureRehearsalDays,
   findSelfParticipant,
@@ -25,6 +29,7 @@ import { getProjectPerformanceData } from "@/lib/firestore";
 import type { CastMember, StaffRole } from "@/lib/performance";
 import { getProjectPeopleWithFallback, type ProjectPerson } from "@/lib/people";
 import { getAllProjectRehearsals, type Rehearsal } from "@/lib/rehearsals";
+import { useProjectAccess } from "../ProjectAccess";
 import { RehearsalSectionNavigation } from "../RehearsalSectionNavigation";
 import styles from "./attendance.module.css";
 
@@ -68,6 +73,7 @@ async function fetchAttendancePageData(projectId: string) {
 export default function AttendancePage({ params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = use(params);
   const { profile } = useAuth();
+  const { role } = useProjectAccess();
   const [participants, setParticipants] = useState<ProjectPerson[]>([]);
   const [rehearsals, setRehearsals] = useState<Rehearsal[]>([]);
   const [cast, setCast] = useState<CastMember[]>([]);
@@ -79,6 +85,7 @@ export default function AttendancePage({ params }: { params: Promise<{ projectId
   const [loadError, setLoadError] = useState("");
   const [saveError, setSaveError] = useState("");
   const [notice, setNotice] = useState("");
+  const [currentTime, setCurrentTime] = useState(() => new Date());
 
   const selfParticipant = useMemo(
     () => profile ? findSelfParticipant(participants, profile.uid) : null,
@@ -91,6 +98,9 @@ export default function AttendancePage({ params }: { params: Promise<{ projectId
   const days = useMemo(() => buildFutureRehearsalDays(selfParticipant
     ? getSelfAttendanceRehearsals(selfParticipant, rehearsals, cast, staff)
     : []), [cast, rehearsals, selfParticipant, staff]);
+  const viewerLockApplies = role !== "owner" && role !== "editor";
+  const hasEditableDay = !viewerLockApplies
+    || days.some((day) => !isSelfAttendanceLocked(day.date, currentTime));
 
   async function load() {
     setLoading(true);
@@ -137,13 +147,20 @@ export default function AttendancePage({ params }: { params: Promise<{ projectId
     return () => { active = false; };
   }, [projectId, profile]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => setCurrentTime(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   function patchDraft(date: string, patch: Partial<AttendanceDraft>) {
+    if (viewerLockApplies && isSelfAttendanceLocked(date, currentTime)) return;
     setDrafts((current) => ({ ...current, [date]: { ...current[date], ...patch } }));
     setNotice("");
     setSaveError("");
   }
 
   function selectStatus(date: string, status: AttendanceStatus) {
+    if (viewerLockApplies && isSelfAttendanceLocked(date, currentTime)) return;
     const day = days.find((item) => item.date === date);
     patchDraft(date, status === "attending" ? {
       status,
@@ -158,7 +175,11 @@ export default function AttendancePage({ params }: { params: Promise<{ projectId
     setSaveError("");
     setNotice("");
     try {
-      const inputs = getChangedAttendanceInputs(days, selfParticipant.id, drafts, records);
+      const now = new Date();
+      const editableDays = viewerLockApplies
+        ? days.filter((day) => !isSelfAttendanceLocked(day.date, now))
+        : days;
+      const inputs = getChangedAttendanceInputs(editableDays, selfParticipant.id, drafts, records);
       if (inputs.length === 0) {
         setNotice("保存する変更はありません");
         return;
@@ -187,7 +208,7 @@ export default function AttendancePage({ params }: { params: Promise<{ projectId
       {loadError && <p className={styles.error} role="alert">{loadError} <button type="button" onClick={() => void load()}>再読み込み</button></p>}
       {loading ? <p className={styles.empty}>読み込み中…</p> : <>
         <section className={styles.selfSection} aria-labelledby="self-attendance-title">
-          <div className={styles.sectionHeading}><div><p>MY ATTENDANCE</p><h2 id="self-attendance-title">自分の出欠予定</h2></div>{selfParticipant?.active && selfParticipant.attendanceTarget && days.length > 0 && <button type="button" disabled={saving} onClick={() => void saveAll()}>{saving ? "保存中…" : "まとめて保存"}</button>}</div>
+          <div className={styles.sectionHeading}><div><p>MY ATTENDANCE</p><h2 id="self-attendance-title">自分の出欠予定</h2></div>{selfParticipant?.active && selfParticipant.attendanceTarget && days.length > 0 && <button type="button" disabled={saving || !hasEditableDay} onClick={() => void saveAll()}>{saving ? "保存中…" : "まとめて保存"}</button>}</div>
           {!selfParticipant ? <p className={styles.guidance}>あなたのアカウントは参加者情報とまだ紐付けられていません。制作担当者にアカウント紐付けを依頼してください。</p>
             : !selfParticipant.active ? <p className={styles.guidance}>関係者情報が終了済みのため、現在は出欠を入力できません。</p>
               : !selfParticipant.attendanceTarget ? <p className={styles.guidance}>現在、出欠管理の対象外です。稽古スケジュールは引き続き確認できます。</p>
@@ -199,16 +220,18 @@ export default function AttendancePage({ params }: { params: Promise<{ projectId
                   : <>{participationMode === "optional_staff" && <p className={styles.optionalNote}>スタッフとして全日程を確認できます。未入力の日は「参加予定なし」として扱われます。</p>}<div className={styles.cards}>{days.map((day) => {
                   const draft = drafts[day.date] ?? { status: null, availableFrom: null, availableUntil: null, publicNote: "" };
                   const emptyLabel = participationMode === "optional_staff" ? "参加予定なし" : "未回答";
-                  return <article className={styles.card} data-status={draft.status ?? (participationMode === "optional_staff" ? "optional" : "unanswered")} key={day.date}>
+                  const locked = viewerLockApplies && isSelfAttendanceLocked(day.date, currentTime);
+                  return <article className={styles.card} data-locked={locked} data-status={draft.status ?? (participationMode === "optional_staff" ? "optional" : "unanswered")} key={day.date}>
                     <div className={styles.cardHeader}><div><h3>{formatDate(day.date)}</h3><span>{draft.status ? STATUS_LABELS[draft.status] : emptyLabel}</span></div><ul>{day.rehearsals.map((rehearsal) => <li key={rehearsal.id}>{formatRehearsalDayItem(rehearsal)}{rehearsal.venue ? ` / ${rehearsal.venue}` : ""}</li>)}</ul></div>
-                    <div className={styles.statusOptions} aria-label={`${formatDate(day.date)}の出欠`}>{STATUS_OPTIONS.map((option) => <button type="button" data-selected={draft.status === option.value} key={option.value} onClick={() => selectStatus(day.date, option.value)}><b>{option.mark}</b>{option.label}</button>)}</div>
+                    {viewerLockApplies && <div className={styles.deadline}><span>変更期限：{formatDate(getAttendanceLastEditableDate(day.date))}</span>{locked && <strong>10日前を過ぎたため変更できません</strong>}</div>}
+                    <div className={styles.statusOptions} aria-label={`${formatDate(day.date)}の出欠`}>{STATUS_OPTIONS.map((option) => <button type="button" disabled={locked} data-selected={draft.status === option.value} key={option.value} onClick={() => selectStatus(day.date, option.value)}><b>{option.mark}</b>{option.label}</button>)}</div>
                     {draft.status === "attending" && <div className={styles.timeFields}>
-                      <label><span>参加可能時間</span><input type="time" value={draft.availableFrom ?? ""} onChange={(event) => patchDraft(day.date, { availableFrom: event.target.value || null })} /></label><span>〜</span><label><span className={styles.visuallyHidden}>終了時刻</span><input type="time" value={draft.availableUntil ?? ""} onChange={(event) => patchDraft(day.date, { availableUntil: event.target.value || null })} /></label>
-                      <button type="button" disabled={!day.fullTimeRange} onClick={() => day.fullTimeRange && patchDraft(day.date, { availableFrom: day.fullTimeRange.from, availableUntil: day.fullTimeRange.until })}>その日の全時間参加</button>
+                      <label><span>参加可能時間</span><input disabled={locked} type="time" value={draft.availableFrom ?? ""} onChange={(event) => patchDraft(day.date, { availableFrom: event.target.value || null })} /></label><span>〜</span><label><span className={styles.visuallyHidden}>終了時刻</span><input disabled={locked} type="time" value={draft.availableUntil ?? ""} onChange={(event) => patchDraft(day.date, { availableUntil: event.target.value || null })} /></label>
+                      <button type="button" disabled={locked || !day.fullTimeRange} onClick={() => day.fullTimeRange && patchDraft(day.date, { availableFrom: day.fullTimeRange.from, availableUntil: day.fullTimeRange.until })}>その日の全時間参加</button>
                       {!day.fullTimeRange && <small>終了時刻未設定の稽古があるため自動入力できません。</small>}
                     </div>}
-                    <label className={styles.noteField}><span>公開備考</span><textarea disabled={draft.status === null} maxLength={2000} rows={2} value={draft.publicNote} onChange={(event) => patchDraft(day.date, { publicNote: event.target.value })} placeholder={draft.status === null ? "先に出欠を選択してください" : "参加者全員に公開されます"} /></label>
-                    {draft.status === null && <small className={styles.noteHint}>参加・不参加・未定を選択すると備考を入力できます。</small>}
+                    <label className={styles.noteField}><span>公開備考</span><textarea disabled={locked || draft.status === null} maxLength={2000} rows={2} value={draft.publicNote} onChange={(event) => patchDraft(day.date, { publicNote: event.target.value })} placeholder={draft.status === null ? "先に出欠を選択してください" : "参加者全員に公開されます"} /></label>
+                    {!locked && draft.status === null && <small className={styles.noteHint}>参加・不参加・未定を選択すると備考を入力できます。</small>}
                   </article>;
                 })}</div></>}
           {notice && <p className={styles.success} role="status">{notice}</p>}

@@ -380,6 +380,14 @@ service cloud.firestore {
         && value.matches('^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$');
     }
 
+    function beforeSelfAttendanceDeadline(date) {
+      let parts = date.split('-');
+      let rehearsalMidnightJst = timestamp.date(int(parts[0]), int(parts[1]), int(parts[2]))
+        - duration.value(9, 'h');
+      return validAttendanceDate(date)
+        && request.time < rehearsalMidnightJst - duration.value(10, 'd');
+    }
+
     function validAttendanceTime(value) {
       return value is string
         && value.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$');
@@ -725,10 +733,12 @@ service cloud.firestore {
       match /attendanceRecords/{recordId} {
         allow read: if isMember(projectId);
         allow create: if (canEdit(projectId)
-            || isOwnActiveParticipant(projectId, request.resource.data.participantId))
+            || (isOwnActiveParticipant(projectId, request.resource.data.participantId)
+              && beforeSelfAttendanceDeadline(request.resource.data.date)))
           && validAttendanceCreate(projectId, recordId);
         allow update: if (canEdit(projectId)
-            || isOwnActiveParticipant(projectId, request.resource.data.participantId))
+            || (isOwnActiveParticipant(projectId, request.resource.data.participantId)
+              && beforeSelfAttendanceDeadline(request.resource.data.date)))
           && validAttendanceUpdate(projectId, recordId);
         allow delete: if false;
       }

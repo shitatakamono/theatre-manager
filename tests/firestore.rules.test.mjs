@@ -142,6 +142,19 @@ function attendanceData(uid, overrides = {}) {
   };
 }
 
+function tokyoDateAfter(days) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const base = new Date(Date.UTC(Number(value.year), Number(value.month) - 1, Number(value.day)));
+  base.setUTCDate(base.getUTCDate() + days);
+  return base.toISOString().slice(0, 10);
+}
+
 async function createAttendanceParticipant(db, id = "participant-a") {
   return setDoc(participantRef(db, id), participantData(ownerUid));
 }
@@ -968,8 +981,9 @@ describe("attendance records", () => {
     const ownerDb = firestoreFor(ownerUid);
     await assertSucceeds(createLinkedParticipant(ownerDb, ownerUid, "viewer-participant", viewerUid));
     const viewerDb = firestoreFor(viewerUid);
-    const selfRef = attendanceRef(viewerDb, "2026-11-03", "viewer-participant");
-    await assertSucceeds(setDoc(selfRef, attendanceData(viewerUid, { participantId: "viewer-participant" })));
+    const date = tokyoDateAfter(11);
+    const selfRef = attendanceRef(viewerDb, date, "viewer-participant");
+    await assertSucceeds(setDoc(selfRef, attendanceData(viewerUid, { participantId: "viewer-participant", date })));
     await assertSucceeds(updateDoc(selfRef, {
       status: "tentative",
       availableFrom: null,
@@ -977,6 +991,38 @@ describe("attendance records", () => {
       publicNote: "確認中",
       updatedAt: serverTimestamp(),
       updatedByUid: viewerUid,
+    }));
+  });
+
+  it("locks viewer creates and updates from ten days before while owner and editor remain allowed", async () => {
+    const ownerDb = firestoreFor(ownerUid);
+    await assertSucceeds(createLinkedParticipant(ownerDb, ownerUid, "viewer-participant", viewerUid));
+    const viewerDb = firestoreFor(viewerUid);
+    const lockedDate = tokyoDateAfter(10);
+    const lockedRef = attendanceRef(viewerDb, lockedDate, "viewer-participant");
+
+    await assertFails(setDoc(lockedRef, attendanceData(viewerUid, {
+      participantId: "viewer-participant",
+      date: lockedDate,
+    })));
+    await assertSucceeds(setDoc(attendanceRef(ownerDb, lockedDate, "viewer-participant"), attendanceData(ownerUid, {
+      participantId: "viewer-participant",
+      date: lockedDate,
+    })));
+    await assertFails(updateDoc(lockedRef, {
+      publicNote: "期限後の本人更新",
+      updatedAt: serverTimestamp(),
+      updatedByUid: viewerUid,
+    }));
+    await assertSucceeds(updateDoc(attendanceRef(ownerDb, lockedDate, "viewer-participant"), {
+      publicNote: "Owner更新",
+      updatedAt: serverTimestamp(),
+      updatedByUid: ownerUid,
+    }));
+    await assertSucceeds(updateDoc(attendanceRef(firestoreFor(editorUid), lockedDate, "viewer-participant"), {
+      publicNote: "Editor更新",
+      updatedAt: serverTimestamp(),
+      updatedByUid: editorUid,
     }));
   });
 
@@ -1031,8 +1077,9 @@ describe("attendance records", () => {
     const ownerDb = firestoreFor(ownerUid);
     await assertSucceeds(createLinkedParticipant(ownerDb, ownerUid, "viewer-participant", viewerUid));
     const viewerDb = firestoreFor(viewerUid);
-    const selfRef = attendanceRef(viewerDb, "2026-11-03", "viewer-participant");
-    await assertSucceeds(setDoc(selfRef, attendanceData(viewerUid, { participantId: "viewer-participant" })));
+    const date = tokyoDateAfter(11);
+    const selfRef = attendanceRef(viewerDb, date, "viewer-participant");
+    await assertSucceeds(setDoc(selfRef, attendanceData(viewerUid, { participantId: "viewer-participant", date })));
 
     const relink = writeBatch(ownerDb);
     relink.update(participantRef(ownerDb, "viewer-participant"), {
