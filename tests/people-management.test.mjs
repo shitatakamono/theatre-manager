@@ -6,6 +6,7 @@ import {
   filterManagedPeople,
   getManagedPersonChangedFields,
   getPersonAssociations,
+  sortManagedPeople,
 } from "../lib/people-management.ts";
 
 const input = {
@@ -89,5 +90,43 @@ describe("people management values", () => {
       castLabels: [],
       staffRoles: [],
     });
+  });
+
+  it("sorts by cast, staff, and other roles with Japanese names inside each group", () => {
+    const managedPeople = [
+      { id: "other-a", displayName: "あおい", active: true },
+      { id: "staff-ka", displayName: "かとう", active: true },
+      { id: "cast-sa", displayName: "さとう", active: true },
+      { id: "both-i", displayName: "いとう", active: true },
+      { id: "cast-a", displayName: "あべ", active: false },
+      { id: "staff-a", displayName: "あらい", active: true },
+    ];
+    const cast = [
+      { id: "cast-1", order: 1, name: "さとう", personId: "cast-sa" },
+      { id: "cast-2", order: 2, name: "いとう", personId: "both-i" },
+      { id: "cast-3", order: 3, name: "あべ", personId: "cast-a" },
+    ];
+    const staff = [{ id: "role-1", role: "演出", members: [
+      { id: "staff-1", name: "かとう", personId: "staff-ka" },
+      { id: "staff-2", name: "いとう", personId: "both-i" },
+      { id: "staff-3", name: "あらい", personId: "staff-a" },
+    ] }];
+
+    deepStrictEqual(
+      sortManagedPeople(filterManagedPeople(managedPeople, true), cast, staff, "cast_first").map(({ id }) => id),
+      ["cast-a", "both-i", "cast-sa", "staff-a", "staff-ka", "other-a"]
+    );
+    deepStrictEqual(
+      sortManagedPeople(filterManagedPeople(managedPeople, true), cast, staff, "staff_first").map(({ id }) => id),
+      ["staff-a", "both-i", "staff-ka", "cast-a", "cast-sa", "other-a"]
+    );
+    deepStrictEqual(
+      sortManagedPeople(filterManagedPeople(managedPeople, true), cast, staff, "name").map(({ id }) => id),
+      ["other-a", "cast-a", "staff-a", "both-i", "staff-ka", "cast-sa"]
+    );
+    deepStrictEqual(
+      sortManagedPeople(filterManagedPeople(managedPeople, false), cast, staff, "cast_first").map(({ id }) => id),
+      ["both-i", "cast-sa", "staff-a", "staff-ka", "other-a"]
+    );
   });
 });

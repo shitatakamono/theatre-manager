@@ -38,6 +38,10 @@ export type PersonAssociations = {
   staffRoles: string[];
 };
 
+export type ManagedPeopleSort = "cast_first" | "staff_first" | "name";
+
+const japaneseNameCollator = new Intl.Collator("ja");
+
 async function resolveFirestore(firestore?: Firestore): Promise<Firestore> {
   if (firestore) return firestore;
   return (await import("./firebase.ts")).db;
@@ -120,6 +124,39 @@ export function getPersonAssociations(
       : castCreditNames,
     staffRoles: [...new Set(staffRoles)],
   };
+}
+
+export function sortManagedPeople(
+  people: readonly ProjectPerson[],
+  cast: readonly CastMember[],
+  staff: readonly StaffRole[],
+  sort: ManagedPeopleSort
+): ProjectPerson[] {
+  const associations = new Map(people.map((person) => [
+    person.id,
+    getPersonAssociations(person.id, person.displayName, cast, staff),
+  ]));
+
+  function roleRank(person: ProjectPerson): number {
+    const association = associations.get(person.id)!;
+    if (sort === "cast_first") {
+      if (association.cast) return 0;
+      if (association.staff) return 1;
+      return 2;
+    }
+    if (sort === "staff_first") {
+      if (association.staff) return 0;
+      if (association.cast) return 1;
+      return 2;
+    }
+    return 0;
+  }
+
+  return [...people].sort((left, right) => (
+    roleRank(left) - roleRank(right)
+    || japaneseNameCollator.compare(left.displayName, right.displayName)
+    || left.id.localeCompare(right.id)
+  ));
 }
 
 function activityPayload(

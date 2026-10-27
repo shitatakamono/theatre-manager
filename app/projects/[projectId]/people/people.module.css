@@ -6,7 +6,10 @@
 .header span { display: block; margin-top: 4px; color: #68766f; font-size: 12px; }
 .header > button { min-height: 38px; border-radius: 7px; background: #24684f; color: #fff; padding: 8px 14px; font-size: 12px; font-weight: 800; }
 .success { margin-bottom: 12px; border-radius: 7px; background: #dcf4e9; color: #145a43; padding: 9px 12px; font-size: 12px; font-weight: 700; }
-.inactiveFilter { display: flex; align-items: center; gap: 7px; width: fit-content; margin: 0 0 12px auto; color: #5f6e67; font-size: 11px; font-weight: 700; }
+.listControls { display: flex; align-items: center; justify-content: flex-end; gap: 16px; margin: 0 0 12px; }
+.sortControl,
+.inactiveFilter { display: flex; align-items: center; gap: 7px; width: fit-content; color: #5f6e67; font-size: 11px; font-weight: 700; }
+.sortControl select { min-height: 30px; border: 1px solid #cbd6d1; border-radius: 6px; background: #fff; padding: 4px 28px 4px 8px; color: #34463f; font-size: 11px; font-weight: 700; }
 .inactiveFilter input { width: 15px; height: 15px; accent-color: #24684f; }
 .empty { border-top: 1px solid #dbe2de; padding: 22px 0; color: #74817b; font-size: 13px; }
 .tableWrap { max-width: 100%; overflow-x: auto; border-top: 1px solid #d9e1dd; }
@@ -53,6 +56,7 @@
 @media (max-width: 700px) {
   .page { padding: 18px 16px 48px; }
   .header { align-items: flex-start; flex-direction: column; }
+  .listControls { align-items: flex-start; flex-direction: column; gap: 9px; }
   .table { min-width: 0; }
   .table thead { display: none; }
   .table tbody,

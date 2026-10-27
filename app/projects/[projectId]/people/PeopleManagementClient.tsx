@@ -10,7 +10,9 @@ import {
   filterManagedPeople,
   getPersonAssociations,
   setProjectPersonEnded,
+  sortManagedPeople,
   updateProjectPerson,
+  type ManagedPeopleSort,
   type ManagedPersonInput,
 } from "@/lib/people-management";
 import { getProjectPeopleWithFallback, type ProjectPerson } from "@/lib/people";
@@ -43,13 +45,19 @@ export function PeopleManagementClient({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [showInactive, setShowInactive] = useState(false);
+  const [sortOrder, setSortOrder] = useState<ManagedPeopleSort>("cast_first");
   const memberByUid = useMemo(() => new Map(members.map((member) => [member.uid, member])), [members]);
   const linkedPersonByUid = useMemo(() => new Map(people.flatMap((person) => person.linkedUserUid
     ? [[person.linkedUserUid, person.id] as const]
     : [])), [people]);
-  const cast = project.data.cast ?? [];
-  const staff = project.data.staff ?? [];
-  const visiblePeople = useMemo(() => filterManagedPeople(people, showInactive), [people, showInactive]);
+  const cast = useMemo(() => project.data.cast ?? [], [project.data.cast]);
+  const staff = useMemo(() => project.data.staff ?? [], [project.data.staff]);
+  const visiblePeople = useMemo(() => sortManagedPeople(
+    filterManagedPeople(people, showInactive),
+    cast,
+    staff,
+    sortOrder
+  ), [people, showInactive, cast, staff, sortOrder]);
 
   function openCreate() {
     if (!canEdit) return;
@@ -127,10 +135,20 @@ export function PeopleManagementClient({
       {canEdit && <button type="button" onClick={openCreate}>その他の関係者を追加</button>}
     </header>
     {notice && <p className={styles.success} role="status">{notice}</p>}
-    <label className={styles.inactiveFilter}>
-      <input type="checkbox" checked={showInactive} onChange={(event) => setShowInactive(event.target.checked)} />
-      <span>終了した関係者も表示</span>
-    </label>
+    <div className={styles.listControls}>
+      <label className={styles.sortControl}>
+        <span>並び順</span>
+        <select value={sortOrder} onChange={(event) => setSortOrder(event.target.value as ManagedPeopleSort)}>
+          <option value="cast_first">キャスト優先</option>
+          <option value="staff_first">スタッフ優先</option>
+          <option value="name">本名順</option>
+        </select>
+      </label>
+      <label className={styles.inactiveFilter}>
+        <input type="checkbox" checked={showInactive} onChange={(event) => setShowInactive(event.target.checked)} />
+        <span>終了した関係者も表示</span>
+      </label>
+    </div>
     {people.length === 0 ? <p className={styles.empty}>関係者はまだ登録されていません。通常は公演情報のキャスト・スタッフから登録できます。</p> : (
       <div className={styles.tableWrap}>
         <table className={styles.table}>
