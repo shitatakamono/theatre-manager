@@ -1,4 +1,5 @@
 import { adminAuth, adminDb } from "@/lib/server/firebase-admin";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import {
   decryptGoogleCalendarToken,
   type EncryptedGoogleCalendarToken,
@@ -83,7 +84,12 @@ export async function POST(request: Request): Promise<Response> {
       }
     }
 
-    await ref.delete();
+    await ref.update({
+      connected: false,
+      refreshToken: FieldValue.delete(),
+      calendarProvisioning: FieldValue.delete(),
+      updatedAt: Timestamp.now(),
+    });
 
     return json(
       {

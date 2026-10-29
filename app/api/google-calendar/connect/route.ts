@@ -4,7 +4,7 @@ import { adminAuth } from "@/lib/server/firebase-admin";
 export const runtime = "nodejs";
 
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
-const GOOGLE_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.events";
+const GOOGLE_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar";
 
 function json(body: unknown, status: number): Response {
   return Response.json(body, { status });
