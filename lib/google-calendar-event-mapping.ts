@@ -23,6 +23,21 @@ export type GoogleCalendarEventLeaseState =
   | { status: "creating"; operationId: string; startedAtMillis: number }
   | null;
 
+export type GoogleCalendarEventUpdateLeaseState =
+  | { status: "synced"; sourceHash: string }
+  | {
+      status: "updating";
+      operationId: string;
+      startedAtMillis: number;
+      sourceHash: string;
+      targetSourceHash: string;
+    };
+
+export type GoogleCalendarEventUpdateLeaseDecision =
+  | "acquire"
+  | "unchanged"
+  | "in_progress";
+
 export type GoogleCalendarEventLeaseDecision =
   | "acquire"
   | "synced"
@@ -48,6 +63,32 @@ export function ownsGoogleCalendarEventLease(
   operationId: string
 ): boolean {
   return state?.status === "creating" && state.operationId === operationId;
+}
+
+export function decideGoogleCalendarEventUpdateLease(
+  state: GoogleCalendarEventUpdateLeaseState,
+  currentSourceHash: string,
+  nowMillis: number,
+  staleMilliseconds = GOOGLE_CALENDAR_EVENT_LEASE_STALE_MS
+): GoogleCalendarEventUpdateLeaseDecision {
+  if (state.sourceHash === currentSourceHash) return "unchanged";
+  if (
+    state.status === "updating"
+    && nowMillis - state.startedAtMillis < staleMilliseconds
+  ) {
+    return "in_progress";
+  }
+  return "acquire";
+}
+
+export function ownsGoogleCalendarEventUpdateLease(
+  state: GoogleCalendarEventUpdateLeaseState,
+  operationId: string,
+  targetSourceHash: string
+): boolean {
+  return state.status === "updating"
+    && state.operationId === operationId
+    && state.targetSourceHash === targetSourceHash;
 }
 
 function requireIdentifier(value: string, field: string): string {

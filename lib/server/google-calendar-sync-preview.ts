@@ -16,6 +16,13 @@ export type GoogleCalendarSyncContext = {
   rehearsals: GoogleCalendarSyncSourceRehearsal[];
 };
 
+export type GoogleCalendarProjectRehearsalContext = {
+  projectName: string;
+  rehearsals: GoogleCalendarSyncSourceRehearsal[];
+  projectData: Record<string, unknown>;
+  projectRef: FirebaseFirestore.DocumentReference;
+};
+
 export type GoogleCalendarSyncPreviewErrorCode =
   | "not_member"
   | "project_not_found"
@@ -111,29 +118,11 @@ export async function getGoogleCalendarSyncContext(
   uid: string,
   projectId: string
 ): Promise<GoogleCalendarSyncContext> {
-  const projectRef = adminDb.collection("projects").doc(projectId);
+  const base = await loadGoogleCalendarProjectRehearsalContext(uid, projectId);
+  const { projectName, rehearsals, projectData, projectRef } = base;
 
   try {
-    const member = await projectRef.collection("members").doc(uid).get();
-    if (!member.exists) {
-      throw new GoogleCalendarSyncPreviewError("not_member", 403);
-    }
-
-    const [project, linkedUser, rehearsalSnapshot] = await Promise.all([
-      projectRef.get(),
-      projectRef.collection("participantLinkedUsers").doc(uid).get(),
-      projectRef.collection("rehearsals").orderBy("startAt", "asc").get(),
-    ]);
-
-    if (!project.exists) {
-      throw new GoogleCalendarSyncPreviewError("project_not_found", 404);
-    }
-
-    const rehearsals = rehearsalSnapshot.docs.map((snapshot) =>
-      mapRehearsal(snapshot.id, snapshot.data())
-    );
-    const projectData = asRecord(project.data());
-    const projectName = getProjectName(projectData);
+    const linkedUser = await projectRef.collection("participantLinkedUsers").doc(uid).get();
     const cast = Array.isArray(projectData.cast)
       ? projectData.cast as CastMember[]
       : [];
@@ -168,6 +157,39 @@ export async function getGoogleCalendarSyncContext(
       ),
       projectName,
     };
+  } catch (error) {
+    if (error instanceof GoogleCalendarSyncPreviewError) throw error;
+    throw new GoogleCalendarSyncPreviewError("preview_read_failed", 500);
+  }
+}
+
+export async function loadGoogleCalendarProjectRehearsalContext(
+  uid: string,
+  projectId: string
+): Promise<GoogleCalendarProjectRehearsalContext> {
+  const projectRef = adminDb.collection("projects").doc(projectId);
+
+  try {
+    const member = await projectRef.collection("members").doc(uid).get();
+    if (!member.exists) {
+      throw new GoogleCalendarSyncPreviewError("not_member", 403);
+    }
+
+    const [project, rehearsalSnapshot] = await Promise.all([
+      projectRef.get(),
+      projectRef.collection("rehearsals").orderBy("startAt", "asc").get(),
+    ]);
+
+    if (!project.exists) {
+      throw new GoogleCalendarSyncPreviewError("project_not_found", 404);
+    }
+
+    const rehearsals = rehearsalSnapshot.docs.map((snapshot) =>
+      mapRehearsal(snapshot.id, snapshot.data())
+    );
+    const projectData = asRecord(project.data());
+    const projectName = getProjectName(projectData);
+    return { projectName, rehearsals, projectData, projectRef };
   } catch (error) {
     if (error instanceof GoogleCalendarSyncPreviewError) throw error;
     throw new GoogleCalendarSyncPreviewError("preview_read_failed", 500);

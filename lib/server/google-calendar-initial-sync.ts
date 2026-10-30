@@ -48,7 +48,10 @@ export type GoogleCalendarInitialSyncResult = {
   errorCodes: string[];
 };
 
-function categoryLabel(type: string, customType: string): string {
+export function getGoogleCalendarEventCategoryLabel(
+  type: string,
+  customType: string
+): string {
   const option = REHEARSAL_TYPE_OPTIONS.find(({ value }) => value === type);
   return option
     ? getRehearsalTypeLabel(option.value, customType)
@@ -181,7 +184,10 @@ export async function runGoogleCalendarInitialSync(
     const draft = buildGoogleCalendarEventDraft({
       projectId,
       projectName: context.projectName,
-      categoryLabel: categoryLabel(rehearsal.type, rehearsal.customType),
+      categoryLabel: getGoogleCalendarEventCategoryLabel(
+        rehearsal.type,
+        rehearsal.customType
+      ),
       rehearsal,
     });
     if (!draft) {

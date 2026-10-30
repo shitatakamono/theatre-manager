@@ -5,8 +5,10 @@ import {
   buildGoogleCalendarEventMappingId,
   buildGoogleCalendarRehearsalSourceHash,
   decideGoogleCalendarEventLease,
+  decideGoogleCalendarEventUpdateLease,
   GOOGLE_CALENDAR_EVENT_LEASE_STALE_MS,
   ownsGoogleCalendarEventLease,
+  ownsGoogleCalendarEventUpdateLease,
 } from "../lib/google-calendar-event-mapping.ts";
 
 const source = {
@@ -118,5 +120,63 @@ describe("Google Calendar event mapping helpers", () => {
       decideGoogleCalendarEventLease(stateAfterFirstClaim, now),
       "in_progress"
     );
+  });
+
+  it("acquires an update lease only when the source hash changed", () => {
+    strictEqual(decideGoogleCalendarEventUpdateLease(
+      { status: "synced", sourceHash: "old" },
+      "new",
+      1_000
+    ), "acquire");
+    strictEqual(decideGoogleCalendarEventUpdateLease(
+      { status: "synced", sourceHash: "same" },
+      "same",
+      1_000
+    ), "unchanged");
+  });
+
+  it("blocks active updates and permits stale update lease takeover", () => {
+    const state = {
+      status: "updating",
+      operationId: "operation-a",
+      startedAtMillis: 1_000,
+      sourceHash: "old",
+      targetSourceHash: "new",
+    };
+    strictEqual(decideGoogleCalendarEventUpdateLease(
+      state,
+      "newer",
+      1_000 + GOOGLE_CALENDAR_EVENT_LEASE_STALE_MS - 1
+    ), "in_progress");
+    strictEqual(decideGoogleCalendarEventUpdateLease(
+      state,
+      "newer",
+      1_000 + GOOGLE_CALENDAR_EVENT_LEASE_STALE_MS
+    ), "acquire");
+  });
+
+  it("allows only the current update operation and target hash to complete", () => {
+    const state = {
+      status: "updating",
+      operationId: "operation-new",
+      startedAtMillis: 1_000,
+      sourceHash: "old",
+      targetSourceHash: "newest",
+    };
+    strictEqual(ownsGoogleCalendarEventUpdateLease(
+      state,
+      "operation-new",
+      "newest"
+    ), true);
+    strictEqual(ownsGoogleCalendarEventUpdateLease(
+      state,
+      "operation-stale",
+      "newest"
+    ), false);
+    strictEqual(ownsGoogleCalendarEventUpdateLease(
+      state,
+      "operation-new",
+      "older-target"
+    ), false);
   });
 });
