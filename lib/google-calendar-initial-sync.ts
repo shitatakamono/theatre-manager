@@ -20,6 +20,10 @@ export type GoogleCalendarInitialSyncSummary = {
   errorCodes: string[];
 };
 
+export type GoogleCalendarEventFinalizationResult =
+  | { completed: true }
+  | { completed: false; code: string };
+
 export type GoogleCalendarEventDraft = {
   summary: string;
   location: string;
@@ -75,6 +79,29 @@ export function summarizeGoogleCalendarInitialSync(
   }
 
   return { createdCount, failedCount, errorCodes: [...errorCodes] };
+}
+
+export async function finalizeCreatedGoogleCalendarEvent(input: {
+  completeMapping(): Promise<boolean>;
+  cleanupEvent(): Promise<boolean>;
+  releaseLease(): Promise<void>;
+}): Promise<GoogleCalendarEventFinalizationResult> {
+  try {
+    const completed = await input.completeMapping();
+    if (completed) return { completed: true };
+    const cleanedUp = await input.cleanupEvent();
+    return {
+      completed: false,
+      code: cleanedUp ? "event_lease_lost" : "event_lease_lost_cleanup_failed",
+    };
+  } catch {
+    const cleanedUp = await input.cleanupEvent();
+    await input.releaseLease();
+    return {
+      completed: false,
+      code: cleanedUp ? "mapping_save_failed" : "mapping_save_cleanup_failed",
+    };
+  }
 }
 
 export function buildGoogleCalendarEventDraft(input: {

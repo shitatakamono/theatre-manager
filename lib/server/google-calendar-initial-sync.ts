@@ -6,6 +6,7 @@ import {
   buildGoogleCalendarEventDraft,
   buildGoogleCalendarInitialSyncPlan,
   buildGoogleCalendarMappingSource,
+  finalizeCreatedGoogleCalendarEvent,
   summarizeGoogleCalendarInitialSync,
   type GoogleCalendarInitialSyncOutcome,
 } from "@/lib/google-calendar-initial-sync";
@@ -228,53 +229,39 @@ export async function runGoogleCalendarInitialSync(
     }
 
     const source = buildGoogleCalendarMappingSource(rehearsal);
-    try {
-      const completed = await completeGoogleCalendarEventLease(
+    const finalization = await finalizeCreatedGoogleCalendarEvent({
+      completeMapping: () => completeGoogleCalendarEventLease(
         uid,
         lease.operationId,
         {
-        projectId,
-        rehearsalId: rehearsal.rehearsalId,
-        calendarId,
-        googleEventId: created.eventId,
-        sourceRevision: source.sourceRevision,
-        sourceHash: source.sourceHash,
-        lastSyncedAt: Timestamp.now(),
-        lastErrorCode: null,
-        }
-      );
-      if (!completed) {
-        const cleanedUp = await cleanupGoogleEvent(
-          accessToken,
+          projectId,
+          rehearsalId: rehearsal.rehearsalId,
           calendarId,
-          created.eventId
-        );
-        const code = cleanedUp
-          ? "event_lease_lost"
-          : "event_lease_lost_cleanup_failed";
-        logItemFailure(code, null);
-        outcomes.push({ status: "failed", code });
-        continue;
-      }
-      outcomes.push({ status: "created" });
-    } catch {
-      const cleanedUp = await cleanupGoogleEvent(
+          googleEventId: created.eventId,
+          sourceRevision: source.sourceRevision,
+          sourceHash: source.sourceHash,
+          lastSyncedAt: Timestamp.now(),
+          lastErrorCode: null,
+        }
+      ),
+      cleanupEvent: () => cleanupGoogleEvent(
         accessToken,
         calendarId,
         created.eventId
-      );
-      await releaseEventLeaseSafely(
+      ),
+      releaseLease: () => releaseEventLeaseSafely(
         uid,
         projectId,
         rehearsal.rehearsalId,
         lease.operationId
-      );
-      const code = cleanedUp
-        ? "mapping_save_failed"
-        : "mapping_save_cleanup_failed";
-      logItemFailure(code, null);
-      outcomes.push({ status: "failed", code });
+      ),
+    });
+    if (!finalization.completed) {
+      logItemFailure(finalization.code, null);
+      outcomes.push({ status: "failed", code: finalization.code });
+      continue;
     }
+    outcomes.push({ status: "created" });
   }
 
   const summary = summarizeGoogleCalendarInitialSync(outcomes);
