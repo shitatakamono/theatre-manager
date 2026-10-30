@@ -371,10 +371,11 @@ async function saveProvisionedCalendar(
 }
 
 export async function ensureGoogleCalendar(
-  uid: string
+  uid: string,
+  providedAccessToken?: string
 ): Promise<EnsuredGoogleCalendar> {
   let claim = await claimCalendarProvisioning(uid);
-  let accessToken: string | undefined;
+  let accessToken = providedAccessToken;
 
   for (let attempt = 0; claim.kind === "existing"; attempt += 1) {
     if (attempt >= 3) {
