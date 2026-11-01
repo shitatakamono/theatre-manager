@@ -9,6 +9,40 @@ export type GoogleCalendarDeleteSyncPlan<T extends GoogleCalendarDeleteSyncMappi
   deleteTargets: T[];
 };
 
+export type GoogleCalendarDeleteSyncFlowResult = {
+  success: boolean;
+  mappedCount: number;
+  existingRehearsalCount: number;
+  deleteTargetCount: number;
+  deletedCount: number;
+  alreadyMissingCount: number;
+  failedCount: number;
+  errorCodes: string[];
+};
+
+export type GoogleCalendarDeleteSyncFlowDependencies<
+  T extends GoogleCalendarDeleteSyncMapping,
+> = {
+  loadContext: (uid: string, projectId: string) => Promise<{
+    mappings: T[];
+    existingRehearsalIds: Set<string>;
+  }>;
+  getAccessToken: (uid: string) => Promise<string>;
+  getDedicatedCalendarId: (uid: string) => Promise<string>;
+  deleteMappings: (input: {
+    uid: string;
+    projectId: string;
+    mappings: readonly T[];
+    accessToken: string;
+    dedicatedCalendarId: string;
+  }) => Promise<{
+    deletedCount: number;
+    alreadyMissingCount: number;
+    failedCount: number;
+    errorCodes: string[];
+  }>;
+};
+
 export type GoogleCalendarDeleteProviderResult =
   | { status: "deleted"; providerStatus: number }
   | { status: "already_missing"; providerStatus: 404 }
@@ -44,6 +78,56 @@ export function buildGoogleCalendarDeleteSyncPlan<
     mappedCount: projectMappings.length,
     existingRehearsalCount,
     deleteTargets,
+  };
+}
+
+export async function runGoogleCalendarDeleteSyncFlow<
+  T extends GoogleCalendarDeleteSyncMapping,
+>(
+  uid: string,
+  projectId: string,
+  dependencies: GoogleCalendarDeleteSyncFlowDependencies<T>
+): Promise<GoogleCalendarDeleteSyncFlowResult> {
+  const { mappings, existingRehearsalIds } = await dependencies.loadContext(
+    uid,
+    projectId
+  );
+  const plan = buildGoogleCalendarDeleteSyncPlan(
+    projectId,
+    mappings,
+    existingRehearsalIds
+  );
+
+  if (plan.deleteTargets.length === 0) {
+    return {
+      success: true,
+      mappedCount: plan.mappedCount,
+      existingRehearsalCount: plan.existingRehearsalCount,
+      deleteTargetCount: 0,
+      deletedCount: 0,
+      alreadyMissingCount: 0,
+      failedCount: 0,
+      errorCodes: [],
+    };
+  }
+
+  const [accessToken, dedicatedCalendarId] = await Promise.all([
+    dependencies.getAccessToken(uid),
+    dependencies.getDedicatedCalendarId(uid),
+  ]);
+  const summary = await dependencies.deleteMappings({
+    uid,
+    projectId,
+    mappings: plan.deleteTargets,
+    accessToken,
+    dedicatedCalendarId,
+  });
+  return {
+    success: summary.failedCount === 0,
+    mappedCount: plan.mappedCount,
+    existingRehearsalCount: plan.existingRehearsalCount,
+    deleteTargetCount: plan.deleteTargets.length,
+    ...summary,
   };
 }
 

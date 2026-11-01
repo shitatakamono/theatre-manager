@@ -1,9 +1,9 @@
 import "server-only";
 
 import {
-  buildGoogleCalendarDeleteSyncPlan,
   classifyGoogleCalendarDeleteResponse,
   deleteGoogleCalendarMappedEvent,
+  runGoogleCalendarDeleteSyncFlow,
   summarizeGoogleCalendarDeleteSync,
   type GoogleCalendarDeleteProviderResult,
   type GoogleCalendarDeleteSyncOutcome,
@@ -17,7 +17,6 @@ import {
   type GoogleCalendarEventMapping,
 } from "@/lib/server/google-calendar-event-mappings";
 import { adminDb } from "@/lib/server/firebase-admin";
-import { loadGoogleCalendarProjectRehearsalContext } from "@/lib/server/google-calendar-sync-preview";
 
 const GOOGLE_CALENDARS_URL = "https://www.googleapis.com/calendar/v3/calendars";
 
@@ -37,6 +36,11 @@ export type GoogleCalendarDeleteTargetsResult = {
   alreadyMissingCount: number;
   failedCount: number;
   errorCodes: string[];
+};
+
+export type GoogleCalendarDeleteSyncContext = {
+  mappings: GoogleCalendarEventMapping[];
+  existingRehearsalIds: Set<string>;
 };
 
 export class GoogleCalendarDeleteSyncError extends Error {
@@ -185,52 +189,31 @@ export async function runGoogleCalendarDeleteForMappings(input: {
   return summarizeGoogleCalendarDeleteSync(outcomes);
 }
 
+export async function loadGoogleCalendarDeleteSyncContext(
+  uid: string,
+  projectId: string
+): Promise<GoogleCalendarDeleteSyncContext> {
+  const projectRef = adminDb.collection("projects").doc(projectId);
+  const [rehearsalSnapshot, mappings] = await Promise.all([
+    projectRef.collection("rehearsals").get(),
+    getGoogleCalendarEventMappingsForProject(uid, projectId),
+  ]);
+  return {
+    mappings,
+    existingRehearsalIds: new Set(
+      rehearsalSnapshot.docs.map((document) => document.id)
+    ),
+  };
+}
+
 export async function runGoogleCalendarDeleteSync(
   uid: string,
   projectId: string
 ): Promise<GoogleCalendarDeleteSyncResult> {
-  const [context, mappings] = await Promise.all([
-    loadGoogleCalendarProjectRehearsalContext(uid, projectId),
-    getGoogleCalendarEventMappingsForProject(uid, projectId),
-  ]);
-  const existingRehearsalIds = new Set(
-    context.rehearsals.map(({ rehearsalId }) => rehearsalId)
-  );
-  const plan = buildGoogleCalendarDeleteSyncPlan(
-    projectId,
-    mappings,
-    existingRehearsalIds
-  );
-
-  if (plan.deleteTargets.length === 0) {
-    return {
-      success: true,
-      mappedCount: plan.mappedCount,
-      existingRehearsalCount: plan.existingRehearsalCount,
-      deleteTargetCount: 0,
-      deletedCount: 0,
-      alreadyMissingCount: 0,
-      failedCount: 0,
-      errorCodes: [],
-    };
-  }
-
-  const [accessToken, dedicatedCalendarId] = await Promise.all([
-    getGoogleCalendarAccessToken(uid),
-    getStoredCalendarId(uid),
-  ]);
-  const summary = await runGoogleCalendarDeleteForMappings({
-    uid,
-    projectId,
-    mappings: plan.deleteTargets,
-    accessToken,
-    dedicatedCalendarId,
+  return runGoogleCalendarDeleteSyncFlow(uid, projectId, {
+    loadContext: loadGoogleCalendarDeleteSyncContext,
+    getAccessToken: getGoogleCalendarAccessToken,
+    getDedicatedCalendarId: getStoredCalendarId,
+    deleteMappings: runGoogleCalendarDeleteForMappings,
   });
-  return {
-    success: summary.failedCount === 0,
-    mappedCount: plan.mappedCount,
-    existingRehearsalCount: plan.existingRehearsalCount,
-    deleteTargetCount: plan.deleteTargets.length,
-    ...summary,
-  };
 }

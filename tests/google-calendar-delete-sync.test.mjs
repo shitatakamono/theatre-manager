@@ -1,10 +1,12 @@
 import { deepStrictEqual, strictEqual } from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 import {
   buildGoogleCalendarDeleteSyncPlan,
   classifyGoogleCalendarDeleteResponse,
   deleteGoogleCalendarMappedEvent,
+  runGoogleCalendarDeleteSyncFlow,
   summarizeGoogleCalendarDeleteSync,
 } from "../lib/google-calendar-delete-sync.ts";
 import {
@@ -20,7 +22,144 @@ function mapping(index, projectId = "project-a") {
   };
 }
 
+function serverMapping(index, projectId = "project-a") {
+  return {
+    ...mapping(index, projectId),
+    calendarId: "dedicated-calendar",
+    googleEventId: `google-event-${index}`,
+  };
+}
+
+function serverDeleteHarness({
+  uid = "user-a",
+  projectId = "project-a",
+  mappings = [serverMapping(0)],
+  existingRehearsalIds = [],
+  deleteResult = {
+    deletedCount: 1,
+    alreadyMissingCount: 0,
+    failedCount: 0,
+    errorCodes: [],
+  },
+} = {}) {
+  const calls = [];
+  return {
+    calls,
+    run: () => runGoogleCalendarDeleteSyncFlow(uid, projectId, {
+      loadContext: async (loadedUid, loadedProjectId) => {
+        calls.push({ operation: "load_context", uid: loadedUid, projectId: loadedProjectId });
+        return {
+          mappings,
+          existingRehearsalIds: new Set(existingRehearsalIds),
+        };
+      },
+      getAccessToken: async (loadedUid) => {
+        calls.push({ operation: "get_access_token", uid: loadedUid });
+        return "access-token";
+      },
+      getDedicatedCalendarId: async (loadedUid) => {
+        calls.push({ operation: "get_calendar", uid: loadedUid });
+        return "dedicated-calendar";
+      },
+      deleteMappings: async (input) => {
+        calls.push({
+          operation: "delete_mappings",
+          uid: input.uid,
+          projectId: input.projectId,
+          rehearsalIds: input.mappings.map(({ rehearsalId }) => rehearsalId),
+        });
+        return deleteResult;
+      },
+    }),
+  };
+}
+
 describe("Google Calendar delete sync", () => {
+  it("keeps the server delete boundary independent from membership context", () => {
+    const serverSource = readFileSync(
+      new URL("../lib/server/google-calendar-delete-sync.ts", import.meta.url),
+      "utf8"
+    );
+    strictEqual(
+      serverSource.includes("loadGoogleCalendarProjectRehearsalContext"),
+      false
+    );
+    strictEqual(
+      serverSource.includes(
+        "getGoogleCalendarEventMappingsForProject(uid, projectId)"
+      ),
+      true
+    );
+    strictEqual(
+      serverSource.includes("loadGoogleCalendarDeleteSyncContext"),
+      true
+    );
+    strictEqual(
+      serverSource.includes('projectRef.collection("rehearsals").get()'),
+      true
+    );
+  });
+
+  it("deletes a removed rehearsal through the server boundary for a current member", async () => {
+    const harness = serverDeleteHarness();
+    const result = await harness.run();
+    strictEqual(result.deletedCount, 1);
+    deepStrictEqual(harness.calls.at(-1), {
+      operation: "delete_mappings",
+      uid: "user-a",
+      projectId: "project-a",
+      rehearsalIds: ["rehearsal-0"],
+    });
+  });
+
+  it("deletes a removed rehearsal without requiring member, link, or person data", async () => {
+    const harness = serverDeleteHarness({ uid: "former-member" });
+    const result = await harness.run();
+    strictEqual(result.success, true);
+    strictEqual(result.deleteTargetCount, 1);
+    strictEqual(
+      harness.calls.some(({ operation }) => operation === "delete_mappings"),
+      true
+    );
+  });
+
+  for (const reason of ["member removal", "unlink"]) {
+    it(`does not delete an existing rehearsal after ${reason}`, async () => {
+      const harness = serverDeleteHarness({
+        uid: "former-member",
+        existingRehearsalIds: ["rehearsal-0"],
+      });
+      const result = await harness.run();
+      strictEqual(result.deleteTargetCount, 0);
+      strictEqual(
+        harness.calls.some(({ operation }) => operation === "delete_mappings"),
+        false
+      );
+      strictEqual(
+        harness.calls.some(({ operation }) => operation === "get_access_token"),
+        false
+      );
+    });
+  }
+
+  it("keeps other projects and users outside the server delete request", async () => {
+    const harness = serverDeleteHarness({
+      uid: "user-a",
+      projectId: "project-a",
+      mappings: [
+        serverMapping(0, "project-a"),
+        serverMapping(1, "project-b"),
+      ],
+    });
+    await harness.run();
+    deepStrictEqual(harness.calls.at(-1), {
+      operation: "delete_mappings",
+      uid: "user-a",
+      projectId: "project-a",
+      rehearsalIds: ["rehearsal-0"],
+    });
+  });
+
   it("selects one deleted rehearsal from twelve mappings and eleven rehearsals", () => {
     const mappings = Array.from({ length: 12 }, (_, index) => mapping(index));
     const existing = new Set(mappings.slice(0, 11).map(({ rehearsalId }) => rehearsalId));
