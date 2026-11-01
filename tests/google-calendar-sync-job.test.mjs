@@ -238,6 +238,20 @@ describe("Google Calendar sync job helpers", () => {
     strictEqual(failed?.nextAttemptAtMillis, null);
   });
 
+  it("moves an invalid connection to waiting_connection", () => {
+    const failed = planGoogleCalendarSyncJobFailure(runningJob(), {
+      operationId: "operation-a",
+      claimedGeneration: 1,
+      nowMillis: 10_000,
+      result: {
+        success: false,
+        retryable: false,
+        errorCode: "invalid_connection",
+      },
+    });
+    strictEqual(failed?.status, "waiting_connection");
+  });
+
   it("moves a non-retryable failure to failed", () => {
     const failed = planGoogleCalendarSyncJobFailure(runningJob(), {
       operationId: "operation-a",

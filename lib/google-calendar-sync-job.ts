@@ -62,23 +62,41 @@ const RETRYABLE_SYNC_ERROR_CODES = new Set([
   "access_token_request_failed",
   "calendar_creation_failed",
   "calendar_lookup_failed",
+  "calendar_provisioning_in_progress",
+  "calendar_provisioning_lost",
   "connection_lookup_failed",
   "connection_save_failed",
   "event_creation_failed",
+  "event_lease_lost",
+  "event_lease_lost_cleanup_failed",
   "event_lease_claim_failed",
   "event_lease_release_failed",
   "event_delete_lease_claim_failed",
   "event_delete_lease_release_failed",
   "event_update_failed",
   "event_update_lease_claim_failed",
+  "event_delete_in_progress",
+  "event_delete_lease_lost",
+  "event_delete_network_failed",
+  "event_delete_provider_failed",
+  "event_delete_rate_limited",
+  "event_mapping_missing",
+  "event_update_in_progress",
+  "event_update_lease_lost",
+  "mapping_delete_failed",
+  "mapping_save_cleanup_failed",
+  "mapping_save_failed",
   "mapping_error_save_failed",
   "mapping_update_failed",
   "preview_read_failed",
+  "event_response_invalid",
+  "sync_worker_failed",
 ]);
 
 const WAITING_CONNECTION_ERROR_CODES = new Set([
   "google_not_connected",
   "not_connected",
+  "invalid_connection",
 ]);
 
 export type GoogleCalendarSyncJobClaimDecision =
@@ -311,7 +329,7 @@ export function planGoogleCalendarSyncJobFailure(
     return { ...common, status: "pending", nextAttemptAtMillis: null };
   }
 
-  if (errorCode === "google_not_connected" || errorCode === "not_connected") {
+  if (WAITING_CONNECTION_ERROR_CODES.has(errorCode)) {
     return {
       ...common,
       status: "waiting_connection",

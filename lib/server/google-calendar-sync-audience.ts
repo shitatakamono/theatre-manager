@@ -32,6 +32,12 @@ function hasEncryptedRefreshToken(value: unknown): boolean {
     && typeof token.authTag === "string" && token.authTag.length > 0;
 }
 
+export function isGoogleCalendarConnectionCredentialAvailable(
+  data: FirebaseFirestore.DocumentData | undefined
+): boolean {
+  return hasEncryptedRefreshToken(data?.refreshToken);
+}
+
 async function loadGoogleCalendarLinkedAudienceInputs(projectId: string): Promise<{
   linkedUsers: GoogleCalendarLinkedUserCandidate[];
   memberUids: string[];
@@ -79,7 +85,7 @@ async function loadGoogleCalendarLinkedAudienceInputs(projectId: string): Promis
       return {
         uid: snapshot.id,
         connected: data?.connected === true,
-        credentialAvailable: hasEncryptedRefreshToken(data?.refreshToken),
+        credentialAvailable: isGoogleCalendarConnectionCredentialAvailable(data),
       };
     }),
   };
