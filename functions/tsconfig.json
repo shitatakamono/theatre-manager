@@ -1,13 +1,17 @@
 {
   "compilerOptions": {
+    "baseUrl": "..",
+    "allowImportingTsExtensions": true,
     "module": "commonjs",
     "moduleResolution": "node",
     "esModuleInterop": true,
     "noImplicitReturns": true,
     "noUnusedLocals": true,
-    "outDir": "lib",
-    "rootDir": "..",
-    "sourceMap": true,
+    "noEmit": true,
+    "paths": {
+      "@/*": ["*"],
+      "server-only": ["functions/src/server-only.ts"]
+    },
     "skipLibCheck": true,
     "strict": true,
     "target": "ES2022",

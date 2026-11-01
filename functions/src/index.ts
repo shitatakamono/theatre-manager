@@ -1,4 +1,5 @@
 import { getApps, initializeApp } from "firebase-admin/app";
+import { Timestamp } from "firebase-admin/firestore";
 import { logger } from "firebase-functions";
 import { setGlobalOptions } from "firebase-functions/v2";
 import {
@@ -7,6 +8,7 @@ import {
   onDocumentUpdated,
   onDocumentWritten,
 } from "firebase-functions/v2/firestore";
+import { onSchedule } from "firebase-functions/v2/scheduler";
 
 import {
   didProjectCastStaffEligibilityChange,
@@ -17,12 +19,21 @@ import {
   type GoogleCalendarTriggerAudience,
 } from "../../lib/google-calendar-sync-triggers";
 import {
+  runGoogleCalendarPendingJobIfNeeded,
+  runGoogleCalendarRetryJobsSequentially,
+  type GoogleCalendarRuntimeJob,
+} from "../../lib/google-calendar-sync-runtime";
+import { adminDb } from "../../lib/server/firebase-admin";
+import {
   getGoogleCalendarMappingOwnersForProject,
   getGoogleCalendarSyncUsersForProject,
 } from "../../lib/server/google-calendar-sync-audience";
 import {
   enqueueGoogleCalendarProjectSync,
 } from "../../lib/server/google-calendar-sync-jobs";
+import {
+  runGoogleCalendarProjectSyncJob,
+} from "../../lib/server/google-calendar-sync-worker";
 
 if (getApps().length === 0) initializeApp();
 
@@ -33,6 +44,30 @@ const PROJECT_DOCUMENT = "projects/{projectId}";
 const REHEARSAL_DOCUMENT = `${PROJECT_DOCUMENT}/rehearsals/{rehearsalId}`;
 const PERSON_DOCUMENT = `${PROJECT_DOCUMENT}/people/{personId}`;
 const LINKED_USER_DOCUMENT = `${PROJECT_DOCUMENT}/participantLinkedUsers/{uid}`;
+const SYNC_JOB_DOCUMENT = "googleCalendarSyncJobs/{jobId}";
+const RETRY_JOB_LIMIT = 10;
+
+function timestampMillis(value: unknown): number | null {
+  return value instanceof Timestamp ? value.toMillis() : null;
+}
+
+function runtimeJob(data: FirebaseFirestore.DocumentData | undefined):
+GoogleCalendarRuntimeJob | null {
+  if (!data
+    || typeof data.uid !== "string"
+    || typeof data.projectId !== "string"
+    || typeof data.status !== "string"
+    || !Number.isInteger(data.generation)) {
+    return null;
+  }
+  return {
+    uid: data.uid,
+    projectId: data.projectId,
+    status: data.status,
+    generation: data.generation,
+    nextAttemptAtMillis: timestampMillis(data.nextAttemptAt),
+  };
+}
 
 async function audienceUids(
   projectId: string,
@@ -163,5 +198,60 @@ export const onProjectUpdated = onDocumentUpdated(
       audience: "normal",
       reason: "cast_staff_changed",
     });
+  }
+);
+
+export const onGoogleCalendarSyncJobPending = onDocumentWritten(
+  {
+    document: SYNC_JOB_DOCUMENT,
+    retry: true,
+    timeoutSeconds: 240,
+    memory: "256MiB",
+  },
+  async (event) => {
+    const before = runtimeJob(event.data?.before.data());
+    const after = runtimeJob(event.data?.after.data());
+    await runGoogleCalendarPendingJobIfNeeded({
+      before,
+      after,
+      // The worker owns claim/complete/fail. A duplicate delivery that cannot
+      // claim the job is a normal successful invocation.
+      runWorker: runGoogleCalendarProjectSyncJob,
+    });
+  }
+);
+
+export const retryGoogleCalendarSyncJobs = onSchedule(
+  {
+    schedule: "every 1 minutes",
+    timeoutSeconds: 240,
+    memory: "256MiB",
+  },
+  async () => {
+    const now = Timestamp.now();
+    const snapshot = await adminDb
+      .collection("googleCalendarSyncJobs")
+      .where("status", "==", "retry")
+      .where("nextAttemptAt", "<=", now)
+      .orderBy("nextAttemptAt", "asc")
+      .limit(RETRY_JOB_LIMIT)
+      .get();
+    const jobs = snapshot.docs
+      .map((document) => runtimeJob(document.data()))
+      .filter((job): job is GoogleCalendarRuntimeJob => job !== null);
+    const result = await runGoogleCalendarRetryJobsSequentially({
+      jobs,
+      nowMillis: now.toMillis(),
+      limit: RETRY_JOB_LIMIT,
+      runWorker: runGoogleCalendarProjectSyncJob,
+    });
+    if (result.failedCount > 0) {
+      logger.error("google_calendar_retry_worker_invocation_failed", {
+        selectedCount: result.selectedCount,
+        processedCount: result.processedCount,
+        failedCount: result.failedCount,
+        errorCodes: result.errorCodes,
+      });
+    }
   }
 );
