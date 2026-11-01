@@ -98,7 +98,10 @@ export function ProjectListClient() {
     <main className={styles.page}>
       <header className={styles.header}>
         <div><p>SEISAKU BOARD</p><h1>公演一覧</h1></div>
-        <Link className={styles.createButton} href="/projects/new">公演を作成する</Link>
+        <div className={styles.headerActions}>
+          <Link className={styles.settingsLink} href="/settings">個人設定</Link>
+          <Link className={styles.createButton} href="/projects/new">公演を作成する</Link>
+        </div>
       </header>
       {membershipNotice ? <p className={styles.success} role="status">{membershipNotice}</p> : null}
       {loading ? <p className={styles.empty}>公演一覧を読み込んでいます…</p> : listError ? <p className={styles.error} role="alert">{listError}</p> : projects.length === 0 ? <p className={styles.empty}>参加している公演はありません。</p> : (
