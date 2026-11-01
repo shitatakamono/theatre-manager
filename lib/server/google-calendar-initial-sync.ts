@@ -23,6 +23,7 @@ import {
   releaseGoogleCalendarEventLease,
 } from "@/lib/server/google-calendar-event-mappings";
 import { getGoogleCalendarSyncContext } from "@/lib/server/google-calendar-sync-preview";
+import type { GoogleCalendarSyncSourceRehearsal } from "@/lib/google-calendar-sync-preview";
 
 const GOOGLE_CALENDARS_URL = "https://www.googleapis.com/calendar/v3/calendars";
 
@@ -43,6 +44,13 @@ export class GoogleCalendarInitialSyncError extends Error {
 export type GoogleCalendarInitialSyncResult = {
   success: boolean;
   totalTargets: number;
+  createdCount: number;
+  skippedCount: number;
+  failedCount: number;
+  errorCodes: string[];
+};
+
+export type GoogleCalendarCreateTargetsResult = {
   createdCount: number;
   skippedCount: number;
   failedCount: number;
@@ -144,6 +152,112 @@ async function releaseEventLeaseSafely(
   }
 }
 
+export async function createGoogleCalendarEventsForTargets(input: {
+  uid: string;
+  projectId: string;
+  projectName: string;
+  rehearsals: readonly GoogleCalendarSyncSourceRehearsal[];
+  accessToken: string;
+  calendarId: string;
+}): Promise<GoogleCalendarCreateTargetsResult> {
+  const outcomes: GoogleCalendarInitialSyncOutcome[] = [];
+  let concurrentSkippedCount = 0;
+
+  for (const rehearsal of input.rehearsals) {
+    const draft = buildGoogleCalendarEventDraft({
+      projectId: input.projectId,
+      projectName: input.projectName,
+      categoryLabel: getGoogleCalendarEventCategoryLabel(
+        rehearsal.type,
+        rehearsal.customType
+      ),
+      rehearsal,
+    });
+    if (!draft) {
+      logItemFailure("missing_end_at", null);
+      outcomes.push({ status: "failed", code: "missing_end_at" });
+      continue;
+    }
+
+    let lease: Awaited<ReturnType<typeof claimGoogleCalendarEventLease>>;
+    try {
+      lease = await claimGoogleCalendarEventLease(
+        input.uid,
+        input.projectId,
+        rehearsal.rehearsalId
+      );
+    } catch {
+      logItemFailure("event_lease_claim_failed", null);
+      outcomes.push({ status: "failed", code: "event_lease_claim_failed" });
+      continue;
+    }
+    if (lease.kind !== "acquired") {
+      concurrentSkippedCount += 1;
+      continue;
+    }
+
+    const created = await createGoogleEvent(
+      input.accessToken,
+      input.calendarId,
+      draft
+    );
+    if ("error" in created) {
+      await releaseEventLeaseSafely(
+        input.uid,
+        input.projectId,
+        rehearsal.rehearsalId,
+        lease.operationId
+      );
+      logItemFailure(created.error, created.status);
+      outcomes.push({ status: "failed", code: created.error });
+      continue;
+    }
+
+    const source = buildGoogleCalendarMappingSource(rehearsal);
+    const finalization = await finalizeCreatedGoogleCalendarEvent({
+      completeMapping: () => completeGoogleCalendarEventLease(
+        input.uid,
+        lease.operationId,
+        {
+          projectId: input.projectId,
+          rehearsalId: rehearsal.rehearsalId,
+          calendarId: input.calendarId,
+          googleEventId: created.eventId,
+          sourceRevision: source.sourceRevision,
+          sourceHash: source.sourceHash,
+          lastSyncedAt: Timestamp.now(),
+          lastErrorCode: null,
+        }
+      ),
+      cleanupEvent: () => cleanupGoogleEvent(
+        input.accessToken,
+        input.calendarId,
+        created.eventId
+      ),
+      releaseLease: () => releaseEventLeaseSafely(
+        input.uid,
+        input.projectId,
+        rehearsal.rehearsalId,
+        lease.operationId
+      ),
+    });
+    if (!finalization.completed) {
+      logItemFailure(finalization.code, null);
+      outcomes.push({ status: "failed", code: finalization.code });
+      continue;
+    }
+    outcomes.push({ status: "created" });
+  }
+
+  const summary = summarizeGoogleCalendarInitialSync(outcomes);
+  return {
+    createdCount: summary.createdCount,
+    skippedCount: concurrentSkippedCount,
+    failedCount: summary.failedCount,
+    errorCodes: summary.errorCodes,
+  };
+}
+
 export async function runGoogleCalendarInitialSync(
   uid: string,
   projectId: string
@@ -178,99 +292,20 @@ export async function runGoogleCalendarInitialSync(
   }
 
   const { calendarId } = await ensureGoogleCalendar(uid, accessToken);
-  const outcomes: GoogleCalendarInitialSyncOutcome[] = [];
-  let concurrentSkippedCount = 0;
-
-  for (const rehearsal of plan.createTargets) {
-    const draft = buildGoogleCalendarEventDraft({
-      projectId,
-      projectName: context.projectName,
-      categoryLabel: getGoogleCalendarEventCategoryLabel(
-        rehearsal.type,
-        rehearsal.customType
-      ),
-      rehearsal,
-    });
-    if (!draft) {
-      logItemFailure("missing_end_at", null);
-      outcomes.push({ status: "failed", code: "missing_end_at" });
-      continue;
-    }
-
-    let lease: Awaited<ReturnType<typeof claimGoogleCalendarEventLease>>;
-    try {
-      lease = await claimGoogleCalendarEventLease(
-        uid,
-        projectId,
-        rehearsal.rehearsalId
-      );
-    } catch {
-      logItemFailure("event_lease_claim_failed", null);
-      outcomes.push({ status: "failed", code: "event_lease_claim_failed" });
-      continue;
-    }
-    if (lease.kind !== "acquired") {
-      concurrentSkippedCount += 1;
-      continue;
-    }
-
-    const created = await createGoogleEvent(accessToken, calendarId, draft);
-
-    if ("error" in created) {
-      await releaseEventLeaseSafely(
-        uid,
-        projectId,
-        rehearsal.rehearsalId,
-        lease.operationId
-      );
-      logItemFailure(created.error, created.status);
-      outcomes.push({ status: "failed", code: created.error });
-      continue;
-    }
-
-    const source = buildGoogleCalendarMappingSource(rehearsal);
-    const finalization = await finalizeCreatedGoogleCalendarEvent({
-      completeMapping: () => completeGoogleCalendarEventLease(
-        uid,
-        lease.operationId,
-        {
-          projectId,
-          rehearsalId: rehearsal.rehearsalId,
-          calendarId,
-          googleEventId: created.eventId,
-          sourceRevision: source.sourceRevision,
-          sourceHash: source.sourceHash,
-          lastSyncedAt: Timestamp.now(),
-          lastErrorCode: null,
-        }
-      ),
-      cleanupEvent: () => cleanupGoogleEvent(
-        accessToken,
-        calendarId,
-        created.eventId
-      ),
-      releaseLease: () => releaseEventLeaseSafely(
-        uid,
-        projectId,
-        rehearsal.rehearsalId,
-        lease.operationId
-      ),
-    });
-    if (!finalization.completed) {
-      logItemFailure(finalization.code, null);
-      outcomes.push({ status: "failed", code: finalization.code });
-      continue;
-    }
-    outcomes.push({ status: "created" });
-  }
-
-  const summary = summarizeGoogleCalendarInitialSync(outcomes);
+  const creation = await createGoogleCalendarEventsForTargets({
+    uid,
+    projectId,
+    projectName: context.projectName,
+    rehearsals: plan.createTargets,
+    accessToken,
+    calendarId,
+  });
   return {
-    success: summary.failedCount === 0,
+    success: creation.failedCount === 0,
     totalTargets: plan.totalTargets,
-    createdCount: summary.createdCount,
-    skippedCount: plan.skippedCount + concurrentSkippedCount,
-    failedCount: summary.failedCount,
-    errorCodes: summary.errorCodes,
+    createdCount: creation.createdCount,
+    skippedCount: plan.skippedCount + creation.skippedCount,
+    failedCount: creation.failedCount,
+    errorCodes: creation.errorCodes,
   };
 }

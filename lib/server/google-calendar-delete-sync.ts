@@ -14,6 +14,7 @@ import {
   completeGoogleCalendarEventDeleteLease,
   failGoogleCalendarEventDeleteLease,
   getGoogleCalendarEventMappingsForProject,
+  type GoogleCalendarEventMapping,
 } from "@/lib/server/google-calendar-event-mappings";
 import { adminDb } from "@/lib/server/firebase-admin";
 import { loadGoogleCalendarProjectRehearsalContext } from "@/lib/server/google-calendar-sync-preview";
@@ -25,6 +26,13 @@ export type GoogleCalendarDeleteSyncResult = {
   mappedCount: number;
   existingRehearsalCount: number;
   deleteTargetCount: number;
+  deletedCount: number;
+  alreadyMissingCount: number;
+  failedCount: number;
+  errorCodes: string[];
+};
+
+export type GoogleCalendarDeleteTargetsResult = {
   deletedCount: number;
   alreadyMissingCount: number;
   failedCount: number;
@@ -96,6 +104,87 @@ async function failDeleteLeaseSafely(input: {
   }
 }
 
+export async function runGoogleCalendarDeleteForMappings(input: {
+  uid: string;
+  projectId: string;
+  mappings: readonly GoogleCalendarEventMapping[];
+  accessToken: string;
+  dedicatedCalendarId: string;
+}): Promise<GoogleCalendarDeleteTargetsResult> {
+  const outcomes: GoogleCalendarDeleteSyncOutcome[] = [];
+
+  for (const target of input.mappings) {
+    let lease: Awaited<ReturnType<typeof claimGoogleCalendarEventDeleteLease>>;
+    try {
+      lease = await claimGoogleCalendarEventDeleteLease(
+        input.uid,
+        input.projectId,
+        target.rehearsalId
+      );
+    } catch {
+      logItemFailure("event_delete_lease_claim_failed", null);
+      outcomes.push({ status: "failed", code: "event_delete_lease_claim_failed" });
+      continue;
+    }
+
+    if (lease.kind === "missing") {
+      outcomes.push({ status: "already_missing" });
+      continue;
+    }
+    if (lease.kind === "in_progress") {
+      outcomes.push({ status: "failed", code: "event_delete_in_progress" });
+      continue;
+    }
+
+    if (lease.mapping.calendarId !== input.dedicatedCalendarId) {
+      await failDeleteLeaseSafely({
+        uid: input.uid,
+        projectId: input.projectId,
+        rehearsalId: target.rehearsalId,
+        operationId: lease.operationId,
+        errorCode: "calendar_mismatch",
+      });
+      outcomes.push({ status: "failed", code: "calendar_mismatch" });
+      continue;
+    }
+
+    let providerStatus: number | null = null;
+    const outcome = await deleteGoogleCalendarMappedEvent({
+      deleteGoogleEvent: async () => {
+        const result = await deleteGoogleEvent({
+          accessToken: input.accessToken,
+          calendarId: lease.mapping.calendarId,
+          eventId: lease.mapping.googleEventId,
+        });
+        providerStatus = result.providerStatus;
+        return result;
+      },
+      deleteMapping: () => completeGoogleCalendarEventDeleteLease(
+        input.uid,
+        input.projectId,
+        target.rehearsalId,
+        lease.operationId
+      ),
+    });
+
+    if (outcome.status === "failed") {
+      if (outcome.code !== "event_delete_lease_lost") {
+        await failDeleteLeaseSafely({
+          uid: input.uid,
+          projectId: input.projectId,
+          rehearsalId: target.rehearsalId,
+          operationId: lease.operationId,
+          errorCode: outcome.code,
+        });
+      }
+      logItemFailure(outcome.code, providerStatus);
+    }
+    outcomes.push(outcome);
+  }
+
+  return summarizeGoogleCalendarDeleteSync(outcomes);
+}
+
 export async function runGoogleCalendarDeleteSync(
   uid: string,
   projectId: string
@@ -130,79 +219,13 @@ export async function runGoogleCalendarDeleteSync(
     getGoogleCalendarAccessToken(uid),
     getStoredCalendarId(uid),
   ]);
-  const outcomes: GoogleCalendarDeleteSyncOutcome[] = [];
-
-  for (const target of plan.deleteTargets) {
-    let lease: Awaited<ReturnType<typeof claimGoogleCalendarEventDeleteLease>>;
-    try {
-      lease = await claimGoogleCalendarEventDeleteLease(
-        uid,
-        projectId,
-        target.rehearsalId
-      );
-    } catch {
-      logItemFailure("event_delete_lease_claim_failed", null);
-      outcomes.push({ status: "failed", code: "event_delete_lease_claim_failed" });
-      continue;
-    }
-
-    if (lease.kind === "missing") {
-      // A concurrent request already removed the mapping and event.
-      outcomes.push({ status: "already_missing" });
-      continue;
-    }
-    if (lease.kind === "in_progress") {
-      outcomes.push({ status: "failed", code: "event_delete_in_progress" });
-      continue;
-    }
-
-    if (lease.mapping.calendarId !== dedicatedCalendarId) {
-      await failDeleteLeaseSafely({
-        uid,
-        projectId,
-        rehearsalId: target.rehearsalId,
-        operationId: lease.operationId,
-        errorCode: "calendar_mismatch",
-      });
-      outcomes.push({ status: "failed", code: "calendar_mismatch" });
-      continue;
-    }
-
-    let providerStatus: number | null = null;
-    const outcome = await deleteGoogleCalendarMappedEvent({
-      deleteGoogleEvent: async () => {
-        const result = await deleteGoogleEvent({
-          accessToken,
-          calendarId: lease.mapping.calendarId,
-          eventId: lease.mapping.googleEventId,
-        });
-        providerStatus = result.providerStatus;
-        return result;
-      },
-      deleteMapping: () => completeGoogleCalendarEventDeleteLease(
-        uid,
-        projectId,
-        target.rehearsalId,
-        lease.operationId
-      ),
-    });
-
-    if (outcome.status === "failed") {
-      if (outcome.code !== "event_delete_lease_lost") {
-        await failDeleteLeaseSafely({
-          uid,
-          projectId,
-          rehearsalId: target.rehearsalId,
-          operationId: lease.operationId,
-          errorCode: outcome.code,
-        });
-      }
-      logItemFailure(outcome.code, providerStatus);
-    }
-    outcomes.push(outcome);
-  }
-
-  const summary = summarizeGoogleCalendarDeleteSync(outcomes);
+  const summary = await runGoogleCalendarDeleteForMappings({
+    uid,
+    projectId,
+    mappings: plan.deleteTargets,
+    accessToken,
+    dedicatedCalendarId,
+  });
   return {
     success: summary.failedCount === 0,
     mappedCount: plan.mappedCount,

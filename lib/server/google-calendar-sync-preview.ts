@@ -13,6 +13,7 @@ export type GoogleCalendarSyncContext = {
   projectName: string;
   totalRehearsals: number;
   targetCount: number;
+  allRehearsals: GoogleCalendarSyncSourceRehearsal[];
   rehearsals: GoogleCalendarSyncSourceRehearsal[];
 };
 
@@ -40,6 +41,21 @@ export class GoogleCalendarSyncPreviewError extends Error {
     this.code = code;
     this.status = status;
   }
+}
+
+function buildSyncContext(
+  preview: GoogleCalendarSyncPreview<string, GoogleCalendarSyncSourceRehearsal>,
+  projectName: string,
+  allRehearsals: GoogleCalendarSyncSourceRehearsal[]
+): GoogleCalendarSyncContext {
+  return {
+    linked: preview.linked,
+    projectName,
+    totalRehearsals: preview.totalRehearsals,
+    targetCount: preview.targetCount,
+    allRehearsals,
+    rehearsals: preview.rehearsals,
+  };
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -131,10 +147,11 @@ export async function getGoogleCalendarSyncContext(
       : [];
 
     if (!linkedUser.exists) {
-      return {
-        ...buildGoogleCalendarSyncPreview(null, rehearsals, cast, staff),
+      return buildSyncContext(
+        buildGoogleCalendarSyncPreview(null, rehearsals, cast, staff),
         projectName,
-      };
+        rehearsals
+      );
     }
 
     const participantId = optionalString(linkedUser.data()?.participantId).trim();
@@ -148,15 +165,16 @@ export async function getGoogleCalendarSyncContext(
       throw new GoogleCalendarSyncPreviewError("linked_person_not_found", 409);
     }
 
-    return {
-      ...buildGoogleCalendarSyncPreview(
+    return buildSyncContext(
+      buildGoogleCalendarSyncPreview(
         mapPerson(personSnapshot.id, personData),
         rehearsals,
         cast,
         staff
       ),
       projectName,
-    };
+      rehearsals
+    );
   } catch (error) {
     if (error instanceof GoogleCalendarSyncPreviewError) throw error;
     throw new GoogleCalendarSyncPreviewError("preview_read_failed", 500);
