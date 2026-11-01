@@ -153,6 +153,23 @@ describe("Google Calendar event mapping helpers", () => {
       "newer",
       1_000 + GOOGLE_CALENDAR_EVENT_LEASE_STALE_MS
     ), "acquire");
+
+    const deleting = {
+      status: "deleting",
+      operationId: "delete-operation",
+      startedAtMillis: 1_000,
+      sourceHash: "old",
+    };
+    strictEqual(decideGoogleCalendarEventUpdateLease(
+      deleting,
+      "newer",
+      1_000 + GOOGLE_CALENDAR_EVENT_LEASE_STALE_MS - 1
+    ), "in_progress");
+    strictEqual(decideGoogleCalendarEventUpdateLease(
+      deleting,
+      "newer",
+      1_000 + GOOGLE_CALENDAR_EVENT_LEASE_STALE_MS
+    ), "acquire");
   });
 
   it("allows only the current update operation and target hash to complete", () => {

@@ -31,11 +31,29 @@ export type GoogleCalendarEventUpdateLeaseState =
       startedAtMillis: number;
       sourceHash: string;
       targetSourceHash: string;
+    }
+  | {
+      status: "deleting";
+      operationId: string;
+      startedAtMillis: number;
+      sourceHash: string;
     };
 
 export type GoogleCalendarEventUpdateLeaseDecision =
   | "acquire"
   | "unchanged"
+  | "in_progress";
+
+export type GoogleCalendarEventDeleteLeaseState =
+  | { status: "synced" }
+  | {
+      status: "creating" | "updating" | "deleting";
+      operationId: string;
+      startedAtMillis: number;
+    };
+
+export type GoogleCalendarEventDeleteLeaseDecision =
+  | "acquire"
   | "in_progress";
 
 export type GoogleCalendarEventLeaseDecision =
@@ -73,7 +91,7 @@ export function decideGoogleCalendarEventUpdateLease(
 ): GoogleCalendarEventUpdateLeaseDecision {
   if (state.sourceHash === currentSourceHash) return "unchanged";
   if (
-    state.status === "updating"
+    state.status !== "synced"
     && nowMillis - state.startedAtMillis < staleMilliseconds
   ) {
     return "in_progress";
@@ -89,6 +107,24 @@ export function ownsGoogleCalendarEventUpdateLease(
   return state.status === "updating"
     && state.operationId === operationId
     && state.targetSourceHash === targetSourceHash;
+}
+
+export function decideGoogleCalendarEventDeleteLease(
+  state: GoogleCalendarEventDeleteLeaseState,
+  nowMillis: number,
+  staleMilliseconds = GOOGLE_CALENDAR_EVENT_LEASE_STALE_MS
+): GoogleCalendarEventDeleteLeaseDecision {
+  if (state.status === "synced") return "acquire";
+  return nowMillis - state.startedAtMillis < staleMilliseconds
+    ? "in_progress"
+    : "acquire";
+}
+
+export function ownsGoogleCalendarEventDeleteLease(
+  state: GoogleCalendarEventDeleteLeaseState,
+  operationId: string
+): boolean {
+  return state.status === "deleting" && state.operationId === operationId;
 }
 
 function requireIdentifier(value: string, field: string): string {

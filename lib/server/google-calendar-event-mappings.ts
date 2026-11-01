@@ -5,10 +5,13 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 
 import {
   buildGoogleCalendarEventMappingId,
+  decideGoogleCalendarEventDeleteLease,
   decideGoogleCalendarEventLease,
   decideGoogleCalendarEventUpdateLease,
+  ownsGoogleCalendarEventDeleteLease,
   ownsGoogleCalendarEventLease,
   ownsGoogleCalendarEventUpdateLease,
+  type GoogleCalendarEventDeleteLeaseState,
   type GoogleCalendarEventLeaseState,
   type GoogleCalendarEventUpdateLeaseState,
 } from "@/lib/google-calendar-event-mapping";
@@ -44,6 +47,11 @@ export type GoogleCalendarEventLeaseClaim =
 export type GoogleCalendarEventUpdateLeaseClaim =
   | { kind: "acquired"; operationId: string; mapping: GoogleCalendarEventMapping }
   | { kind: "unchanged" }
+  | { kind: "in_progress" }
+  | { kind: "missing" };
+
+export type GoogleCalendarEventDeleteLeaseClaim =
+  | { kind: "acquired"; operationId: string; mapping: GoogleCalendarEventMapping }
   | { kind: "in_progress" }
   | { kind: "missing" };
 
@@ -108,6 +116,17 @@ function storedUpdateLeaseState(
 ): GoogleCalendarEventUpdateLeaseState | null {
   const mapping = storedMapping(data);
   if (!mapping) return null;
+  if (data.status === "deleting"
+    && typeof data.operationId === "string"
+    && data.operationId
+    && data.startedAt instanceof Timestamp) {
+    return {
+      status: "deleting",
+      operationId: data.operationId,
+      startedAtMillis: data.startedAt.toMillis(),
+      sourceHash: mapping.sourceHash,
+    };
+  }
   if (data.status === "updating"
     && typeof data.operationId === "string"
     && data.operationId
@@ -123,6 +142,29 @@ function storedUpdateLeaseState(
     };
   }
   return { status: "synced", sourceHash: mapping.sourceHash };
+}
+
+function storedDeleteLeaseState(
+  data: FirebaseFirestore.DocumentData
+): GoogleCalendarEventDeleteLeaseState | null {
+  const mapping = storedMapping(data);
+  if (!mapping) return null;
+
+  if ((data.status === "creating"
+      || data.status === "updating"
+      || data.status === "deleting")
+    && typeof data.operationId === "string"
+    && data.operationId
+    && data.startedAt instanceof Timestamp) {
+    return {
+      status: data.status,
+      operationId: data.operationId,
+      startedAtMillis: data.startedAt.toMillis(),
+    };
+  }
+
+  // Completed G2 mappings have no status and are intentionally compatible.
+  return { status: "synced" };
 }
 
 export async function getGoogleCalendarEventMapping(
@@ -334,6 +376,85 @@ export async function failGoogleCalendarEventUpdateLease(
       operationId,
       targetSourceHash
     )) return false;
+    transaction.update(ref, {
+      status: "synced",
+      lastErrorCode: errorCode,
+      operationId: FieldValue.delete(),
+      startedAt: FieldValue.delete(),
+      targetSourceHash: FieldValue.delete(),
+      updatedAt: Timestamp.now(),
+    });
+    return true;
+  });
+}
+
+export async function claimGoogleCalendarEventDeleteLease(
+  uid: string,
+  projectId: string,
+  rehearsalId: string
+): Promise<GoogleCalendarEventDeleteLeaseClaim> {
+  const ref = mappingRef(uid, projectId, rehearsalId);
+  const operationId = randomBytes(18).toString("base64url");
+
+  return adminDb.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(ref);
+    const data = snapshot.data();
+    const state = data ? storedDeleteLeaseState(data) : null;
+    const mapping = storedMapping(data);
+    if (!state || !mapping || mapping.projectId !== projectId) {
+      return { kind: "missing" };
+    }
+
+    const now = Timestamp.now();
+    if (decideGoogleCalendarEventDeleteLease(state, now.toMillis()) === "in_progress") {
+      return { kind: "in_progress" };
+    }
+
+    transaction.update(ref, {
+      status: "deleting",
+      operationId,
+      startedAt: now,
+      targetSourceHash: FieldValue.delete(),
+      updatedAt: now,
+    });
+    return { kind: "acquired", operationId, mapping };
+  });
+}
+
+export async function completeGoogleCalendarEventDeleteLease(
+  uid: string,
+  projectId: string,
+  rehearsalId: string,
+  operationId: string
+): Promise<boolean> {
+  const ref = mappingRef(uid, projectId, rehearsalId);
+  return adminDb.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(ref);
+    const data = snapshot.data();
+    const state = data ? storedDeleteLeaseState(data) : null;
+    if (!state || !ownsGoogleCalendarEventDeleteLease(state, operationId)) {
+      return false;
+    }
+    transaction.delete(ref);
+    return true;
+  });
+}
+
+export async function failGoogleCalendarEventDeleteLease(
+  uid: string,
+  projectId: string,
+  rehearsalId: string,
+  operationId: string,
+  errorCode: string
+): Promise<boolean> {
+  const ref = mappingRef(uid, projectId, rehearsalId);
+  return adminDb.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(ref);
+    const data = snapshot.data();
+    const state = data ? storedDeleteLeaseState(data) : null;
+    if (!state || !ownsGoogleCalendarEventDeleteLease(state, operationId)) {
+      return false;
+    }
     transaction.update(ref, {
       status: "synced",
       lastErrorCode: errorCode,
