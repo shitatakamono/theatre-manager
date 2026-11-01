@@ -17,9 +17,7 @@ export type GoogleCalendarMappingOwnerCandidate = {
 export type GoogleCalendarSyncAudienceSkipReason =
   | "invalid_link"
   | "not_project_member"
-  | "person_not_found"
-  | "google_not_connected"
-  | "invalid_connection";
+  | "person_not_found";
 
 export type GoogleCalendarSyncAudience = {
   normalSyncUids: string[];
@@ -114,15 +112,8 @@ export function buildGoogleCalendarProjectSyncAudience(input: {
     }
 
     const connection = connections.get(uid);
-    if (!connection?.connected) {
+    if (!connection?.connected || !connection.credentialAvailable) {
       disconnectedUids.push(uid);
-      skippedUsers.push({ uid, reason: "google_not_connected" });
-      continue;
-    }
-    if (!connection.credentialAvailable) {
-      disconnectedUids.push(uid);
-      skippedUsers.push({ uid, reason: "invalid_connection" });
-      continue;
     }
     normalSyncUids.push(uid);
   }

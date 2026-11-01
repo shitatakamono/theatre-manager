@@ -63,13 +63,9 @@ async function loadGoogleCalendarLinkedAudienceInputs(projectId: string): Promis
     projectRef.collection("members").doc(uid));
   const personRefs = uniqueParticipantIds.map((participantId) =>
     projectRef.collection("people").doc(participantId));
-  const connectionRefs = uniqueUids.map((uid) =>
-    adminDb.collection(CONNECTIONS_COLLECTION).doc(uid));
-
-  const [memberSnapshots, personSnapshots, connectionSnapshots] = await Promise.all([
+  const [memberSnapshots, personSnapshots] = await Promise.all([
     memberRefs.length > 0 ? adminDb.getAll(...memberRefs) : [],
     personRefs.length > 0 ? adminDb.getAll(...personRefs) : [],
-    connectionRefs.length > 0 ? adminDb.getAll(...connectionRefs) : [],
   ]);
 
   return {
@@ -78,14 +74,10 @@ async function loadGoogleCalendarLinkedAudienceInputs(projectId: string): Promis
       .map((snapshot) => snapshot.id),
     personIds: personSnapshots.filter((snapshot) => snapshot.exists)
       .map((snapshot) => snapshot.id),
-    connections: connectionSnapshots.map((snapshot) => {
-      const data = snapshot.data();
-      return {
-        uid: snapshot.id,
-        connected: data?.connected === true,
-        credentialAvailable: isGoogleCalendarConnectionCredentialAvailable(data),
-      };
-    }),
+    // Connection state belongs to the worker. Trigger discovery must enqueue
+    // explicitly linked identities even while Google is disconnected so that
+    // the job can move to waiting_connection and later be resumed.
+    connections: [],
   };
 }
 

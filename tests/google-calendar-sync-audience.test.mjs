@@ -5,6 +5,10 @@ import {
   buildGoogleCalendarProjectSyncAudience,
   selectGoogleCalendarMappingOwnerUids,
 } from "../lib/google-calendar-sync-audience.ts";
+import {
+  enqueueGoogleCalendarSyncForUids,
+  planGoogleCalendarRehearsalTrigger,
+} from "../lib/google-calendar-sync-triggers.ts";
 
 function buildAudience(overrides = {}) {
   return buildGoogleCalendarProjectSyncAudience({
@@ -50,17 +54,17 @@ describe("Google Calendar project sync audience", () => {
     { uid: "user-a", connected: false, credentialAvailable: true },
     null,
   ]) {
-    it("keeps a disconnected or missing connection out of normal sync", () => {
+    it("keeps a disconnected or missing connection in normal sync", () => {
       const audience = buildAudience({
         connections: connection ? [connection] : [],
       });
-      deepStrictEqual(audience.normalSyncUids, []);
+      deepStrictEqual(audience.normalSyncUids, ["user-a"]);
       deepStrictEqual(audience.disconnectedUids, ["user-a"]);
-      strictEqual(audience.skippedUsers[0]?.reason, "google_not_connected");
+      deepStrictEqual(audience.skippedUsers, []);
     });
   }
 
-  it("rejects connected state without usable server credentials", () => {
+  it("keeps a linked identity in the trigger audience without a refresh token", () => {
     const audience = buildAudience({
       connections: [{
         uid: "user-a",
@@ -68,8 +72,37 @@ describe("Google Calendar project sync audience", () => {
         credentialAvailable: false,
       }],
     });
+    deepStrictEqual(audience.normalSyncUids, ["user-a"]);
     deepStrictEqual(audience.disconnectedUids, ["user-a"]);
-    strictEqual(audience.skippedUsers[0]?.reason, "invalid_connection");
+    deepStrictEqual(audience.skippedUsers, []);
+  });
+
+  it("enqueues rehearsal_updated while the linked user is disconnected", async () => {
+    const audience = buildAudience({
+      connections: [{
+        uid: "user-a",
+        connected: false,
+        credentialAvailable: false,
+      }],
+    });
+    const plan = planGoogleCalendarRehearsalTrigger(
+      "update",
+      { venue: "before" },
+      { venue: "after" }
+    );
+    const calls = [];
+    const result = await enqueueGoogleCalendarSyncForUids({
+      projectId: "project-a",
+      uids: audience.normalSyncUids,
+      reason: plan.reason,
+      enqueue: async (request) => calls.push(request),
+    });
+    deepStrictEqual(calls, [{
+      uid: "user-a",
+      projectId: "project-a",
+      reason: "rehearsal_updated",
+    }]);
+    strictEqual(result.enqueuedCount, 1);
   });
 
   it("does not filter an inactive person because active is intentionally not an input", () => {
