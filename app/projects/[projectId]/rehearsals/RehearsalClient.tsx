@@ -228,6 +228,7 @@ export function RehearsalClient({ projectId }: { projectId: string }) {
               onImported={async (count) => { setNotice(`${count}件の稽古予定を追加しました`); await load(); }}
             />}
           </>}
+          <Link className={styles.actionLink} href="/settings">Googleカレンダー連携</Link>
           <Link className={styles.actionLink} href={`/projects/${projectId}/rehearsals/print`}>印刷</Link>
         </div>
       </header>
