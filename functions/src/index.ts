@@ -1,6 +1,7 @@
 import { getApps, initializeApp } from "firebase-admin/app";
 import { Timestamp } from "firebase-admin/firestore";
 import { logger } from "firebase-functions";
+import { defineSecret } from "firebase-functions/params";
 import { setGlobalOptions } from "firebase-functions/v2";
 import {
   onDocumentCreated,
@@ -46,6 +47,11 @@ const PERSON_DOCUMENT = `${PROJECT_DOCUMENT}/people/{personId}`;
 const LINKED_USER_DOCUMENT = `${PROJECT_DOCUMENT}/participantLinkedUsers/{uid}`;
 const SYNC_JOB_DOCUMENT = "googleCalendarSyncJobs/{jobId}";
 const RETRY_JOB_LIMIT = 10;
+const googleCalendarWorkerSecrets = [
+  defineSecret("GOOGLE_CALENDAR_CLIENT_ID"),
+  defineSecret("GOOGLE_CALENDAR_CLIENT_SECRET"),
+  defineSecret("GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY"),
+];
 
 function timestampMillis(value: unknown): number | null {
   return value instanceof Timestamp ? value.toMillis() : null;
@@ -207,6 +213,7 @@ export const onGoogleCalendarSyncJobPending = onDocumentWritten(
     retry: true,
     timeoutSeconds: 240,
     memory: "256MiB",
+    secrets: googleCalendarWorkerSecrets,
   },
   async (event) => {
     const before = runtimeJob(event.data?.before.data());
@@ -226,6 +233,7 @@ export const retryGoogleCalendarSyncJobs = onSchedule(
     schedule: "every 1 minutes",
     timeoutSeconds: 240,
     memory: "256MiB",
+    secrets: googleCalendarWorkerSecrets,
   },
   async () => {
     const now = Timestamp.now();

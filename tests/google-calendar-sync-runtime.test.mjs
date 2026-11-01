@@ -1,4 +1,5 @@
 import { deepStrictEqual, strictEqual } from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 import {
@@ -98,6 +99,52 @@ describe("Google Calendar pending job trigger", () => {
       strictEqual(invoked, true);
     });
   }
+});
+
+describe("Google Calendar Functions secret bindings", () => {
+  const functionsSource = readFileSync(
+    new URL("../functions/src/index.ts", import.meta.url),
+    "utf8"
+  );
+  const workerSecretBinding = "secrets: googleCalendarWorkerSecrets";
+
+  it("defines the three worker secrets by name without embedding values", () => {
+    for (const secretName of [
+      "GOOGLE_CALENDAR_CLIENT_ID",
+      "GOOGLE_CALENDAR_CLIENT_SECRET",
+      "GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY",
+    ]) {
+      strictEqual(
+        functionsSource.includes(`defineSecret("${secretName}")`),
+        true
+      );
+    }
+  });
+
+  it("binds secrets only to the pending worker and retry scheduler", () => {
+    strictEqual(
+      functionsSource.split(workerSecretBinding).length - 1,
+      2
+    );
+
+    for (const exportName of [
+      "onGoogleCalendarSyncJobPending",
+      "retryGoogleCalendarSyncJobs",
+    ]) {
+      const exportStart = functionsSource.indexOf(`export const ${exportName}`);
+      strictEqual(exportStart >= 0, true);
+      strictEqual(
+        functionsSource.slice(exportStart, exportStart + 400).includes(workerSecretBinding),
+        true
+      );
+    }
+
+    const enqueueOnlySource = functionsSource.slice(
+      functionsSource.indexOf("export const onRehearsalCreated"),
+      functionsSource.indexOf("export const onGoogleCalendarSyncJobPending")
+    );
+    strictEqual(enqueueOnlySource.includes(workerSecretBinding), false);
+  });
 });
 
 describe("Google Calendar retry scheduler", () => {
