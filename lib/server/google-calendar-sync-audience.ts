@@ -1,13 +1,11 @@
-import "server-only";
-
 import {
   buildGoogleCalendarProjectSyncAudience,
   selectGoogleCalendarMappingOwnerUids,
   type GoogleCalendarConnectionCandidate,
   type GoogleCalendarLinkedUserCandidate,
   type GoogleCalendarSyncAudience,
-} from "@/lib/google-calendar-sync-audience";
-import { adminDb } from "@/lib/server/firebase-admin";
+} from "../google-calendar-sync-audience";
+import { adminDb } from "./firebase-admin";
 
 const CONNECTIONS_COLLECTION = "googleCalendarConnections";
 const EVENT_MAPPINGS_COLLECTION = "eventMappings";

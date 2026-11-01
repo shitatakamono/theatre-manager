@@ -1,5 +1,3 @@
-import "server-only";
-
 import { randomBytes } from "node:crypto";
 import { Timestamp } from "firebase-admin/firestore";
 
@@ -14,8 +12,8 @@ import {
   type GoogleCalendarSyncExecutionResult,
   type GoogleCalendarSyncJobState,
   type GoogleCalendarSyncJobStatus,
-} from "@/lib/google-calendar-sync-job";
-import { adminDb } from "@/lib/server/firebase-admin";
+} from "../google-calendar-sync-job";
+import { adminDb } from "./firebase-admin";
 
 const SYNC_JOBS_COLLECTION = "googleCalendarSyncJobs";
 
