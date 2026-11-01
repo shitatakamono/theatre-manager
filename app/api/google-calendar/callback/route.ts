@@ -8,6 +8,9 @@ import {
 import {
   encryptGoogleCalendarToken,
 } from "@/lib/server/google-calendar-crypto";
+import {
+  enqueueGoogleCalendarReconnectCatchUp,
+} from "@/lib/server/google-calendar-reconnect";
 
 export const runtime = "nodejs";
 
@@ -166,6 +169,23 @@ export async function GET(request: Request): Promise<Response> {
         { merge: true }
       );
     });
+
+    try {
+      const catchUp = await enqueueGoogleCalendarReconnectCatchUp(uid);
+      if (catchUp.failedCount > 0) {
+        console.error("google_calendar_reconnect_catch_up_incomplete", {
+          projectCount: catchUp.projectCount,
+          enqueuedCount: catchUp.enqueuedCount,
+          failedCount: catchUp.failedCount,
+          errorCodes: catchUp.errorCodes,
+        });
+      }
+    } catch (catchUpError) {
+      console.error(
+        "google_calendar_reconnect_catch_up_failed",
+        safeErrorMetadata(catchUpError)
+      );
+    }
 
     return NextResponse.redirect(
       settingsUrl(request, "connected")

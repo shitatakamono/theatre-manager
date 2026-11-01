@@ -115,7 +115,10 @@ export function planGoogleCalendarSyncWorkerOperations(
   }
 
   const operations = new Set<GoogleCalendarSyncWorkerOperation>();
-  if (normalizedReasons.has("rehearsal_deleted")) operations.add("delete");
+  if (normalizedReasons.has("rehearsal_deleted")
+    || normalizedReasons.has("google_reconnected")) {
+    operations.add("delete");
+  }
   if ([...normalizedReasons].some((reason) => RECONCILE_REASONS.has(reason))
     || normalizedReasons.has("rehearsal_updated")
     || normalizedReasons.has("google_reconnected")) {

@@ -61,7 +61,7 @@ describe("Google Calendar sync worker planning", () => {
     ["rehearsal_deleted", ["delete"]],
     ["participation_changed", ["reconcile"]],
     ["cast_staff_changed", ["reconcile"]],
-    ["google_reconnected", ["reconcile", "update"]],
+    ["google_reconnected", ["delete", "reconcile", "update"]],
   ]) {
     it(`plans ${reason} safely`, () => {
       deepStrictEqual(planGoogleCalendarSyncWorkerOperations([reason]), expected);
