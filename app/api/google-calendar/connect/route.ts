@@ -1,5 +1,6 @@
 import { createGoogleCalendarOAuthState } from "@/lib/server/google-calendar-oauth-state";
 import { adminAuth } from "@/lib/server/firebase-admin";
+import { getGoogleCalendarRedirectUri } from "@/lib/app-url";
 
 export const runtime = "nodejs";
 
@@ -8,17 +9,6 @@ const GOOGLE_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar";
 
 function json(body: unknown, status: number): Response {
   return Response.json(body, { status });
-}
-
-function getRedirectUri(): string {
-  const explicit = process.env.GOOGLE_CALENDAR_REDIRECT_URI;
-  if (explicit) return explicit;
-
-  if (process.env.VERCEL_ENV === "production") {
-    return "https://theatre-manager-iota.vercel.app/api/google-calendar/callback";
-  }
-
-  return "http://localhost:3000/api/google-calendar/callback";
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -48,7 +38,7 @@ export async function POST(request: Request): Promise<Response> {
 
     const url = new URL(GOOGLE_AUTH_URL);
     url.searchParams.set("client_id", clientId);
-    url.searchParams.set("redirect_uri", getRedirectUri());
+    url.searchParams.set("redirect_uri", getGoogleCalendarRedirectUri(request));
     url.searchParams.set("response_type", "code");
     url.searchParams.set("scope", GOOGLE_CALENDAR_SCOPE);
     url.searchParams.set("access_type", "offline");

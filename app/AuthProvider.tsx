@@ -9,6 +9,7 @@ import {
   signOut,
 } from "firebase/auth";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { usePathname } from "next/navigation";
 import { auth, googleAuthProvider } from "@/lib/firebase";
 import type { UserProfile } from "@/lib/auth";
 import { claimPendingProjectInvites, syncCurrentUserMemberProfiles } from "@/lib/firestore";
@@ -25,6 +26,7 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [error, setError] = useState("");
@@ -78,6 +80,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const value = useMemo<AuthContextValue>(() => ({ loading, profile, login, logout: () => signOut(auth), membershipNotice }), [loading, membershipNotice, profile]);
+
+  const isPublicPage = pathname === "/" || pathname === "/privacy" || pathname === "/terms";
+
+  if (isPublicPage) {
+    return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  }
 
   if (loading) return <div className={styles.loading}>認証状態を確認しています…</div>;
   if (!profile) return <main className={styles.login}><section><p>SEISAKU BOARD</p><h1>SeisakuBoard</h1><h2>公演制作をチームで管理</h2><button onClick={() => void login()}>Googleでログイン</button>{error && <span role="alert">{error}</span>}</section></main>;

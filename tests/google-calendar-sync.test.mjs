@@ -1,7 +1,22 @@
 import { strictEqual } from "node:assert/strict";
-import { describe, it } from "node:test";
+import { afterEach, describe, it } from "node:test";
 
 import { shouldSyncRehearsalForPerson } from "../lib/google-calendar-sync.ts";
+import { getAppOrigin, getGoogleCalendarRedirectUri } from "../lib/app-url.ts";
+
+const ORIGINAL_URL_ENV = {
+  NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+  GOOGLE_CALENDAR_REDIRECT_URI: process.env.GOOGLE_CALENDAR_REDIRECT_URI,
+  VERCEL_PROJECT_PRODUCTION_URL: process.env.VERCEL_PROJECT_PRODUCTION_URL,
+  VERCEL_URL: process.env.VERCEL_URL,
+};
+
+afterEach(() => {
+  for (const [name, value] of Object.entries(ORIGINAL_URL_ENV)) {
+    if (value === undefined) delete process.env[name];
+    else process.env[name] = value;
+  }
+});
 
 const cast = [{
   id: "cast-a",
@@ -85,5 +100,27 @@ describe("Google Calendar rehearsal sync targeting", () => {
     const target = person("other-person", ["dance"]);
     strictEqual(shouldSyncRehearsalForPerson(target, rehearsal("dance"), cast, staff), true);
     strictEqual(shouldSyncRehearsalForPerson(target, rehearsal("song"), cast, staff), false);
+  });
+});
+
+describe("Google Calendar public application URL", () => {
+  it("uses the configured custom-domain origin without hardcoding a deployment host", () => {
+    process.env.NEXT_PUBLIC_APP_URL = "https://board.example.jp/path";
+    strictEqual(getAppOrigin(), "https://board.example.jp");
+    strictEqual(getGoogleCalendarRedirectUri(), "https://board.example.jp/api/google-calendar/callback");
+  });
+
+  it("keeps an explicit OAuth redirect URI when configured", () => {
+    process.env.NEXT_PUBLIC_APP_URL = "https://board.example.jp";
+    process.env.GOOGLE_CALENDAR_REDIRECT_URI = "https://oauth.example.jp/callback";
+    strictEqual(getGoogleCalendarRedirectUri(), "https://oauth.example.jp/callback");
+  });
+
+  it("falls back to the current request origin outside configured deployments", () => {
+    delete process.env.NEXT_PUBLIC_APP_URL;
+    delete process.env.GOOGLE_CALENDAR_REDIRECT_URI;
+    delete process.env.VERCEL_PROJECT_PRODUCTION_URL;
+    delete process.env.VERCEL_URL;
+    strictEqual(getAppOrigin(new Request("https://preview.example.net/api/google-calendar/connect")), "https://preview.example.net");
   });
 });

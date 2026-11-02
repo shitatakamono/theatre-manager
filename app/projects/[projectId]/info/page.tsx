@@ -34,7 +34,7 @@ export default function PerformanceInfoPage({
     return (
       <main className="p-6">
         <h1 className="mb-2 text-xl font-bold">公演が見つかりません。</h1>
-        <Link className="text-blue-700 underline" href="/">
+        <Link className="text-blue-700 underline" href="/projects">
           公演一覧に戻る
         </Link>
       </main>

@@ -217,7 +217,7 @@ export default function ProjectPage({ params }: ProjectPageProps) {
     return (
       <main className={styles.notFound}>
         <h1>公演が見つかりません。</h1>
-        <Link href="/">公演一覧に戻る</Link>
+        <Link href="/projects">公演一覧に戻る</Link>
       </main>
     );
   }

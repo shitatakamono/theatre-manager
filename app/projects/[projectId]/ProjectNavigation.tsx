@@ -82,7 +82,7 @@ export function ProjectNavigation({ projectId }: { projectId: string }) {
             </div>}
           </div>
         </nav>
-        <Link className={styles.projectList} href="/">公演一覧</Link>
+        <Link className={styles.projectList} href="/projects">公演一覧</Link>
       </div>
     </div>
 

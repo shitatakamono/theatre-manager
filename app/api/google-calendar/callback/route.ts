@@ -11,6 +11,7 @@ import {
 import {
   enqueueGoogleCalendarReconnectCatchUp,
 } from "@/lib/server/google-calendar-reconnect";
+import { getAppOrigin, getGoogleCalendarRedirectUri } from "@/lib/app-url";
 
 export const runtime = "nodejs";
 
@@ -33,24 +34,8 @@ function safeErrorMetadata(error: unknown): {
   };
 }
 
-function getRedirectUri(): string {
-  const explicit = process.env.GOOGLE_CALENDAR_REDIRECT_URI;
-  if (explicit) return explicit;
-
-  if (process.env.VERCEL_ENV === "production") {
-    return "https://theatre-manager-iota.vercel.app/api/google-calendar/callback";
-  }
-
-  return "http://localhost:3000/api/google-calendar/callback";
-}
-
 function settingsUrl(request: Request, status: string): URL {
-  const origin =
-    process.env.VERCEL_ENV === "production"
-      ? "https://theatre-manager-iota.vercel.app"
-      : new URL(request.url).origin;
-
-  const url = new URL("/settings", origin);
+  const url = new URL("/settings", getAppOrigin(request));
   url.searchParams.set("googleCalendar", status);
 
   return url;
@@ -112,7 +97,7 @@ export async function GET(request: Request): Promise<Response> {
         code,
         client_id: clientId,
         client_secret: clientSecret,
-        redirect_uri: getRedirectUri(),
+        redirect_uri: getGoogleCalendarRedirectUri(request),
         grant_type: "authorization_code",
       }),
     });

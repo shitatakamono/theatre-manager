@@ -120,7 +120,7 @@ function SettingsContent() {
     <main className={styles.page}>
       <header className={styles.header}>
         <div><p>PERSONAL SETTINGS</p><h1>個人設定</h1></div>
-        <Link href="/">公演一覧へ戻る</Link>
+        <Link href="/projects">公演一覧へ戻る</Link>
       </header>
 
       {result && <p className={styles.result} data-tone={result.tone} role={result.tone === "error" ? "alert" : "status"}>{result.text}</p>}

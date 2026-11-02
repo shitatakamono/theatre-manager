@@ -29,7 +29,7 @@ export default function PeopleManagementPage({ params }: { params: Promise<{ pro
     return <main className="p-6">読み込み中…</main>;
   }
   if (!project) {
-    return <main className="p-6"><h1 className="mb-2 text-xl font-bold">公演が見つかりません。</h1><Link className="underline" href="/">公演一覧へ戻る</Link></main>;
+    return <main className="p-6"><h1 className="mb-2 text-xl font-bold">公演が見つかりません。</h1><Link className="underline" href="/projects">公演一覧へ戻る</Link></main>;
   }
   return <PeopleManagementClient project={project} initialPeople={people} members={members} />;
 }
