@@ -5,7 +5,7 @@ import { getGoogleCalendarRedirectUri } from "@/lib/app-url";
 export const runtime = "nodejs";
 
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
-const GOOGLE_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar";
+const GOOGLE_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.app.created";
 
 function json(body: unknown, status: number): Response {
   return Response.json(body, { status });
