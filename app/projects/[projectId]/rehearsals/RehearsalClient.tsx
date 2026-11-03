@@ -107,7 +107,7 @@ export function RehearsalClient({ projectId }: { projectId: string }) {
   const [formError, setFormError] = useState("");
   const [conflict, setConflict] = useState(false);
   const [notice, setNotice] = useState("");
-  const [view, setView] = useState<ScheduleView>("list");
+  const [view, setView] = useState<ScheduleView>("timeline");
 
   const load = useCallback(async () => {
     setLoading(true);
