@@ -92,7 +92,7 @@ describe("people management values", () => {
     });
   });
 
-  it("sorts by cast, staff, and other roles with Japanese names inside each group", () => {
+  it("uses performance listing order for the prioritized role and names for remaining groups", () => {
     const managedPeople = [
       { id: "other-a", displayName: "あおい", active: true },
       { id: "staff-ka", displayName: "かとう", active: true },
@@ -114,11 +114,11 @@ describe("people management values", () => {
 
     deepStrictEqual(
       sortManagedPeople(filterManagedPeople(managedPeople, true), cast, staff, "cast_first").map(({ id }) => id),
-      ["cast-a", "both-i", "cast-sa", "staff-a", "staff-ka", "other-a"]
+      ["cast-sa", "both-i", "cast-a", "staff-a", "staff-ka", "other-a"]
     );
     deepStrictEqual(
       sortManagedPeople(filterManagedPeople(managedPeople, true), cast, staff, "staff_first").map(({ id }) => id),
-      ["staff-a", "both-i", "staff-ka", "cast-a", "cast-sa", "other-a"]
+      ["staff-ka", "both-i", "staff-a", "cast-a", "cast-sa", "other-a"]
     );
     deepStrictEqual(
       sortManagedPeople(filterManagedPeople(managedPeople, true), cast, staff, "name").map(({ id }) => id),
@@ -126,7 +126,7 @@ describe("people management values", () => {
     );
     deepStrictEqual(
       sortManagedPeople(filterManagedPeople(managedPeople, false), cast, staff, "cast_first").map(({ id }) => id),
-      ["both-i", "cast-sa", "staff-a", "staff-ka", "other-a"]
+      ["cast-sa", "both-i", "staff-a", "staff-ka", "other-a"]
     );
   });
 

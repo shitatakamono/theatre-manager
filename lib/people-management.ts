@@ -189,6 +189,12 @@ export function sortManagedPeople(
     if (sort === "staff_order") {
       return staffPosition.get(person.id) ?? castPosition.get(person.id) ?? Number.MAX_SAFE_INTEGER;
     }
+    if (sort === "cast_first" && castPosition.has(person.id)) {
+      return castPosition.get(person.id)!;
+    }
+    if (sort === "staff_first" && staffPosition.has(person.id)) {
+      return staffPosition.get(person.id)!;
+    }
     return 0;
   }
 
