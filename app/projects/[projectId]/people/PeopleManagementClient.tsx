@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ProjectMember } from "@/lib/auth";
 import type { ProjectPerformanceRecord } from "@/lib/firestore";
 import {
@@ -21,6 +21,14 @@ import {
   REHEARSAL_PARTICIPATION_OPTIONS,
   toggleRehearsalParticipationType,
 } from "@/lib/rehearsal-participation";
+import {
+  cancelProjectUserLinkReservationClient,
+  changeProjectUserLinkReservationClient,
+  createProjectUserLinkReservationClient,
+  getProjectUserLinkReservationsClient,
+} from "@/lib/user-link-reservation-client";
+import { getUserLinkReservationView } from "@/lib/user-link-reservation-view";
+import type { UserLinkReservation } from "@/lib/user-link-reservations";
 import { useProjectAccess } from "../ProjectAccess";
 import styles from "./people.module.css";
 
@@ -44,6 +52,13 @@ export function PeopleManagementClient({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [reservations, setReservations] = useState<UserLinkReservation[]>([]);
+  const [reservationLoading, setReservationLoading] = useState(canEdit);
+  const [reservationBusy, setReservationBusy] = useState(false);
+  const [reservationEmail, setReservationEmail] = useState("");
+  const [reservationEditing, setReservationEditing] = useState(false);
+  const [reservationError, setReservationError] = useState("");
+  const [reservationLoadError, setReservationLoadError] = useState("");
   const [showInactive, setShowInactive] = useState(false);
   const [sortOrder, setSortOrder] = useState<ManagedPeopleSort>("cast_first");
   const memberByUid = useMemo(() => new Map(members.map((member) => [member.uid, member])), [members]);
@@ -58,6 +73,37 @@ export function PeopleManagementClient({
     staff,
     sortOrder
   ), [people, showInactive, cast, staff, sortOrder]);
+  const pendingReservationByPersonId = useMemo(() => new Map(
+    reservations
+      .filter((reservation) => reservation.status === "pending")
+      .map((reservation) => [reservation.personId, reservation] as const)
+  ), [reservations]);
+  const editingReservation = editing
+    ? pendingReservationByPersonId.get(editing.id)
+    : undefined;
+  const reservationView = editing
+    ? getUserLinkReservationView({
+        canEdit,
+        linkedUserUid: draft.linkedUserUid,
+        reservation: editingReservation,
+      })
+    : { kind: "hidden" as const };
+
+  useEffect(() => {
+    if (!canEdit) return;
+    let active = true;
+    void getProjectUserLinkReservationsClient(project.id)
+      .then((items) => { if (active) setReservations(items); })
+      .catch((loadError) => {
+        if (active) {
+          setReservationLoadError(loadError instanceof Error
+            ? loadError.message
+            : "紐づけ予約を読み込めませんでした");
+        }
+      })
+      .finally(() => { if (active) setReservationLoading(false); });
+    return () => { active = false; };
+  }, [canEdit, project.id]);
 
   function openCreate() {
     if (!canEdit) return;
@@ -78,15 +124,76 @@ export function PeopleManagementClient({
       publicNote: person.publicNote,
     });
     setError("");
+    setReservationError("");
+    setReservationEmail(pendingReservationByPersonId.get(person.id)?.email ?? "");
+    setReservationEditing(false);
   }
 
   function closeEditor() {
-    if (!saving) setEditing(undefined);
+    if (!saving && !reservationBusy) setEditing(undefined);
+  }
+
+  async function saveReservation(change: boolean) {
+    if (!canEdit || !editing || reservationBusy) return;
+    setReservationBusy(true);
+    setReservationError("");
+    setNotice("");
+    try {
+      const input = {
+        projectId: project.id,
+        personId: editing.id,
+        email: reservationEmail,
+      };
+      const reservation = change
+        ? await changeProjectUserLinkReservationClient(input)
+        : await createProjectUserLinkReservationClient(input);
+      setReservations((current) => [
+        ...current.filter((item) => item.personId !== editing.id || item.status !== "pending"),
+        reservation,
+      ]);
+      setReservationEmail(reservation.email);
+      setReservationEditing(false);
+      setNotice(change ? "紐づけ予約を変更しました" : "紐づけ予約を登録しました");
+    } catch (saveError) {
+      setReservationError(saveError instanceof Error
+        ? saveError.message
+        : "紐づけ予約を保存できませんでした");
+    } finally {
+      setReservationBusy(false);
+    }
+  }
+
+  async function cancelReservation() {
+    if (!canEdit || !editing || !editingReservation || reservationBusy) return;
+    if (!window.confirm("この紐づけ予約を解除しますか？\n正式なシステム利用者連携の解除ではありません。")) {
+      return;
+    }
+    setReservationBusy(true);
+    setReservationError("");
+    setNotice("");
+    try {
+      await cancelProjectUserLinkReservationClient({
+        projectId: project.id,
+        personId: editing.id,
+      });
+      setReservations((current) => current.filter(
+        (item) => item.personId !== editing.id || item.status !== "pending"
+      ));
+      setReservationEmail("");
+      setReservationEditing(false);
+      setNotice("紐づけ予約を解除しました");
+    } catch (cancelError) {
+      setReservationError(cancelError instanceof Error
+        ? cancelError.message
+        : "紐づけ予約を解除できませんでした");
+    } finally {
+      setReservationBusy(false);
+    }
   }
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!canEdit || saving) return;
+    if (!canEdit || saving || reservationBusy) return;
     setSaving(true);
     setError("");
     setNotice("");
@@ -108,7 +215,7 @@ export function PeopleManagementClient({
   }
 
   async function toggleEnded() {
-    if (!canEdit || !editing || saving) return;
+    if (!canEdit || !editing || saving || reservationBusy) return;
     const ending = editing.active;
     const confirmed = window.confirm(ending
       ? "この関係者を終了済みにします。\n過去の出欠やキャスト・スタッフ情報は削除されません。"
@@ -135,6 +242,7 @@ export function PeopleManagementClient({
       {canEdit && <button type="button" onClick={openCreate}>その他の関係者を追加</button>}
     </header>
     {notice && <p className={styles.success} role="status">{notice}</p>}
+    {reservationLoadError && <p className={styles.error} role="alert">{reservationLoadError}</p>}
     <div className={styles.listControls}>
       <label className={styles.sortControl}>
         <span>並び順</span>
@@ -160,7 +268,11 @@ export function PeopleManagementClient({
               <td data-label="本名（管理用）"><strong>{person.displayName}</strong>{!person.active && <span className={styles.inactiveBadge}>終了済み</span>}</td>
               <td data-label="出欠">{person.attendanceTarget ? "対象" : "対象外"}</td>
               <td data-label="参加する稽古">{formatRehearsalParticipationTypes(person.rehearsalParticipationTypes)}</td>
-              <td data-label="システム利用者との連携">{person.linkedUserUid ? `連携済：${member ? memberLabel(member) : person.linkedUserUid}` : "未連携"}</td>
+              <td data-label="システム利用者との連携">{person.linkedUserUid
+                ? `連携済：${member ? memberLabel(member) : person.linkedUserUid}`
+                : canEdit && pendingReservationByPersonId.has(person.id)
+                  ? `登録待ち：${pendingReservationByPersonId.get(person.id)!.email}`
+                  : "未連携"}</td>
               <td data-label="キャスト">{association.castLabels.join(" / ") || "—"}</td>
               <td data-label="スタッフ">{association.staffRoles.join(" / ") || "—"}</td>
               <td data-label="操作">{canEdit ? <button className={styles.editButton} type="button" onClick={() => openEdit(person)}>編集</button> : "—"}</td>
@@ -194,7 +306,7 @@ export function PeopleManagementClient({
               <span>{option.label}</span>
             </label>)}</div>
           </fieldset>
-          <label><span>システム利用者との連携</span><select value={draft.linkedUserUid ?? ""} onChange={(event) => setDraft((current) => ({ ...current, linkedUserUid: event.target.value || null }))}>
+          <label><span>システム利用者との連携</span><select value={draft.linkedUserUid ?? ""} disabled={Boolean(editingReservation && !draft.linkedUserUid) || reservationBusy} onChange={(event) => setDraft((current) => ({ ...current, linkedUserUid: event.target.value || null }))}>
             <option value="">未連携</option>
             {members.map((member) => {
               const assignedPersonId = linkedPersonByUid.get(member.uid);
@@ -202,12 +314,63 @@ export function PeopleManagementClient({
               return <option key={member.uid} value={member.uid} disabled={unavailable}>{memberLabel(member)}{unavailable ? "（他の関係者に連携済み）" : ""}</option>;
             })}
           </select></label>
+          {editing && reservationLoading && !editing.linkedUserUid
+            ? <p className={styles.reservationLoading}>紐づけ予約を確認しています…</p>
+            : null}
+          {editing && !reservationLoading && reservationView.kind !== "hidden" && <section className={styles.reservationSection} aria-label="Googleアカウントで紐づけ予約">
+            <strong>Googleアカウントで紐づけ予約</strong>
+            <p>本人がこの公演へ招待され、同じGoogleアカウントでログインすると自動で紐づけられます。</p>
+            {reservationView.kind === "pending" && !reservationEditing ? <>
+              <span className={styles.reservationPending}>登録待ち：{reservationView.email}</span>
+              <p className={styles.reservationHint}>既存のシステム利用者を選ぶ場合は、先に予約を解除してください。</p>
+              <div className={styles.reservationActions}>
+                <button type="button" disabled={reservationBusy} onClick={() => {
+                  setReservationEmail(reservationView.email);
+                  setReservationEditing(true);
+                  setReservationError("");
+                }}>予約変更</button>
+                <button type="button" data-danger disabled={reservationBusy} onClick={() => void cancelReservation()}>
+                  {reservationBusy ? "処理中…" : "予約解除"}
+                </button>
+              </div>
+            </> : <>
+              <label className={styles.reservationInput}>
+                <span>Googleアカウントのメールアドレス</span>
+                <input
+                  type="text"
+                  inputMode="email"
+                  autoComplete="email"
+                  maxLength={254}
+                  value={reservationEmail}
+                  disabled={reservationBusy}
+                  onChange={(event) => setReservationEmail(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      void saveReservation(reservationView.kind === "pending");
+                    }
+                  }}
+                />
+              </label>
+              <div className={styles.reservationActions}>
+                {reservationView.kind === "pending" && <button type="button" disabled={reservationBusy} onClick={() => {
+                  setReservationEmail(reservationView.email);
+                  setReservationEditing(false);
+                  setReservationError("");
+                }}>キャンセル</button>}
+                <button type="button" disabled={reservationBusy || !reservationEmail.trim()} onClick={() => void saveReservation(reservationView.kind === "pending")}>
+                  {reservationBusy ? "保存中…" : reservationView.kind === "pending" ? "変更を保存" : "予約する"}
+                </button>
+              </div>
+            </>}
+            {reservationError && <p className={styles.error} role="alert">{reservationError}</p>}
+          </section>}
           <label><span>公開備考</span><textarea rows={5} maxLength={2000} value={draft.publicNote} onChange={(event) => setDraft((current) => ({ ...current, publicNote: event.target.value }))} /></label>
           {error && <p className={styles.error} role="alert">{error}</p>}
-          {editing && <button className={editing.active ? styles.endButton : styles.resumeButton} type="button" onClick={() => void toggleEnded()} disabled={saving}>
+          {editing && <button className={editing.active ? styles.endButton : styles.resumeButton} type="button" onClick={() => void toggleEnded()} disabled={saving || reservationBusy}>
             {editing.active ? "終了済みにする" : "終了済みを解除"}
           </button>}
-          <footer><button type="button" onClick={closeEditor} disabled={saving}>キャンセル</button><button type="submit" disabled={saving}>{saving ? "保存中…" : "保存"}</button></footer>
+          <footer><button type="button" onClick={closeEditor} disabled={saving || reservationBusy}>キャンセル</button><button type="submit" disabled={saving || reservationBusy}>{saving ? "保存中…" : "保存"}</button></footer>
         </form>
       </section>
     </div>}

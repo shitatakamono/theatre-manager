@@ -12,7 +12,9 @@ import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import { auth, googleAuthProvider } from "@/lib/firebase";
 import type { UserProfile } from "@/lib/auth";
+import { completeAuthenticatedUserBootstrap } from "@/lib/auth-bootstrap";
 import { claimPendingProjectInvites, syncCurrentUserMemberProfiles } from "@/lib/firestore";
+import { claimPendingUserLinkReservationsClient } from "@/lib/user-link-reservation-client";
 import styles from "./auth.module.css";
 
 type AuthContextValue = {
@@ -51,14 +53,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         photoURL: user.photoURL ?? undefined,
       };
       void (async () => {
-        let joinedProjects: string[] = [];
-        try { joinedProjects = await claimPendingProjectInvites(nextProfile); } catch { /* ログイン自体は継続する */ }
-        try { await syncCurrentUserMemberProfiles(nextProfile); } catch { /* 既存データの表示を優先する */ }
+        const bootstrap = await completeAuthenticatedUserBootstrap({
+          profile: nextProfile,
+          claimInvites: claimPendingProjectInvites,
+          claimReservations: () => claimPendingUserLinkReservationsClient(
+            () => user.getIdToken()
+          ),
+          syncMemberProfiles: syncCurrentUserMemberProfiles,
+        });
         if (!active) return;
         setProfile(nextProfile);
-        setMembershipNotice(joinedProjects.length > 0
-          ? `${joinedProjects.join("、")}に招待されている公演へ参加しました`
-          : "");
+        const notices = [
+          bootstrap.joinedProjects.length > 0
+            ? `${bootstrap.joinedProjects.join("、")}に招待されている公演へ参加しました`
+            : "",
+          bootstrap.claimedReservationCount > 0
+            ? "関係者情報との紐づけが完了しました"
+            : "",
+        ].filter(Boolean);
+        setMembershipNotice(notices.join("。"));
         setLoading(false);
       })();
     });
