@@ -1,12 +1,17 @@
 import { auth } from "./firebase";
-import type { UserLinkReservation } from "./user-link-reservations";
+import type {
+  UserLinkReservation,
+  UserLinkReservationMutationOutcome,
+  UserLinkReservationMutationResult,
+} from "./user-link-reservations";
 
 type ReservationResponse = {
   success?: boolean;
-  reservation?: UserLinkReservation;
+  reservation?: UserLinkReservation | null;
   reservations?: UserLinkReservation[];
   claimedCount?: number;
   waitingForMembershipCount?: number;
+  outcome?: UserLinkReservationMutationOutcome;
   error?: string;
 };
 
@@ -66,26 +71,34 @@ export async function createProjectUserLinkReservationClient(input: {
   projectId: string;
   personId: string;
   email: string;
-}): Promise<UserLinkReservation> {
+}): Promise<UserLinkReservationMutationResult> {
   const result = await authenticatedRequest(managementPath(input.projectId), {
     method: "POST",
     body: JSON.stringify({ personId: input.personId, email: input.email }),
   });
-  if (!result.reservation) throw new Error("作成した予約情報を確認できませんでした");
-  return result.reservation;
+  return mutationResult(result);
 }
 
 export async function changeProjectUserLinkReservationClient(input: {
   projectId: string;
   personId: string;
   email: string;
-}): Promise<UserLinkReservation> {
+}): Promise<UserLinkReservationMutationResult> {
   const result = await authenticatedRequest(managementPath(input.projectId), {
     method: "PATCH",
     body: JSON.stringify({ personId: input.personId, email: input.email }),
   });
-  if (!result.reservation) throw new Error("変更した予約情報を確認できませんでした");
-  return result.reservation;
+  return mutationResult(result);
+}
+
+function mutationResult(result: ReservationResponse): UserLinkReservationMutationResult {
+  if (result.outcome === "pending" && result.reservation) {
+    return { outcome: "pending", reservation: result.reservation };
+  }
+  if (result.outcome === "linked" || result.outcome === "already_linked") {
+    return { outcome: result.outcome, reservation: null };
+  }
+  throw new Error("紐づけ予約の処理結果を確認できませんでした");
 }
 
 export async function cancelProjectUserLinkReservationClient(input: {

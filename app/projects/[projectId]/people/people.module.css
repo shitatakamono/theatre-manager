@@ -46,6 +46,7 @@
 .reservationSection > p { color: #68766f; font-size: 11px; line-height: 1.55; }
 .reservationSection .reservationPending { color: #245b48; font-size: 12px; font-weight: 800; overflow-wrap: anywhere; }
 .reservationSection .reservationHint { margin-top: -3px; color: #68766f; }
+.reservationSection .reservationConflict { border-left: 3px solid #b55a4f; background: #fff3f1; color: #8c332d; padding: 7px 8px; font-weight: 700; }
 .reservationInput { display: grid; gap: 5px; }
 .reservationActions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
 .reservationActions button { min-height: 32px; border: 1px solid #b9c9c2; border-radius: 6px; background: #fff; color: #356151; padding: 6px 10px; font-size: 11px; font-weight: 800; }

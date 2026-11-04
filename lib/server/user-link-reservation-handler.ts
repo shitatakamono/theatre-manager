@@ -1,5 +1,8 @@
 import type { DecodedIdToken } from "firebase-admin/auth";
-import { UserLinkReservationError } from "../user-link-reservations.ts";
+import {
+  UserLinkReservationError,
+  type UserLinkReservationMutationResult,
+} from "../user-link-reservations.ts";
 
 type ManagementDependencies = {
   verifyIdToken: (idToken: string) => Promise<{ uid: string }>;
@@ -13,13 +16,13 @@ type ManagementDependencies = {
     projectId: string;
     personId: string;
     email: string;
-  }) => Promise<unknown>;
+  }) => Promise<UserLinkReservationMutationResult>;
   changeReservation: (input: {
     uid: string;
     projectId: string;
     personId: string;
     email: string;
-  }) => Promise<unknown>;
+  }) => Promise<UserLinkReservationMutationResult>;
   cancelReservation: (input: {
     uid: string;
     projectId: string;
@@ -115,7 +118,7 @@ export function createUserLinkReservationManagementHandlers(
         });
         return json({ success: true }, 200);
       }
-      const reservation = await (operation === "create"
+      const result = await (operation === "create"
         ? dependencies.createReservation
         : dependencies.changeReservation)({
         uid: token.uid,
@@ -123,7 +126,10 @@ export function createUserLinkReservationManagementHandlers(
         personId: values.personId,
         email: values.email,
       });
-      return json({ success: true, reservation }, operation === "create" ? 201 : 200);
+      return json(
+        { success: true, ...result },
+        operation === "create" && result.outcome === "pending" ? 201 : 200
+      );
     } catch (error) {
       return requestError(error);
     }

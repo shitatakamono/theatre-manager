@@ -17,7 +17,11 @@ describe("user link reservation management view", () => {
       canEdit: true,
       linkedUserUid: null,
       reservation: { email: "person@example.com", status: "pending" },
-    }), { kind: "pending", email: "person@example.com" });
+    }), {
+      kind: "pending",
+      email: "person@example.com",
+      conflictPersonName: null,
+    });
   });
 
   it("does not expose a pending address to Viewer", () => {
@@ -36,6 +40,22 @@ describe("user link reservation management view", () => {
     }), { kind: "hidden" });
   });
 
+  it("marks a preserved pending reservation when it conflicts with another person", () => {
+    assert.deepEqual(getUserLinkReservationView({
+      canEdit: true,
+      linkedUserUid: null,
+      reservation: {
+        email: "person@example.com",
+        status: "pending",
+        conflictPersonName: "別の関係者",
+      },
+    }), {
+      kind: "pending",
+      email: "person@example.com",
+      conflictPersonName: "別の関係者",
+    });
+  });
+
   it("wires create, change, cancel, and Bearer-authenticated management APIs", async () => {
     const source = await readFile(
       new URL("../app/projects/[projectId]/people/PeopleManagementClient.tsx", import.meta.url),
@@ -52,6 +72,7 @@ describe("user link reservation management view", () => {
     assert.match(source, /Googleアカウントで紐づけ予約/);
     assert.match(source, /予約変更/);
     assert.match(source, /予約解除/);
+    assert.match(source, /この予約は既存の紐づけと競合しています/);
     assert.match(client, /Authorization: `Bearer \$\{idToken\}`/);
   });
 });

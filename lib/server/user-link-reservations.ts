@@ -1,11 +1,13 @@
 import type { DecodedIdToken } from "firebase-admin/auth";
 import { Timestamp } from "firebase-admin/firestore";
 import {
+  findUserLinkReservationMemberByEmail,
   getUserLinkReservationId,
   isValidUserLinkReservationEmail,
   normalizeUserLinkReservationEmail,
   UserLinkReservationError,
   type UserLinkReservation,
+  type UserLinkReservationMutationResult,
 } from "../user-link-reservations.ts";
 import { getLegacyRehearsalParticipationTypes } from "../rehearsal-participation.ts";
 import { adminAuth, adminDb } from "./firebase-admin.ts";
@@ -71,6 +73,7 @@ function mapReservation(
     claimedAt: data.claimedAt ?? null,
     claimedByUid: typeof data.claimedByUid === "string" ? data.claimedByUid : null,
     cancelledAt: data.cancelledAt ?? null,
+    conflictPersonName: null,
   };
 }
 
@@ -90,11 +93,207 @@ export async function getProjectUserLinkReservations(input: {
   if (!member.exists || !["owner", "editor"].includes(member.data()?.role)) {
     throw new UserLinkReservationError("forbidden", 403, "予約情報を表示する権限がありません");
   }
-  const snapshot = await projectRef.collection(RESERVATIONS).get();
+  const [snapshot, members, people] = await Promise.all([
+    projectRef.collection(RESERVATIONS).get(),
+    projectRef.collection("members").get(),
+    projectRef.collection("people").get(),
+  ]);
+  const memberValues = members.docs.map((document) => ({
+    uid: document.id,
+    email: typeof document.data().email === "string" ? document.data().email : null,
+  }));
+  const linkedPersonByUid = new Map(people.docs.flatMap((document) => {
+    const linkedUserUid = typeof document.data().linkedUserUid === "string"
+      ? document.data().linkedUserUid.trim()
+      : "";
+    return linkedUserUid ? [[linkedUserUid, document] as const] : [];
+  }));
   return snapshot.docs
     .map(mapReservation)
     .filter((reservation) => !personId || reservation.personId === personId)
+    .map((reservation) => {
+      if (reservation.status !== "pending") return reservation;
+      const match = findUserLinkReservationMemberByEmail(memberValues, reservation.email);
+      if (match.kind !== "match") return reservation;
+      const linkedPerson = linkedPersonByUid.get(match.uid);
+      if (!linkedPerson || linkedPerson.id === reservation.personId) return reservation;
+      const displayName = typeof linkedPerson.data().displayName === "string"
+        ? linkedPerson.data().displayName.trim()
+        : "";
+      return {
+        ...reservation,
+        conflictPersonName: displayName || "別の関係者",
+      };
+    })
     .sort((left, right) => left.email.localeCompare(right.email));
+}
+
+type FormalLinkSnapshots = {
+  person: FirebaseFirestore.DocumentSnapshot;
+  participant: FirebaseFirestore.DocumentSnapshot;
+  reverse: FirebaseFirestore.DocumentSnapshot;
+  linkedPeople: FirebaseFirestore.QuerySnapshot;
+};
+
+function linkedUid(snapshot: FirebaseFirestore.DocumentSnapshot): string {
+  return typeof snapshot.data()?.linkedUserUid === "string"
+    ? snapshot.data()!.linkedUserUid.trim()
+    : "";
+}
+
+function memberMatchFromSnapshot(
+  members: FirebaseFirestore.QuerySnapshot,
+  email: string
+) {
+  const match = findUserLinkReservationMemberByEmail(
+    members.docs.map((document) => ({
+      uid: document.id,
+      email: typeof document.data().email === "string" ? document.data().email : null,
+    })),
+    email
+  );
+  if (match.kind === "ambiguous") {
+    throw new UserLinkReservationError(
+      "member_email_ambiguous",
+      409,
+      "同じメールアドレスのシステム利用者が複数いるため紐づけできません"
+    );
+  }
+  return match;
+}
+
+function conflictingPersonName(
+  linkedPeople: FirebaseFirestore.QuerySnapshot,
+  personId: string,
+  reversePersonId: string
+): string {
+  const conflict = linkedPeople.docs.find((document) => document.id !== personId)
+    ?? linkedPeople.docs.find((document) => document.id === reversePersonId);
+  const displayName = typeof conflict?.data().displayName === "string"
+    ? conflict.data().displayName.trim()
+    : "";
+  return displayName || "別の関係者";
+}
+
+function inspectFormalLink(
+  snapshots: FormalLinkSnapshots,
+  personId: string,
+  linkedUserUid: string,
+  mode: "management" | "claim" = "management"
+): "available" | "already_linked" {
+  const personLinkedUid = linkedUid(snapshots.person);
+  const participantLinkedUid = linkedUid(snapshots.participant);
+  const reversePersonId = typeof snapshots.reverse.data()?.participantId === "string"
+    ? snapshots.reverse.data()!.participantId.trim()
+    : "";
+  const linkedToAnotherPerson = snapshots.linkedPeople.docs.some(
+    (document) => document.id !== personId
+  );
+
+  if (personLinkedUid && personLinkedUid !== linkedUserUid) {
+    if (mode === "claim") {
+      throw new UserLinkReservationError(
+        "reservation_conflict",
+        409,
+        "既存のシステム利用者連携と競合しています"
+      );
+    }
+    throw new UserLinkReservationError(
+      "person_already_linked",
+      409,
+      "この関係者はすでに別のシステム利用者と紐づいています"
+    );
+  }
+  if ((participantLinkedUid && participantLinkedUid !== linkedUserUid)
+    || (reversePersonId && reversePersonId !== personId)
+    || linkedToAnotherPerson) {
+    const name = conflictingPersonName(snapshots.linkedPeople, personId, reversePersonId);
+    if (mode === "claim") {
+      throw new UserLinkReservationError(
+        "reservation_conflict",
+        409,
+        "既存のシステム利用者連携と競合しています"
+      );
+    }
+    throw new UserLinkReservationError(
+      "member_already_linked",
+      409,
+      `このGoogleアカウントはすでに「${name}」さんと紐づいています。別のGoogleアカウントを指定するか、既存の紐づけを解除してください。`
+    );
+  }
+
+  const personMatches = personLinkedUid === linkedUserUid;
+  const participantMatches = participantLinkedUid === linkedUserUid;
+  const reverseMatches = reversePersonId === personId;
+  if (personMatches || participantMatches || reverseMatches) {
+    if (personMatches && participantMatches && reverseMatches) return "already_linked";
+    throw new UserLinkReservationError(
+      "reservation_conflict",
+      409,
+      "既存のシステム利用者連携が不整合です"
+    );
+  }
+  return "available";
+}
+
+function writeFormalLink(
+  transaction: FirebaseFirestore.Transaction,
+  projectRef: FirebaseFirestore.DocumentReference,
+  snapshots: FormalLinkSnapshots,
+  personId: string,
+  linkedUserUid: string,
+  actor: ReservationActor,
+  now: Timestamp,
+  activityRef: FirebaseFirestore.DocumentReference
+) {
+  transaction.update(snapshots.person.ref, {
+    linkedUserUid,
+    updatedAt: now,
+    updatedByUid: actor.uid,
+  });
+  if (snapshots.participant.exists) {
+    transaction.update(snapshots.participant.ref, {
+      linkedUserUid,
+      updatedAt: now,
+      updatedByUid: actor.uid,
+    });
+  } else {
+    transaction.set(
+      snapshots.participant.ref,
+      participantFromPerson(snapshots.person.data()!, linkedUserUid, actor.uid, now)
+    );
+  }
+  transaction.set(projectRef.collection("participantLinkedUsers").doc(linkedUserUid), {
+    participantId: personId,
+  });
+  transaction.set(activityRef, activityPayload(actor, ["システム利用者連携"], now));
+}
+
+async function readFormalLinkSnapshots(
+  transaction: FirebaseFirestore.Transaction,
+  projectRef: FirebaseFirestore.DocumentReference,
+  person: FirebaseFirestore.DocumentSnapshot,
+  personId: string,
+  linkedUserUid: string
+): Promise<FormalLinkSnapshots> {
+  const [participant, reverse, linkedPeople] = await Promise.all([
+    transaction.get(projectRef.collection("participants").doc(personId)),
+    transaction.get(projectRef.collection("participantLinkedUsers").doc(linkedUserUid)),
+    transaction.get(projectRef.collection("people").where("linkedUserUid", "==", linkedUserUid)),
+  ]);
+  return { person, participant, reverse, linkedPeople };
+}
+
+function reservationActor(
+  uid: string,
+  member: FirebaseFirestore.DocumentSnapshot
+): ReservationActor {
+  return {
+    uid,
+    name: typeof member.data()?.displayName === "string" && member.data()!.displayName.trim()
+      ? member.data()!.displayName.trim()
+      : "システム利用者",
+  };
 }
 
 export async function createProjectUserLinkReservation(input: {
@@ -102,7 +301,7 @@ export async function createProjectUserLinkReservation(input: {
   projectId: string;
   personId: string;
   email: string;
-}): Promise<UserLinkReservation> {
+}): Promise<UserLinkReservationMutationResult> {
   const projectId = requiredId(input.projectId, "公演ID");
   const personId = requiredId(input.personId, "関係者ID");
   const email = reservationEmail(input.email);
@@ -113,12 +312,13 @@ export async function createProjectUserLinkReservation(input: {
   const personRef = projectRef.collection("people").doc(personId);
   const activityRef = projectRef.collection("activityLogs").doc();
 
-  await adminDb.runTransaction(async (transaction) => {
-    const [member, person, reservation, lock] = await Promise.all([
+  const outcome = await adminDb.runTransaction(async (transaction) => {
+    const [member, person, reservation, lock, members] = await Promise.all([
       transaction.get(projectRef.collection("members").doc(input.uid)),
       transaction.get(personRef),
       transaction.get(reservationRef),
       transaction.get(lockRef),
+      transaction.get(projectRef.collection("members")),
     ]);
     const role = member.data()?.role;
     if (!member.exists || (role !== "owner" && role !== "editor")) {
@@ -126,13 +326,6 @@ export async function createProjectUserLinkReservation(input: {
     }
     if (!person.exists) {
       throw new UserLinkReservationError("person_not_found", 404, "関係者が見つかりません");
-    }
-    if (typeof person.data()?.linkedUserUid === "string" && person.data()!.linkedUserUid.trim()) {
-      throw new UserLinkReservationError(
-        "person_already_linked",
-        409,
-        "この関係者はすでにシステム利用者と連携されています"
-      );
     }
     if (reservation.exists && reservation.data()?.status === "pending"
       && reservation.data()?.personId !== personId) {
@@ -149,7 +342,18 @@ export async function createProjectUserLinkReservation(input: {
         "この関係者には別のメールアドレスが予約されています"
       );
     }
-    if (reservation.exists && reservation.data()?.status === "pending") {
+    const memberMatch = memberMatchFromSnapshot(members, email);
+    if (memberMatch.kind === "none"
+      && typeof person.data()?.linkedUserUid === "string"
+      && person.data()!.linkedUserUid.trim()) {
+      throw new UserLinkReservationError(
+        "person_already_linked",
+        409,
+        "この関係者はすでにシステム利用者と連携されています"
+      );
+    }
+    if (memberMatch.kind === "none" && reservation.exists
+      && reservation.data()?.status === "pending") {
       throw new UserLinkReservationError(
         "email_already_reserved",
         409,
@@ -158,12 +362,44 @@ export async function createProjectUserLinkReservation(input: {
     }
 
     const now = Timestamp.now();
-    const actor = {
-      uid: input.uid,
-      name: typeof member.data()?.displayName === "string" && member.data()!.displayName.trim()
-        ? member.data()!.displayName.trim()
-        : "システム利用者",
-    };
+    const actor = reservationActor(input.uid, member);
+    if (memberMatch.kind === "match") {
+      const formalLink = await readFormalLinkSnapshots(
+        transaction,
+        projectRef,
+        person,
+        personId,
+        memberMatch.uid
+      );
+      const state = inspectFormalLink(formalLink, personId, memberMatch.uid);
+      if (state === "available") {
+        writeFormalLink(
+          transaction,
+          projectRef,
+          formalLink,
+          personId,
+          memberMatch.uid,
+          actor,
+          now,
+          activityRef
+        );
+      }
+      if (reservation.exists && reservation.data()?.status === "pending") {
+        transaction.update(reservationRef, {
+          status: "claimed",
+          claimedAt: now,
+          claimedByUid: memberMatch.uid,
+          cancelledAt: null,
+          updatedAt: now,
+          updatedByUid: input.uid,
+        });
+        if (lock.exists && lock.data()?.reservationId === reservationId) {
+          transaction.delete(lockRef);
+        }
+      }
+      return state === "already_linked" ? "already_linked" : "linked";
+    }
+
     transaction.set(reservationRef, {
       personId,
       email,
@@ -178,8 +414,12 @@ export async function createProjectUserLinkReservation(input: {
     });
     transaction.set(lockRef, { reservationId, email, updatedAt: now });
     transaction.set(activityRef, activityPayload(actor, ["システム利用者連携予約を作成"], now));
+    return "pending";
   });
-  return mapReservation(await reservationRef.get());
+  return {
+    outcome,
+    reservation: outcome === "pending" ? mapReservation(await reservationRef.get()) : null,
+  };
 }
 
 export async function changeProjectUserLinkReservation(input: {
@@ -187,7 +427,7 @@ export async function changeProjectUserLinkReservation(input: {
   projectId: string;
   personId: string;
   email: string;
-}): Promise<UserLinkReservation> {
+}): Promise<UserLinkReservationMutationResult> {
   const projectId = requiredId(input.projectId, "公演ID");
   const personId = requiredId(input.personId, "関係者ID");
   const email = reservationEmail(input.email);
@@ -198,12 +438,13 @@ export async function changeProjectUserLinkReservation(input: {
   const personRef = projectRef.collection("people").doc(personId);
   const activityRef = projectRef.collection("activityLogs").doc();
 
-  await adminDb.runTransaction(async (transaction) => {
-    const [member, person, lock, newReservation] = await Promise.all([
+  const outcome = await adminDb.runTransaction(async (transaction) => {
+    const [member, person, lock, newReservation, members] = await Promise.all([
       transaction.get(projectRef.collection("members").doc(input.uid)),
       transaction.get(personRef),
       transaction.get(lockRef),
       transaction.get(newReservationRef),
+      transaction.get(projectRef.collection("members")),
     ]);
     const role = member.data()?.role;
     if (!member.exists || (role !== "owner" && role !== "editor")) {
@@ -212,23 +453,14 @@ export async function changeProjectUserLinkReservation(input: {
     if (!person.exists) {
       throw new UserLinkReservationError("person_not_found", 404, "関係者が見つかりません");
     }
-    if (typeof person.data()?.linkedUserUid === "string" && person.data()!.linkedUserUid.trim()) {
-      throw new UserLinkReservationError(
-        "person_already_linked",
-        409,
-        "この関係者はすでにシステム利用者と連携されています"
-      );
-    }
     const oldReservationId = typeof lock.data()?.reservationId === "string"
       ? lock.data()!.reservationId
       : "";
     if (!lock.exists || !oldReservationId) {
       throw new UserLinkReservationError("reservation_not_found", 404, "変更する予約が見つかりません");
     }
-    if (oldReservationId === newReservationId) {
-      throw new UserLinkReservationError("reservation_conflict", 409, "同じメールアドレスが指定されています");
-    }
-    if (newReservation.exists && newReservation.data()?.status === "pending") {
+    if (newReservation.exists && newReservation.data()?.status === "pending"
+      && newReservation.id !== oldReservationId) {
       throw new UserLinkReservationError(
         "email_already_reserved",
         409,
@@ -242,7 +474,60 @@ export async function changeProjectUserLinkReservation(input: {
       throw new UserLinkReservationError("reservation_conflict", 409, "予約情報が競合しています");
     }
 
+    const memberMatch = memberMatchFromSnapshot(members, email);
+    if (memberMatch.kind === "none"
+      && typeof person.data()?.linkedUserUid === "string"
+      && person.data()!.linkedUserUid.trim()) {
+      throw new UserLinkReservationError(
+        "person_already_linked",
+        409,
+        "この関係者はすでにシステム利用者と連携されています"
+      );
+    }
+    if (memberMatch.kind === "none" && oldReservationId === newReservationId) {
+      throw new UserLinkReservationError("reservation_conflict", 409, "同じメールアドレスが指定されています");
+    }
+
     const now = Timestamp.now();
+    const actor = reservationActor(input.uid, member);
+    if (memberMatch.kind === "match") {
+      const formalLink = await readFormalLinkSnapshots(
+        transaction,
+        projectRef,
+        person,
+        personId,
+        memberMatch.uid
+      );
+      const state = inspectFormalLink(formalLink, personId, memberMatch.uid);
+      if (state === "available") {
+        writeFormalLink(
+          transaction,
+          projectRef,
+          formalLink,
+          personId,
+          memberMatch.uid,
+          actor,
+          now,
+          activityRef
+        );
+      }
+      transaction.update(oldReservationRef, oldReservationId === newReservationId ? {
+        status: "claimed",
+        claimedAt: now,
+        claimedByUid: memberMatch.uid,
+        cancelledAt: null,
+        updatedAt: now,
+        updatedByUid: input.uid,
+      } : {
+        status: "cancelled",
+        cancelledAt: now,
+        updatedAt: now,
+        updatedByUid: input.uid,
+      });
+      transaction.delete(lockRef);
+      return state === "already_linked" ? "already_linked" : "linked";
+    }
+
     transaction.update(oldReservationRef, {
       status: "cancelled",
       cancelledAt: now,
@@ -262,14 +547,13 @@ export async function changeProjectUserLinkReservation(input: {
       cancelledAt: null,
     });
     transaction.set(lockRef, { reservationId: newReservationId, email, updatedAt: now });
-    transaction.set(activityRef, activityPayload({
-      uid: input.uid,
-      name: typeof member.data()?.displayName === "string" && member.data()!.displayName.trim()
-        ? member.data()!.displayName.trim()
-        : "システム利用者",
-    }, ["システム利用者連携予約を変更"], now));
+    transaction.set(activityRef, activityPayload(actor, ["システム利用者連携予約を変更"], now));
+    return "pending";
   });
-  return mapReservation(await newReservationRef.get());
+  return {
+    outcome,
+    reservation: outcome === "pending" ? mapReservation(await newReservationRef.get()) : null,
+  };
 }
 
 export async function cancelProjectUserLinkReservation(input: {
@@ -323,7 +607,8 @@ export async function cancelProjectUserLinkReservation(input: {
 
 function participantFromPerson(
   personData: FirebaseFirestore.DocumentData,
-  uid: string,
+  linkedUserUid: string,
+  actorUid: string,
   now: Timestamp
 ) {
   return {
@@ -334,13 +619,13 @@ function participantFromPerson(
     rehearsalParticipationTypes: Array.isArray(personData.rehearsalParticipationTypes)
       ? personData.rehearsalParticipationTypes
       : getLegacyRehearsalParticipationTypes(personData.specialPractice),
-    linkedUserUid: uid,
+    linkedUserUid,
     publicNote: typeof personData.publicNote === "string" ? personData.publicNote : "",
     active: personData.active === true && personData.attendanceTarget === true,
     createdAt: personData.createdAt ?? now,
-    createdByUid: typeof personData.createdByUid === "string" ? personData.createdByUid : uid,
+    createdByUid: typeof personData.createdByUid === "string" ? personData.createdByUid : actorUid,
     updatedAt: now,
-    updatedByUid: uid,
+    updatedByUid: actorUid,
   };
 }
 
@@ -455,56 +740,25 @@ export async function claimPendingUserLinkReservations(
       if (!record.lock.exists || record.lock.data()?.reservationId !== reservationId) {
         throw new UserLinkReservationError("reservation_conflict", 409, "予約情報が競合しています");
       }
-      const personLinkedUid = typeof record.person.data()?.linkedUserUid === "string"
-        ? record.person.data()!.linkedUserUid.trim()
-        : "";
-      const participantLinkedUid = typeof record.participant.data()?.linkedUserUid === "string"
-        ? record.participant.data()!.linkedUserUid.trim()
-        : "";
-      const reversePersonId = typeof record.reverse.data()?.participantId === "string"
-        ? record.reverse.data()!.participantId.trim()
-        : "";
-      const linkedToAnotherPerson = record.linkedPeople.docs.some(
-        (document) => document.id !== personId
-      );
-      if ((personLinkedUid && personLinkedUid !== token.uid)
-        || (participantLinkedUid && participantLinkedUid !== token.uid)
-        || (reversePersonId && reversePersonId !== personId)
-        || linkedToAnotherPerson) {
-        throw new UserLinkReservationError(
-          "reservation_conflict",
-          409,
-          "既存のシステム利用者連携と競合しています"
+      const formalLink = {
+        person: record.person,
+        participant: record.participant,
+        reverse: record.reverse,
+        linkedPeople: record.linkedPeople,
+      };
+      const linkState = inspectFormalLink(formalLink, personId, token.uid, "claim");
+      if (linkState === "available") {
+        writeFormalLink(
+          transaction,
+          record.projectRef,
+          formalLink,
+          personId,
+          token.uid,
+          actor,
+          now,
+          record.projectRef.collection("activityLogs").doc()
         );
       }
-      if ((personLinkedUid === token.uid) !== (reversePersonId === personId)) {
-        throw new UserLinkReservationError(
-          "reservation_conflict",
-          409,
-          "既存のシステム利用者連携が不整合です"
-        );
-      }
-
-      transaction.update(record.person.ref, {
-        linkedUserUid: token.uid,
-        updatedAt: now,
-        updatedByUid: token.uid,
-      });
-      if (record.participant.exists) {
-        transaction.update(record.participant.ref, {
-          linkedUserUid: token.uid,
-          updatedAt: now,
-          updatedByUid: token.uid,
-        });
-      } else {
-        transaction.set(
-          record.participant.ref,
-          participantFromPerson(record.person.data()!, token.uid, now)
-        );
-      }
-      transaction.set(record.projectRef.collection("participantLinkedUsers").doc(token.uid), {
-        participantId: personId,
-      });
       transaction.update(record.reservation.ref, {
         status: "claimed",
         claimedAt: now,
@@ -514,10 +768,6 @@ export async function claimPendingUserLinkReservations(
         updatedByUid: token.uid,
       });
       transaction.delete(record.lock.ref);
-      transaction.set(
-        record.projectRef.collection("activityLogs").doc(),
-        activityPayload(actor, ["システム利用者連携"], now)
-      );
       claimedCount += 1;
     }
     return { claimedCount, waitingForMembershipCount };

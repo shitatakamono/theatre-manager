@@ -50,6 +50,25 @@ async function seed() {
   ]);
 }
 
+async function seedFormalLink({ uid, email, personId }) {
+  const project = projectRef();
+  const participant = personData((await project.collection("people").doc(personId).get()).data().displayName);
+  await Promise.all([
+    project.collection("members").doc(uid).set({
+      uid,
+      role: "viewer",
+      displayName: "Linked User",
+      email,
+    }),
+    project.collection("people").doc(personId).update({ linkedUserUid: uid }),
+    project.collection("participants").doc(personId).set({
+      ...participant,
+      linkedUserUid: uid,
+    }),
+    project.collection("participantLinkedUsers").doc(uid).set({ participantId: personId }),
+  ]);
+}
+
 before(async () => {
   process.env.GCLOUD_PROJECT = emulatorProjectId;
   process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID = emulatorProjectId;
@@ -69,17 +88,77 @@ after(async () => {
 
 describe("user link reservation server transactions", () => {
   it("allows owner/editor creation without changing formal link documents", async () => {
-    const reservation = await service.createProjectUserLinkReservation({
+    const result = await service.createProjectUserLinkReservation({
       uid: editorUid,
       projectId,
       personId: "person-a",
       email: " Person@Example.test ",
     });
-    strictEqual(reservation.email, "person@example.test");
-    strictEqual(reservation.status, "pending");
+    strictEqual(result.outcome, "pending");
+    strictEqual(result.reservation.email, "person@example.test");
+    strictEqual(result.reservation.status, "pending");
     strictEqual((await projectRef().collection("people").doc("person-a").get()).data().linkedUserUid, null);
     strictEqual((await projectRef().collection("participants").doc("person-a").get()).exists, false);
     strictEqual((await projectRef().collection("participantLinkedUsers").get()).empty, true);
+  });
+
+  it("immediately links an existing unlinked member instead of creating a pending reservation", async () => {
+    const email = "existing@example.test";
+    await projectRef().collection("members").doc("existing-user").set({
+      uid: "existing-user",
+      role: "viewer",
+      displayName: "Existing User",
+      email,
+    });
+    const result = await service.createProjectUserLinkReservation({
+      uid: editorUid,
+      projectId,
+      personId: "person-a",
+      email,
+    });
+
+    strictEqual(result.outcome, "linked");
+    strictEqual(result.reservation, null);
+    strictEqual((await projectRef().collection("people").doc("person-a").get()).data().linkedUserUid, "existing-user");
+    strictEqual((await projectRef().collection("participants").doc("person-a").get()).data().linkedUserUid, "existing-user");
+    strictEqual((await projectRef().collection("participantLinkedUsers").doc("existing-user").get()).data().participantId, "person-a");
+    strictEqual((await projectRef().collection("userLinkReservations").get()).empty, true);
+    strictEqual((await projectRef().collection("activityLogs").get()).size, 1);
+  });
+
+  it("treats an already complete link to the requested person as idempotent success", async () => {
+    const email = "same-person@example.test";
+    await seedFormalLink({ uid: "same-user", email, personId: "person-a" });
+    const result = await service.createProjectUserLinkReservation({
+      uid: ownerUid,
+      projectId,
+      personId: "person-a",
+      email,
+    });
+
+    strictEqual(result.outcome, "already_linked");
+    strictEqual(result.reservation, null);
+    strictEqual((await projectRef().collection("userLinkReservations").get()).empty, true);
+    strictEqual((await projectRef().collection("activityLogs").get()).empty, true);
+  });
+
+  it("rejects a member already linked to another person without changing either link", async () => {
+    const email = "other-person@example.test";
+    await seedFormalLink({ uid: "linked-user", email, personId: "person-b" });
+
+    await rejects(() => service.createProjectUserLinkReservation({
+      uid: editorUid,
+      projectId,
+      personId: "person-a",
+      email,
+    }), {
+      code: "member_already_linked",
+      message: /Person B/,
+    });
+    strictEqual((await projectRef().collection("people").doc("person-a").get()).data().linkedUserUid, null);
+    strictEqual((await projectRef().collection("people").doc("person-b").get()).data().linkedUserUid, "linked-user");
+    strictEqual((await projectRef().collection("participantLinkedUsers").doc("linked-user").get()).data().participantId, "person-b");
+    strictEqual((await projectRef().collection("userLinkReservations").get()).empty, true);
   });
 
   it("serializes duplicate email and duplicate-person concurrent reservations", async () => {
@@ -121,18 +200,21 @@ describe("user link reservation server transactions", () => {
   });
 
   it("changes and cancels a pending reservation while preserving its history", async () => {
-    const first = await service.createProjectUserLinkReservation({
+    const firstResult = await service.createProjectUserLinkReservation({
       uid: ownerUid,
       projectId,
       personId: "person-a",
       email: "first@example.test",
     });
-    const changed = await service.changeProjectUserLinkReservation({
+    const changedResult = await service.changeProjectUserLinkReservation({
       uid: editorUid,
       projectId,
       personId: "person-a",
       email: "second@example.test",
     });
+    const first = firstResult.reservation;
+    const changed = changedResult.reservation;
+    strictEqual(changedResult.outcome, "pending");
     strictEqual(changed.email, "second@example.test");
     strictEqual(changed.status, "pending");
     strictEqual((await projectRef().collection("userLinkReservations").doc(first.id).get()).data().status, "cancelled");
@@ -143,6 +225,84 @@ describe("user link reservation server transactions", () => {
     });
     strictEqual((await projectRef().collection("userLinkReservations").doc(changed.id).get()).data().status, "cancelled");
     strictEqual((await projectRef().collection("userLinkReservationLocks").doc("person-a").get()).exists, false);
+  });
+
+  it("converts a pending reservation change into an immediate formal link for an existing member", async () => {
+    const first = await service.createProjectUserLinkReservation({
+      uid: ownerUid,
+      projectId,
+      personId: "person-a",
+      email: "waiting@example.test",
+    });
+    await projectRef().collection("members").doc("new-member").set({
+      uid: "new-member",
+      role: "viewer",
+      email: "registered@example.test",
+    });
+
+    const result = await service.changeProjectUserLinkReservation({
+      uid: editorUid,
+      projectId,
+      personId: "person-a",
+      email: "registered@example.test",
+    });
+
+    strictEqual(result.outcome, "linked");
+    strictEqual(result.reservation, null);
+    strictEqual((await projectRef().collection("people").doc("person-a").get()).data().linkedUserUid, "new-member");
+    strictEqual((await projectRef().collection("participantLinkedUsers").doc("new-member").get()).data().participantId, "person-a");
+    strictEqual((await projectRef().collection("userLinkReservations").doc(first.reservation.id).get()).data().status, "cancelled");
+    strictEqual((await projectRef().collection("userLinkReservationLocks").doc("person-a").get()).exists, false);
+  });
+
+  it("shows a preserved pending reservation as conflicted after another formal link appears", async () => {
+    const email = "later-conflict@example.test";
+    const created = await service.createProjectUserLinkReservation({
+      uid: ownerUid,
+      projectId,
+      personId: "person-a",
+      email,
+    });
+    await seedFormalLink({ uid: "later-user", email, personId: "person-b" });
+
+    const reservations = await service.getProjectUserLinkReservations({
+      uid: editorUid,
+      projectId,
+    });
+    const reservation = reservations.find((item) => item.id === created.reservation.id);
+    strictEqual(reservation.status, "pending");
+    strictEqual(reservation.conflictPersonName, "Person B");
+    strictEqual((await projectRef().collection("userLinkReservations").doc(created.reservation.id).get()).data().status, "pending");
+  });
+
+  it("serializes concurrent immediate links for one registered member", async () => {
+    const email = "concurrent-member@example.test";
+    await projectRef().collection("members").doc("concurrent-user").set({
+      uid: "concurrent-user",
+      role: "viewer",
+      email,
+    });
+    const results = await Promise.allSettled([
+      service.createProjectUserLinkReservation({
+        uid: ownerUid,
+        projectId,
+        personId: "person-a",
+        email,
+      }),
+      service.createProjectUserLinkReservation({
+        uid: editorUid,
+        projectId,
+        personId: "person-b",
+        email,
+      }),
+    ]);
+    strictEqual(results.filter(({ status }) => status === "fulfilled").length, 1);
+    strictEqual(results.filter(({ status }) => status === "rejected").length, 1);
+    const linkedPeople = await projectRef().collection("people")
+      .where("linkedUserUid", "==", "concurrent-user").get();
+    strictEqual(linkedPeople.size, 1);
+    strictEqual((await projectRef().collection("participantLinkedUsers").doc("concurrent-user").get()).exists, true);
+    strictEqual((await projectRef().collection("userLinkReservations").get()).empty, true);
   });
 
   it("waits for membership, then atomically creates the formal bidirectional link", async () => {

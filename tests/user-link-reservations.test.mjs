@@ -2,6 +2,7 @@ import { deepStrictEqual, notStrictEqual, strictEqual } from "node:assert/strict
 import { describe, it } from "node:test";
 
 import {
+  findUserLinkReservationMemberByEmail,
   getUserLinkReservationId,
   isValidUserLinkReservationEmail,
   normalizeUserLinkReservationEmail,
@@ -16,8 +17,14 @@ function management(overrides = {}) {
   return createUserLinkReservationManagementHandlers("project-a", {
     verifyIdToken: async () => ({ uid: "editor-a" }),
     getReservations: async () => [],
-    createReservation: async (input) => ({ id: "reservation-a", ...input }),
-    changeReservation: async (input) => ({ id: "reservation-b", ...input }),
+    createReservation: async (input) => ({
+      outcome: "pending",
+      reservation: { id: "reservation-a", ...input },
+    }),
+    changeReservation: async (input) => ({
+      outcome: "pending",
+      reservation: { id: "reservation-b", ...input },
+    }),
     cancelReservation: async () => undefined,
     ...overrides,
   });
@@ -52,6 +59,19 @@ describe("user link reservation identity", () => {
     strictEqual(/^[A-Za-z0-9_-]+$/.test(first), true);
     notStrictEqual(first, getUserLinkReservationId("other@example.test"));
   });
+
+  it("finds one member by normalized email and rejects ambiguous member data", () => {
+    deepStrictEqual(findUserLinkReservationMemberByEmail([
+      { uid: "user-a", email: " Person@Example.test " },
+    ], "person@example.test"), { kind: "match", uid: "user-a" });
+    deepStrictEqual(findUserLinkReservationMemberByEmail([], "person@example.test"), {
+      kind: "none",
+    });
+    deepStrictEqual(findUserLinkReservationMemberByEmail([
+      { uid: "user-a", email: "person@example.test" },
+      { uid: "user-b", email: "PERSON@example.test" },
+    ], "person@example.test"), { kind: "ambiguous" });
+  });
 });
 
 describe("user link reservation management handlers", () => {
@@ -64,8 +84,14 @@ describe("user link reservation management handlers", () => {
     const calls = [];
     const handlers = management({
       getReservations: async (input) => { calls.push(["get", input]); return []; },
-      createReservation: async (input) => { calls.push(["create", input]); return input; },
-      changeReservation: async (input) => { calls.push(["change", input]); return input; },
+      createReservation: async (input) => {
+        calls.push(["create", input]);
+        return { outcome: "pending", reservation: input };
+      },
+      changeReservation: async (input) => {
+        calls.push(["change", input]);
+        return { outcome: "pending", reservation: input };
+      },
       cancelReservation: async (input) => { calls.push(["cancel", input]); },
     });
     strictEqual((await handlers.GET(request("GET"))).status, 200);
@@ -86,6 +112,35 @@ describe("user link reservation management handlers", () => {
       ["change", { uid: "editor-a", projectId: "project-a", personId: "person-a", email: "Other@Example.test" }],
       ["cancel", { uid: "editor-a", projectId: "project-a", personId: "person-a" }],
     ]);
+  });
+
+  it("returns immediate and idempotent formal-link outcomes without a reservation", async () => {
+    const linked = management({
+      createReservation: async () => ({ outcome: "linked", reservation: null }),
+    });
+    const alreadyLinked = management({
+      createReservation: async () => ({ outcome: "already_linked", reservation: null }),
+    });
+    const linkedResponse = await linked.POST(request("POST", {
+      personId: "person-a",
+      email: "person@example.test",
+    }));
+    const alreadyResponse = await alreadyLinked.POST(request("POST", {
+      personId: "person-a",
+      email: "person@example.test",
+    }));
+    strictEqual(linkedResponse.status, 200);
+    strictEqual(alreadyResponse.status, 200);
+    deepStrictEqual(await linkedResponse.json(), {
+      success: true,
+      outcome: "linked",
+      reservation: null,
+    });
+    deepStrictEqual(await alreadyResponse.json(), {
+      success: true,
+      outcome: "already_linked",
+      reservation: null,
+    });
   });
 
   it("returns safe conflict codes without exposing internal errors", async () => {

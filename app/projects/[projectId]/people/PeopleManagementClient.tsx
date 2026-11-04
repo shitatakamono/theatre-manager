@@ -144,9 +144,21 @@ export function PeopleManagementClient({
         personId: editing.id,
         email: reservationEmail,
       };
-      const reservation = change
+      const result = change
         ? await changeProjectUserLinkReservationClient(input)
         : await createProjectUserLinkReservationClient(input);
+      if (result.outcome !== "pending") {
+        setPeople(await getProjectPeopleWithFallback(project.id));
+        setEditing(undefined);
+        setNotice(result.outcome === "already_linked"
+          ? "すでにこの関係者と紐づいています"
+          : "システム利用者との紐づけが完了しました");
+        return;
+      }
+      if (!result.reservation) {
+        throw new Error("作成した予約情報を確認できませんでした");
+      }
+      const reservation = result.reservation;
       setReservations((current) => [
         ...current.filter((item) => item.personId !== editing.id || item.status !== "pending"),
         reservation,
@@ -264,14 +276,15 @@ export function PeopleManagementClient({
           <tbody>{visiblePeople.map((person) => {
             const association = getPersonAssociations(person.id, person.displayName, cast, staff);
             const member = person.linkedUserUid ? memberByUid.get(person.linkedUserUid) : undefined;
+            const pendingReservation = pendingReservationByPersonId.get(person.id);
             return <tr key={person.id}>
               <td data-label="本名（管理用）"><strong>{person.displayName}</strong>{!person.active && <span className={styles.inactiveBadge}>終了済み</span>}</td>
               <td data-label="出欠">{person.attendanceTarget ? "対象" : "対象外"}</td>
               <td data-label="参加する稽古">{formatRehearsalParticipationTypes(person.rehearsalParticipationTypes)}</td>
               <td data-label="システム利用者との連携">{person.linkedUserUid
                 ? `連携済：${member ? memberLabel(member) : person.linkedUserUid}`
-                : canEdit && pendingReservationByPersonId.has(person.id)
-                  ? `登録待ち：${pendingReservationByPersonId.get(person.id)!.email}`
+                : canEdit && pendingReservation
+                  ? `${pendingReservation.conflictPersonName ? "登録待ち（競合）" : "登録待ち"}：${pendingReservation.email}`
                   : "未連携"}</td>
               <td data-label="キャスト">{association.castLabels.join(" / ") || "—"}</td>
               <td data-label="スタッフ">{association.staffRoles.join(" / ") || "—"}</td>
@@ -322,6 +335,9 @@ export function PeopleManagementClient({
             <p>本人がこの公演へ招待され、同じGoogleアカウントでログインすると自動で紐づけられます。</p>
             {reservationView.kind === "pending" && !reservationEditing ? <>
               <span className={styles.reservationPending}>登録待ち：{reservationView.email}</span>
+              {reservationView.conflictPersonName && <p className={styles.reservationConflict} role="alert">
+                この予約は既存の紐づけと競合しています。現在、このGoogleアカウントは「{reservationView.conflictPersonName}」さんと紐づいています。
+              </p>}
               <p className={styles.reservationHint}>既存のシステム利用者を選ぶ場合は、先に予約を解除してください。</p>
               <div className={styles.reservationActions}>
                 <button type="button" disabled={reservationBusy} onClick={() => {
