@@ -164,4 +164,31 @@ describe("people management values", () => {
       "staff-2", "both", "multi", "staff-1", "cast-1", "cast-2", "other",
     ]);
   });
+
+  it("keeps name ordering independent from cast and staff listing order", () => {
+    const managedPeople = [
+      { id: "other", displayName: "あおい", active: true },
+      { id: "both", displayName: "いとう", active: true },
+      { id: "cast", displayName: "さとう", active: true },
+      { id: "staff", displayName: "かとう", active: true },
+    ];
+    const cast = [
+      { id: "cast-1", order: 1, name: "さとう", personId: "cast" },
+      { id: "cast-2", order: 2, name: "いとう", personId: "both" },
+    ];
+    const staff = [{ id: "role-1", role: "演出", members: [
+      { id: "staff-1", name: "かとう", personId: "staff" },
+      { id: "staff-2", name: "いとう", personId: "both" },
+    ] }];
+
+    deepStrictEqual(sortManagedPeople(managedPeople, cast, staff, "name").map(({ id }) => id), [
+      "other", "both", "staff", "cast",
+    ]);
+    deepStrictEqual(sortManagedPeople(managedPeople, cast, staff, "cast_first").map(({ id }) => id), [
+      "cast", "both", "staff", "other",
+    ]);
+    deepStrictEqual(sortManagedPeople(managedPeople, cast, staff, "staff_first").map(({ id }) => id), [
+      "staff", "both", "cast", "other",
+    ]);
+  });
 });

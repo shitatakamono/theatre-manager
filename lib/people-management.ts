@@ -137,6 +137,13 @@ export function sortManagedPeople(
   staff: readonly StaffRole[],
   sort: ManagedPeopleSort
 ): ProjectPerson[] {
+  if (sort === "name") {
+    return [...people].sort((left, right) => (
+      japaneseNameCollator.compare(left.displayName, right.displayName)
+      || left.id.localeCompare(right.id)
+    ));
+  }
+
   const associations = new Map(people.map((person) => [
     person.id,
     getPersonAssociations(person.id, person.displayName, cast, staff),
