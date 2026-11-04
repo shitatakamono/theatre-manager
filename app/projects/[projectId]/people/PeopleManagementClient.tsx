@@ -6,13 +6,15 @@ import type { ProjectMember } from "@/lib/auth";
 import type { ProjectPerformanceRecord } from "@/lib/firestore";
 import {
   EMPTY_MANAGED_PERSON_INPUT,
+  PEOPLE_MANAGEMENT_SORT_OPTIONS,
   createProjectPerson,
   filterManagedPeople,
   getPersonAssociations,
+  normalizePeopleManagementListSort,
   setProjectPersonEnded,
   sortManagedPeople,
   updateProjectPerson,
-  type ManagedPeopleSort,
+  type PeopleManagementListSort,
   type ManagedPersonInput,
 } from "@/lib/people-management";
 import { getProjectPeopleWithFallback, type ProjectPerson } from "@/lib/people";
@@ -60,7 +62,7 @@ export function PeopleManagementClient({
   const [reservationError, setReservationError] = useState("");
   const [reservationLoadError, setReservationLoadError] = useState("");
   const [showInactive, setShowInactive] = useState(false);
-  const [sortOrder, setSortOrder] = useState<ManagedPeopleSort>("cast_first");
+  const [sortOrder, setSortOrder] = useState<PeopleManagementListSort>("cast_first");
   const memberByUid = useMemo(() => new Map(members.map((member) => [member.uid, member])), [members]);
   const linkedPersonByUid = useMemo(() => new Map(people.flatMap((person) => person.linkedUserUid
     ? [[person.linkedUserUid, person.id] as const]
@@ -258,10 +260,10 @@ export function PeopleManagementClient({
     <div className={styles.listControls}>
       <label className={styles.sortControl}>
         <span>並び順</span>
-        <select value={sortOrder} onChange={(event) => setSortOrder(event.target.value as ManagedPeopleSort)}>
-          <option value="cast_first">キャスト優先</option>
-          <option value="staff_first">スタッフ優先</option>
-          <option value="name">本名順</option>
+        <select value={sortOrder} onChange={(event) => setSortOrder(normalizePeopleManagementListSort(event.target.value))}>
+          {PEOPLE_MANAGEMENT_SORT_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
         </select>
       </label>
       <label className={styles.inactiveFilter}>

@@ -45,6 +45,23 @@ export type ManagedPeopleSort =
   | "staff_first"
   | "name";
 
+export type PeopleManagementListSort = Extract<
+  ManagedPeopleSort,
+  "cast_first" | "staff_first"
+>;
+
+export const PEOPLE_MANAGEMENT_SORT_OPTIONS: readonly {
+  value: PeopleManagementListSort;
+  label: string;
+}[] = [
+  { value: "cast_first", label: "キャスト優先" },
+  { value: "staff_first", label: "スタッフ優先" },
+];
+
+export function normalizePeopleManagementListSort(value: string): PeopleManagementListSort {
+  return value === "staff_first" ? "staff_first" : "cast_first";
+}
+
 const japaneseNameCollator = new Intl.Collator("ja");
 
 async function resolveFirestore(firestore?: Firestore): Promise<Firestore> {
@@ -196,11 +213,11 @@ export function sortManagedPeople(
     if (sort === "staff_order") {
       return staffPosition.get(person.id) ?? castPosition.get(person.id) ?? Number.MAX_SAFE_INTEGER;
     }
-    if (sort === "cast_first" && castPosition.has(person.id)) {
-      return castPosition.get(person.id)!;
+    if (sort === "cast_first") {
+      return castPosition.get(person.id) ?? staffPosition.get(person.id) ?? Number.MAX_SAFE_INTEGER;
     }
-    if (sort === "staff_first" && staffPosition.has(person.id)) {
-      return staffPosition.get(person.id)!;
+    if (sort === "staff_first") {
+      return staffPosition.get(person.id) ?? castPosition.get(person.id) ?? Number.MAX_SAFE_INTEGER;
     }
     return 0;
   }

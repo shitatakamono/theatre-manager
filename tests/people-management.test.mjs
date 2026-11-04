@@ -3,9 +3,11 @@ import { describe, it } from "node:test";
 import {
   buildManagedPersonValues,
   EMPTY_MANAGED_PERSON_INPUT,
+  PEOPLE_MANAGEMENT_SORT_OPTIONS,
   filterManagedPeople,
   getManagedPersonChangedFields,
   getPersonAssociations,
+  normalizePeopleManagementListSort,
   sortManagedPeople,
 } from "../lib/people-management.ts";
 
@@ -18,6 +20,17 @@ const input = {
 };
 
 describe("people management values", () => {
+  it("exposes only role-priority options and falls back old name values to cast priority", () => {
+    deepStrictEqual(PEOPLE_MANAGEMENT_SORT_OPTIONS, [
+      { value: "cast_first", label: "キャスト優先" },
+      { value: "staff_first", label: "スタッフ優先" },
+    ]);
+    strictEqual(normalizePeopleManagementListSort("staff_first"), "staff_first");
+    strictEqual(normalizePeopleManagementListSort("cast_first"), "cast_first");
+    strictEqual(normalizePeopleManagementListSort("name"), "cast_first");
+    strictEqual(normalizePeopleManagementListSort(""), "cast_first");
+  });
+
   it("creates an active person while keeping attendance opt-in", () => {
     deepStrictEqual(buildManagedPersonValues(input), {
       displayName: "田中 裕介",
@@ -114,11 +127,11 @@ describe("people management values", () => {
 
     deepStrictEqual(
       sortManagedPeople(filterManagedPeople(managedPeople, true), cast, staff, "cast_first").map(({ id }) => id),
-      ["cast-sa", "both-i", "cast-a", "staff-a", "staff-ka", "other-a"]
+      ["cast-sa", "both-i", "cast-a", "staff-ka", "staff-a", "other-a"]
     );
     deepStrictEqual(
       sortManagedPeople(filterManagedPeople(managedPeople, true), cast, staff, "staff_first").map(({ id }) => id),
-      ["staff-ka", "both-i", "staff-a", "cast-a", "cast-sa", "other-a"]
+      ["staff-ka", "both-i", "staff-a", "cast-sa", "cast-a", "other-a"]
     );
     deepStrictEqual(
       sortManagedPeople(filterManagedPeople(managedPeople, true), cast, staff, "name").map(({ id }) => id),
@@ -126,7 +139,7 @@ describe("people management values", () => {
     );
     deepStrictEqual(
       sortManagedPeople(filterManagedPeople(managedPeople, false), cast, staff, "cast_first").map(({ id }) => id),
-      ["cast-sa", "both-i", "staff-a", "staff-ka", "other-a"]
+      ["cast-sa", "both-i", "staff-ka", "staff-a", "other-a"]
     );
   });
 
@@ -161,6 +174,12 @@ describe("people management values", () => {
       "cast-1", "both", "cast-2", "staff-2", "multi", "staff-1", "other",
     ]);
     deepStrictEqual(sortManagedPeople(managedPeople, cast, staff, "staff_order").map(({ id }) => id), [
+      "staff-2", "both", "multi", "staff-1", "cast-1", "cast-2", "other",
+    ]);
+    deepStrictEqual(sortManagedPeople(managedPeople, cast, staff, "cast_first").map(({ id }) => id), [
+      "cast-1", "both", "cast-2", "staff-2", "multi", "staff-1", "other",
+    ]);
+    deepStrictEqual(sortManagedPeople(managedPeople, cast, staff, "staff_first").map(({ id }) => id), [
       "staff-2", "both", "multi", "staff-1", "cast-1", "cast-2", "other",
     ]);
   });
