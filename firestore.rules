@@ -730,6 +730,20 @@ service cloud.firestore {
             || getAfter(participantPath(projectId, resource.data.participantId)).data.linkedUserUid != uid);
       }
 
+      // Email-based link reservations are written only by authenticated
+      // server APIs. Editors may read them for the people-management UI;
+      // viewers and clients cannot create or mutate reservation state.
+      match /userLinkReservations/{reservationId} {
+        allow read: if canEdit(projectId);
+        allow create, update, delete: if false;
+      }
+
+      // Deterministic person locks enforce one active reservation per person.
+      // They are an internal server-only implementation detail.
+      match /userLinkReservationLocks/{personId} {
+        allow read, write: if false;
+      }
+
       match /attendanceRecords/{recordId} {
         allow read: if isMember(projectId);
         allow create: if (canEdit(projectId)

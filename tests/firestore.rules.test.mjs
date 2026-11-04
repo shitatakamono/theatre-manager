@@ -206,6 +206,14 @@ function inviteRef(db, email = invitedEmail, targetProjectId = projectId) {
   return doc(db, "projects", targetProjectId, "memberInvites", email);
 }
 
+function reservationRef(db, id = "reservation-a", targetProjectId = projectId) {
+  return doc(db, "projects", targetProjectId, "userLinkReservations", id);
+}
+
+function reservationLockRef(db, personId = "participant-a", targetProjectId = projectId) {
+  return doc(db, "projects", targetProjectId, "userLinkReservationLocks", personId);
+}
+
 function inviteData(email = invitedEmail, role = "editor") {
   return {
     projectId,
@@ -1280,6 +1288,59 @@ describe("member profile sync", () => {
       displayName: "Owner changed this",
       email: `${viewerUid}@example.test`,
       profileUpdatedAt: serverTimestamp(),
+    }));
+  });
+});
+
+describe("user link reservations", () => {
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(reservationRef(db), {
+        personId: "participant-a",
+        email: "person@example.test",
+        status: "pending",
+        createdAt: new Date(),
+        createdByUid: ownerUid,
+        updatedAt: new Date(),
+        updatedByUid: ownerUid,
+        claimedAt: null,
+        claimedByUid: null,
+        cancelledAt: null,
+      });
+      await setDoc(reservationLockRef(db), {
+        reservationId: "reservation-a",
+        email: "person@example.test",
+        updatedAt: new Date(),
+      });
+    });
+  });
+
+  it("allows owners and editors to read reservations but hides them from viewers", async () => {
+    await assertSucceeds(getDoc(reservationRef(firestoreFor(ownerUid))));
+    await assertSucceeds(getDocs(collection(
+      firestoreFor(editorUid),
+      "projects",
+      projectId,
+      "userLinkReservations"
+    )));
+    await assertFails(getDoc(reservationRef(firestoreFor(viewerUid))));
+    await assertFails(getDoc(reservationRef(firestoreFor(outsiderUid))));
+  });
+
+  it("denies all client writes and all access to reservation locks", async () => {
+    await assertFails(setDoc(reservationRef(firestoreFor(ownerUid), "forged"), {
+      personId: "participant-a",
+      email: "forged@example.test",
+      status: "pending",
+    }));
+    await assertFails(updateDoc(reservationRef(firestoreFor(editorUid)), {
+      status: "claimed",
+    }));
+    await assertFails(deleteDoc(reservationRef(firestoreFor(ownerUid))));
+    await assertFails(getDoc(reservationLockRef(firestoreFor(ownerUid))));
+    await assertFails(setDoc(reservationLockRef(firestoreFor(ownerUid), "forged"), {
+      reservationId: "forged",
     }));
   });
 });
