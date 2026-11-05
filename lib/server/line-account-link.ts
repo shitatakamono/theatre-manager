@@ -308,7 +308,15 @@ export async function unlinkLineAccount(uidValue: string): Promise<{
   const linkRef = integrationRef(uid);
   return adminDb.runTransaction(async (transaction) => {
     const integration = await transaction.get(linkRef);
-    if (!integration.exists) return { outcome: "already_unlinked" as const };
+    if (!integration.exists) {
+      const orphanedReverseLinks = await transaction.get(
+        adminDb.collection(LINE_USER_LINKS).where("uid", "==", uid).limit(1)
+      );
+      if (!orphanedReverseLinks.empty) {
+        throw new LineAccountLinkError("line_link_inconsistent", "LINE連携情報が不整合です");
+      }
+      return { outcome: "already_unlinked" as const };
+    }
 
     const lineUserIdValue = integration.data()?.lineUserId;
     const lineUserId = typeof lineUserIdValue === "string"

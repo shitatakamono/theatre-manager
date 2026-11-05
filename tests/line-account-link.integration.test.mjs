@@ -210,6 +210,47 @@ describe("LINE account link server transactions", () => {
     strictEqual((await integrationRef(uidA).get()).exists, true);
   });
 
+  it("rejects a reverse-only orphan instead of guessing a deletion", async () => {
+    const now = Timestamp.now();
+    await reverseRef(lineA).set({
+      uid: uidA,
+      lineUserId: lineA,
+      linkedAt: now,
+      updatedAt: now,
+    });
+    await rejects(
+      () => service.unlinkLineAccount(uidA),
+      (error) => error.code === "line_link_inconsistent"
+    );
+    strictEqual((await reverseRef(lineA).get()).exists, true);
+  });
+
+  it("rejects a mismatched pair without deleting either side", async () => {
+    const now = Timestamp.now();
+    await integrationRef(uidA).set({
+      provider: "line",
+      lineUserId: lineA,
+      status: "linked",
+      deliveryStatus: "unknown",
+      linkedAt: now,
+      updatedAt: now,
+      lastFollowAt: null,
+      lastUnfollowAt: null,
+    });
+    await reverseRef(lineA).set({
+      uid: uidB,
+      lineUserId: lineA,
+      linkedAt: now,
+      updatedAt: now,
+    });
+    await rejects(
+      () => service.unlinkLineAccount(uidA),
+      (error) => error.code === "line_link_inconsistent"
+    );
+    strictEqual((await integrationRef(uidA).get()).exists, true);
+    strictEqual((await reverseRef(lineA).get()).data().uid, uidB);
+  });
+
   it("updates delivery status for a linked pair and ignores an unknown LINE user", async () => {
     await service.linkLineAccount({ uid: uidA, lineUserId: lineA, nonce: await createNonce(uidA) });
     strictEqual((await service.updateLineDeliveryStatus({ lineUserId: lineA, event: "follow" })).outcome, "updated");

@@ -195,3 +195,36 @@ export function createLineLoginStatusHandler(dependencies: {
     }
   };
 }
+
+export function createLineLoginDisconnectHandler(dependencies: {
+  verifyIdToken: (token: string) => Promise<{ uid: string }>;
+  unlink: (uid: string) => Promise<{ outcome: "unlinked" | "already_unlinked" }>;
+  logError?: (event: string) => void;
+}) {
+  return async function POST(request: Request): Promise<Response> {
+    const token = bearerToken(request);
+    if (!token) return json({ error: "ログインが必要です" }, 401);
+
+    let uid: string;
+    try {
+      uid = (await dependencies.verifyIdToken(token)).uid;
+    } catch {
+      return json({ error: "認証情報を確認できませんでした" }, 401);
+    }
+
+    try {
+      await dependencies.unlink(uid);
+      return json({ connected: false }, 200);
+    } catch (error) {
+      (dependencies.logError ?? console.error)(
+        error instanceof LineAccountLinkError
+          ? "line_login_disconnect_rejected"
+          : "line_login_disconnect_failed"
+      );
+      return json(
+        { error: "LINE連携を解除できませんでした" },
+        error instanceof LineAccountLinkError && error.code === "line_link_inconsistent" ? 409 : 500
+      );
+    }
+  };
+}

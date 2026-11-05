@@ -70,10 +70,12 @@ function SettingsContent() {
   const [lineLoading, setLineLoading] = useState(true);
   const [lineProcessing, setLineProcessing] = useState(false);
   const [lineError, setLineError] = useState("");
+  const [lineNotice, setLineNotice] = useState("");
   const resultStatus = searchParams.get("googleCalendar");
   const result = resultStatus ? RESULT_MESSAGES[resultStatus] ?? null : null;
   const lineResultStatus = searchParams.get("line");
   const lineResult = lineResultStatus ? LINE_RESULT_MESSAGES[lineResultStatus] ?? null : null;
+  const visibleLineResult = lineResultStatus === "connected" && !lineConnected ? null : lineResult;
 
   useEffect(() => {
     if (!profile) return;
@@ -167,6 +169,7 @@ function SettingsContent() {
     if (lineProcessing) return;
     setLineProcessing(true);
     setLineError("");
+    setLineNotice("");
     try {
       const response = await fetch("/api/line/login/start", {
         method: "POST",
@@ -191,6 +194,34 @@ function SettingsContent() {
     }
   }
 
+  async function disconnectLine() {
+    if (lineProcessing) return;
+    const confirmed = window.confirm(
+      "LINEとの連携を解除しますか？\n解除すると、SeisakuBoardからLINEで通知を受け取れなくなります。\nLINE公式アカウントの友だち登録は解除されません。"
+    );
+    if (!confirmed) return;
+
+    setLineProcessing(true);
+    setLineError("");
+    setLineNotice("");
+    try {
+      const response = await fetch("/api/line/login/disconnect", {
+        method: "POST",
+        headers: await getAuthorizationHeader(),
+      });
+      const data = await readJson<LineStatusResponse>(response);
+      if (!response.ok) {
+        throw new Error(data.error || "LINE連携を解除できませんでした");
+      }
+      setLineConnected(false);
+      setLineNotice("LINEとの連携を解除しました。");
+    } catch {
+      setLineError("LINE連携を解除できませんでした。時間をおいてもう一度お試しください。");
+    } finally {
+      setLineProcessing(false);
+    }
+  }
+
   return (
     <main className={styles.page}>
       <header className={styles.header}>
@@ -199,7 +230,7 @@ function SettingsContent() {
       </header>
 
       {result && <p className={styles.result} data-tone={result.tone} role={result.tone === "error" ? "alert" : "status"}>{result.text}</p>}
-      {lineResult && <p className={styles.result} data-tone={lineResult.tone} role={lineResult.tone === "error" ? "alert" : "status"}>{lineResult.text}</p>}
+      {visibleLineResult && <p className={styles.result} data-tone={visibleLineResult.tone} role={visibleLineResult.tone === "error" ? "alert" : "status"}>{visibleLineResult.text}</p>}
 
       <section className={styles.section} aria-labelledby="google-calendar-title">
         <div className={styles.sectionHeading}>
@@ -240,13 +271,17 @@ function SettingsContent() {
         {lineLoading ? <p className={styles.loading}>連携状態を確認しています…</p> : (
           <div className={styles.actions}>
             {lineConnected ? (
-              <p className={styles.connectedMessage}>LINEとの連携が完了しています。</p>
+              <div className={styles.lineConnectedActions}>
+                <p className={styles.connectedMessage}>LINEとの連携が完了しています。</p>
+                <button className={styles.disconnectButton} type="button" disabled={lineProcessing} onClick={() => void disconnectLine()}>{lineProcessing ? "解除中…" : "LINE連携を解除"}</button>
+              </div>
             ) : (
               <button className={styles.lineConnectButton} type="button" disabled={lineProcessing} onClick={() => void connectLine()}>{lineProcessing ? "接続中…" : "LINEと連携"}</button>
             )}
           </div>
         )}
 
+        {lineNotice && <p className={styles.notice} role="status">{lineNotice}</p>}
         {lineError && <p className={styles.error} role="alert">{lineError}</p>}
       </section>
     </main>

@@ -27,6 +27,7 @@
 .lineConnectButton { background: #06c755; color: #fff; }
 .lineConnectButton:hover:not(:disabled) { background: #05ad4a; }
 .connectedMessage { color: #226448; font-size: 13px; font-weight: 750; }
+.lineConnectedActions { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; }
 .notice, .error { margin-top: 16px; font-size: 12px; font-weight: 750; }
 .notice { color: #226448; }
 .error { color: #a13d32; }

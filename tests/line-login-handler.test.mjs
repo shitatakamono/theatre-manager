@@ -3,9 +3,11 @@ import { describe, it } from "node:test";
 
 import {
   createLineLoginCallbackHandler,
+  createLineLoginDisconnectHandler,
   createLineLoginStartHandler,
   createLineLoginStatusHandler,
 } from "../lib/server/line-login-handler.ts";
+import { LineAccountLinkError } from "../lib/line-account-link.ts";
 
 const state = "a".repeat(43);
 const verifier = "v".repeat(43);
@@ -91,6 +93,57 @@ describe("LINE Login start and status APIs", () => {
     strictEqual((await handler(new Request("https://app.example"))).status, 401);
     const response = await handler(new Request("https://app.example", { headers: { Authorization: "Bearer token" } }));
     deepStrictEqual(await response.json(), { connected: true, deliveryStatus: "reachable" });
+  });
+});
+
+describe("LINE Login disconnect API", () => {
+  function disconnectDependencies(overrides = {}) {
+    return {
+      verifyIdToken: async () => ({ uid: "firebase-uid" }),
+      unlink: async () => ({ outcome: "unlinked" }),
+      logError: () => undefined,
+      ...overrides,
+    };
+  }
+
+  it("requires valid Firebase authentication", async () => {
+    const handler = createLineLoginDisconnectHandler(disconnectDependencies());
+    strictEqual((await handler(new Request("https://app.example", { method: "POST" }))).status, 401);
+    const invalid = createLineLoginDisconnectHandler(disconnectDependencies({
+      verifyIdToken: async () => { throw new Error("invalid token"); },
+    }));
+    strictEqual((await invalid(authorizedRequest())).status, 401);
+  });
+
+  it("unlinks only the verified uid and ignores request body identifiers", async () => {
+    const unlinkedUids = [];
+    const handler = createLineLoginDisconnectHandler(disconnectDependencies({
+      unlink: async (uid) => { unlinkedUids.push(uid); return { outcome: "unlinked" }; },
+    }));
+    const response = await handler(new Request("https://app.example/api/line/login/disconnect", {
+      method: "POST",
+      headers: { Authorization: "Bearer token", "Content-Type": "application/json" },
+      body: JSON.stringify({ uid: "attacker-uid", lineUserId: "attacker-line-id" }),
+    }));
+    strictEqual(response.status, 200);
+    deepStrictEqual(await response.json(), { connected: false });
+    deepStrictEqual(unlinkedUids, ["firebase-uid"]);
+  });
+
+  it("treats an already-unlinked account as success", async () => {
+    const handler = createLineLoginDisconnectHandler(disconnectDependencies({
+      unlink: async () => ({ outcome: "already_unlinked" }),
+    }));
+    strictEqual((await handler(authorizedRequest("https://app.example/api/line/login/disconnect"))).status, 200);
+  });
+
+  it("rejects inconsistent pairs without exposing internal details", async () => {
+    const handler = createLineLoginDisconnectHandler(disconnectDependencies({
+      unlink: async () => { throw new LineAccountLinkError("line_link_inconsistent", "internal"); },
+    }));
+    const response = await handler(authorizedRequest("https://app.example/api/line/login/disconnect"));
+    strictEqual(response.status, 409);
+    deepStrictEqual(await response.json(), { error: "LINE連携を解除できませんでした" });
   });
 });
 
