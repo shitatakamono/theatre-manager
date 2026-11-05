@@ -11,6 +11,7 @@
 .actions a { color: #65736e; text-align: center; font-size: 12px; font-weight: 750; }
 .actions a:hover { text-decoration: underline; }
 .error { margin-top: 18px; border-radius: 8px; background: #fff4f2; color: #913d32; padding: 11px 12px; font-size: 12px; font-weight: 750; line-height: 1.6; }
+.guidance { margin-top: 18px; border: 1px solid #c8d7df; border-radius: 8px; background: #f0f6f8; color: #385f70; padding: 12px; font-size: 13px; font-weight: 750; line-height: 1.7; }
 
 @media (max-width: 600px) {
   .page { align-items: start; padding: 18px 14px; }

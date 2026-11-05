@@ -6,6 +6,11 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/app/AuthProvider";
 import { auth } from "@/lib/firebase";
 import { requireLineLinkToken } from "@/lib/line-account-link-authorize";
+import {
+  LINE_EXTERNAL_BROWSER_GUIDANCE,
+  isLineInAppBrowser,
+  shouldRemoveLineAccountLinkQuery,
+} from "@/lib/line-in-app-browser";
 import styles from "./line-account-link.module.css";
 
 const LINK_TOKEN_SESSION_KEY = "seisakuboard.lineAccountLinkToken";
@@ -29,23 +34,40 @@ export default function LineAccountLinkClient() {
   const [ready, setReady] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState("");
+  const [lineInAppBrowser, setLineInAppBrowser] = useState(false);
+  const [showExternalBrowserGuide, setShowExternalBrowserGuide] = useState(false);
 
   useEffect(() => {
     let active = true;
+    const detectedLineBrowser = isLineInAppBrowser(navigator.userAgent);
     const queryToken = readValidLinkToken(searchParams.get("linkToken"));
     if (queryToken) {
       sessionStorage.setItem(LINK_TOKEN_SESSION_KEY, queryToken);
-      window.history.replaceState(null, "", "/line/account-link");
+      if (shouldRemoveLineAccountLinkQuery(detectedLineBrowser)) {
+        window.history.replaceState(null, "", "/line/account-link");
+      }
     }
     const storedToken = queryToken
       ?? readValidLinkToken(sessionStorage.getItem(LINK_TOKEN_SESSION_KEY));
     queueMicrotask(() => {
       if (!active) return;
+      setLineInAppBrowser(detectedLineBrowser);
       setLinkToken(storedToken);
       setReady(true);
     });
     return () => { active = false; };
   }, [searchParams]);
+
+  async function loginForAccountLink() {
+    setError("");
+    if (lineInAppBrowser) {
+      setShowExternalBrowserGuide(true);
+      return;
+    }
+    setProcessing(true);
+    const result = await login({ allowRedirectFallback: true });
+    if (result !== "redirect_started") setProcessing(false);
+  }
 
   async function authorize() {
     const user = auth.currentUser;
@@ -107,14 +129,17 @@ export default function LineAccountLinkClient() {
                 {processing ? "連携を開始しています…" : "LINEと連携する"}
               </button>
             ) : (
-              <button type="button" disabled={processing} onClick={() => void login()}>
-                Googleでログインして連携する
+              <button type="button" disabled={processing} onClick={() => void loginForAccountLink()}>
+                {processing ? "Googleログインを開始しています…" : "Googleでログインして連携する"}
               </button>
             )}
             <Link href="/" onClick={cancel}>連携をキャンセル</Link>
           </div>
         ) : null}
 
+        {showExternalBrowserGuide ? (
+          <p className={styles.guidance} role="status">{LINE_EXTERNAL_BROWSER_GUIDANCE}</p>
+        ) : null}
         {(error || loginError) ? <p className={styles.error} role="alert">{error || loginError}</p> : null}
       </section>
     </main>

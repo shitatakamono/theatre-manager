@@ -15,12 +15,19 @@ import type { UserProfile } from "@/lib/auth";
 import { completeAuthenticatedUserBootstrap } from "@/lib/auth-bootstrap";
 import { claimPendingProjectInvites, syncCurrentUserMemberProfiles } from "@/lib/firestore";
 import { claimPendingUserLinkReservationsClient } from "@/lib/user-link-reservation-client";
+import { shouldUseFirebaseRedirectFallback } from "@/lib/line-in-app-browser";
 import styles from "./auth.module.css";
+
+type LoginOptions = {
+  allowRedirectFallback?: boolean;
+};
+
+type LoginResult = "signed_in" | "redirect_started" | "redirect_blocked" | "cancelled" | "failed";
 
 type AuthContextValue = {
   loading: boolean;
   profile: UserProfile | null;
-  login: () => Promise<void>;
+  login: (options?: LoginOptions) => Promise<LoginResult>;
   logout: () => Promise<void>;
   membershipNotice: string;
   loginError: string;
@@ -79,17 +86,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => { active = false; unsubscribe(); };
   }, []);
 
-  async function login() {
+  async function login(options: LoginOptions = {}): Promise<LoginResult> {
     setError("");
     try {
       await signInWithPopup(auth, googleAuthProvider);
+      return "signed_in";
     } catch (loginError) {
       const code = loginError instanceof FirebaseError ? loginError.code : "";
-      if (["auth/popup-blocked", "auth/operation-not-supported-in-this-environment", "auth/web-storage-unsupported"].includes(code)) {
+      const allowRedirectFallback = options.allowRedirectFallback !== false;
+      if (shouldUseFirebaseRedirectFallback({ errorCode: code, allowRedirectFallback })) {
         await signInWithRedirect(auth, googleAuthProvider);
-        return;
+        return "redirect_started";
       }
-      if (code !== "auth/popup-closed-by-user") setError("Googleログインに失敗しました");
+      if (!allowRedirectFallback && [
+        "auth/popup-blocked",
+        "auth/operation-not-supported-in-this-environment",
+        "auth/web-storage-unsupported",
+      ].includes(code)) {
+        return "redirect_blocked";
+      }
+      if (code === "auth/popup-closed-by-user") return "cancelled";
+      setError("Googleログインに失敗しました");
+      return "failed";
     }
   }
 

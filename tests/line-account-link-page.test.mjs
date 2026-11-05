@@ -6,7 +6,7 @@ const clientUrl = new URL("../app/line/account-link/LineAccountLinkClient.tsx", 
 const authUrl = new URL("../app/AuthProvider.tsx", import.meta.url);
 
 describe("LINE account-link page", () => {
-  it("uses the shared Firebase auth flow and keeps redirect fallback state in session storage", async () => {
+  it("uses shared Firebase auth and keeps the token for redirect or external-browser continuation", async () => {
     const [client, auth] = await Promise.all([
       readFile(clientUrl, "utf8"),
       readFile(authUrl, "utf8"),
@@ -14,7 +14,9 @@ describe("LINE account-link page", () => {
     assert.match(client, /useAuth/);
     assert.match(client, /sessionStorage\.setItem/);
     assert.match(client, /sessionStorage\.removeItem/);
+    assert.match(client, /shouldRemoveLineAccountLinkQuery\(detectedLineBrowser\)/);
     assert.match(client, /history\.replaceState/);
+    assert.match(client, /isLineInAppBrowser\(navigator\.userAgent\)/);
     assert.match(client, /\/api\/line\/account-link\/authorize/);
     assert.match(client, /redirect\.origin !== "https:\/\/access\.line\.me"/);
     assert.match(auth, /signInWithPopup/);
@@ -28,5 +30,8 @@ describe("LINE account-link page", () => {
     assert.match(client, /Googleでログインして連携する/);
     assert.match(client, /LINEと連携する/);
     assert.match(client, /disabled=\{processing\}/);
+    assert.match(client, /if \(lineInAppBrowser\)/);
+    assert.match(client, /setShowExternalBrowserGuide\(true\)/);
+    assert.match(client, /LINE_EXTERNAL_BROWSER_GUIDANCE/);
   });
 });
