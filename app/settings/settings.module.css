@@ -10,6 +10,7 @@
 .result[data-tone="info"] { border-color: #c8d7df; background: #f0f6f8; color: #385f70; }
 .result[data-tone="error"] { border-color: #e5c0bb; background: #fff4f2; color: #913d32; }
 .section { border: 1px solid #d4ddd9; border-radius: 11px; background: #fff; padding: 22px; box-shadow: 0 5px 20px rgba(24, 48, 39, .04); }
+.section + .section { margin-top: 18px; }
 .sectionHeading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .sectionHeading h2 { margin-top: 3px; font-size: 20px; font-weight: 850; }
 .status { border-radius: 999px; background: #edf1ef; color: #5e6c66; padding: 5px 10px; font-size: 11px; font-weight: 850; }
@@ -23,6 +24,9 @@
 .connectButton:hover:not(:disabled) { background: #215d49; }
 .disconnectButton { border: 1px solid #c7d1cd; color: #4d5b56; }
 .disconnectButton:hover:not(:disabled) { background: #f2f5f4; }
+.lineConnectButton { background: #06c755; color: #fff; }
+.lineConnectButton:hover:not(:disabled) { background: #05ad4a; }
+.connectedMessage { color: #226448; font-size: 13px; font-weight: 750; }
 .notice, .error { margin-top: 16px; font-size: 12px; font-weight: 750; }
 .notice { color: #226448; }
 .error { color: #a13d32; }

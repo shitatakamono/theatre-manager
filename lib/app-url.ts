@@ -28,3 +28,12 @@ export function getGoogleCalendarRedirectUri(request?: Request): string {
   if (explicit) return explicit;
   return new URL("/api/google-calendar/callback", getAppOrigin(request)).toString();
 }
+
+export function getLineLoginRedirectUri(): string {
+  const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  const configuredOrigin = configured ? normalizeOrigin(configured) : null;
+  if (!configuredOrigin) {
+    throw new Error("NEXT_PUBLIC_APP_URL is required for LINE Login");
+  }
+  return new URL("/api/line/login/callback", configuredOrigin).toString();
+}

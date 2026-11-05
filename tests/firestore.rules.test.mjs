@@ -1461,3 +1461,18 @@ describe("member invites", () => {
     await assertFails(claimInvite(invitedDb, invitedUid, invitedEmail, "editor", undefined, false));
   });
 });
+
+describe("server-only LINE integration state", () => {
+  it("denies client reads and writes for LINE Login state and identity mappings", async () => {
+    const db = firestoreFor(ownerUid);
+    const refs = [
+      doc(db, "lineLoginStates", "opaque-state-id"),
+      doc(db, "lineUserLinks", "opaque-line-user-id"),
+      doc(db, "userIntegrations", ownerUid, "providers", "line"),
+    ];
+    for (const ref of refs) {
+      await assertFails(getDoc(ref));
+      await assertFails(setDoc(ref, { status: "pending" }));
+    }
+  });
+});

@@ -19,6 +19,18 @@ type CalendarConnectResponse = {
   error?: string;
 };
 
+type LineStatusResponse = {
+  connected?: boolean;
+  deliveryStatus?: "reachable" | "unreachable" | "unknown" | null;
+  error?: string;
+};
+
+type LineLoginStartResponse = {
+  connected?: boolean;
+  redirectUrl?: string;
+  error?: string;
+};
+
 const RESULT_MESSAGES: Record<string, { text: string; tone: "success" | "info" | "error" }> = {
   connected: { text: "Googleカレンダーとの連携が完了しました。", tone: "success" },
   cancelled: { text: "Googleカレンダーとの連携をキャンセルしました。", tone: "info" },
@@ -28,6 +40,11 @@ const RESULT_MESSAGES: Record<string, { text: string; tone: "success" | "info" |
   token_exchange_failed: { text: "Googleカレンダーとの認証を完了できませんでした。もう一度お試しください。", tone: "error" },
   missing_refresh_token: { text: "Googleカレンダーとの継続的な連携を開始できませんでした。もう一度お試しください。", tone: "error" },
   failed: { text: "Googleカレンダーとの連携に失敗しました。もう一度お試しください。", tone: "error" },
+};
+
+const LINE_RESULT_MESSAGES: Record<string, { text: string; tone: "success" | "error" }> = {
+  connected: { text: "LINEとの連携が完了しました。", tone: "success" },
+  error: { text: "LINEとの連携を完了できませんでした。もう一度お試しください。", tone: "error" },
 };
 
 async function getAuthorizationHeader(): Promise<Record<string, string>> {
@@ -49,8 +66,14 @@ function SettingsContent() {
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [lineConnected, setLineConnected] = useState(false);
+  const [lineLoading, setLineLoading] = useState(true);
+  const [lineProcessing, setLineProcessing] = useState(false);
+  const [lineError, setLineError] = useState("");
   const resultStatus = searchParams.get("googleCalendar");
   const result = resultStatus ? RESULT_MESSAGES[resultStatus] ?? null : null;
+  const lineResultStatus = searchParams.get("line");
+  const lineResult = lineResultStatus ? LINE_RESULT_MESSAGES[lineResultStatus] ?? null : null;
 
   useEffect(() => {
     if (!profile) return;
@@ -70,6 +93,30 @@ function SettingsContent() {
         if (active) setError(loadError instanceof Error ? loadError.message : "Googleカレンダーの連携状態を確認できませんでした");
       } finally {
         if (active) setLoading(false);
+      }
+    })();
+
+    return () => { active = false; };
+  }, [profile]);
+
+  useEffect(() => {
+    if (!profile) return;
+
+    let active = true;
+    void (async () => {
+      setLineLoading(true);
+      setLineError("");
+      try {
+        const response = await fetch("/api/line/login/status", {
+          headers: await getAuthorizationHeader(),
+        });
+        const data = await readJson<LineStatusResponse>(response);
+        if (!response.ok) throw new Error(data.error || "LINEの連携状態を確認できませんでした");
+        if (active) setLineConnected(data.connected === true);
+      } catch (loadError) {
+        if (active) setLineError(loadError instanceof Error ? loadError.message : "LINEの連携状態を確認できませんでした");
+      } finally {
+        if (active) setLineLoading(false);
       }
     })();
 
@@ -116,6 +163,34 @@ function SettingsContent() {
     }
   }
 
+  async function connectLine() {
+    if (lineProcessing) return;
+    setLineProcessing(true);
+    setLineError("");
+    try {
+      const response = await fetch("/api/line/login/start", {
+        method: "POST",
+        headers: await getAuthorizationHeader(),
+      });
+      const data = await readJson<LineLoginStartResponse>(response);
+      if (!response.ok) throw new Error(data.error || "LINE連携を開始できませんでした");
+      if (data.connected) {
+        setLineConnected(true);
+        setLineProcessing(false);
+        return;
+      }
+      if (!data.redirectUrl) throw new Error("LINE連携を開始できませんでした");
+      const redirect = new URL(data.redirectUrl);
+      if (redirect.origin !== "https://access.line.me") {
+        throw new Error("LINE連携を開始できませんでした");
+      }
+      window.location.assign(redirect.toString());
+    } catch (connectError) {
+      setLineError(connectError instanceof Error ? connectError.message : "LINE連携を開始できませんでした");
+      setLineProcessing(false);
+    }
+  }
+
   return (
     <main className={styles.page}>
       <header className={styles.header}>
@@ -124,6 +199,7 @@ function SettingsContent() {
       </header>
 
       {result && <p className={styles.result} data-tone={result.tone} role={result.tone === "error" ? "alert" : "status"}>{result.text}</p>}
+      {lineResult && <p className={styles.result} data-tone={lineResult.tone} role={lineResult.tone === "error" ? "alert" : "status"}>{lineResult.text}</p>}
 
       <section className={styles.section} aria-labelledby="google-calendar-title">
         <div className={styles.sectionHeading}>
@@ -148,6 +224,30 @@ function SettingsContent() {
 
         {notice && <p className={styles.notice} role="status">{notice}</p>}
         {error && <p className={styles.error} role="alert">{error}</p>}
+      </section>
+
+      <section className={styles.section} aria-labelledby="line-title">
+        <div className={styles.sectionHeading}>
+          <div>
+            <p>LINE</p>
+            <h2 id="line-title">LINE連携</h2>
+          </div>
+          {!lineLoading && <span className={styles.status} data-connected={lineConnected}>{lineConnected ? "連携済み" : "未連携"}</span>}
+        </div>
+
+        <p className={styles.description}>LINEでお知らせを受け取るための個人設定です。</p>
+
+        {lineLoading ? <p className={styles.loading}>連携状態を確認しています…</p> : (
+          <div className={styles.actions}>
+            {lineConnected ? (
+              <p className={styles.connectedMessage}>LINEとの連携が完了しています。</p>
+            ) : (
+              <button className={styles.lineConnectButton} type="button" disabled={lineProcessing} onClick={() => void connectLine()}>{lineProcessing ? "接続中…" : "LINEと連携"}</button>
+            )}
+          </div>
+        )}
+
+        {lineError && <p className={styles.error} role="alert">{lineError}</p>}
       </section>
     </main>
   );

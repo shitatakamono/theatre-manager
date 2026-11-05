@@ -10,6 +10,8 @@ const lineA = `U${"a".repeat(32)}`;
 const lineB = `U${"b".repeat(32)}`;
 let service;
 let helpers;
+let lineLoginHelpers;
+let lineLoginService;
 let db;
 
 function integrationRef(uid) {
@@ -24,6 +26,10 @@ function nonceRef(nonce) {
   return db.collection("lineAccountLinkNonces").doc(helpers.getLineAccountLinkNonceId(nonce));
 }
 
+function loginStateRef(state) {
+  return db.collection("lineLoginStates").doc(lineLoginHelpers.getLineLoginStateId(state));
+}
+
 async function createNonce(uid) {
   return service.createLineAccountLinkNonce(uid);
 }
@@ -34,6 +40,7 @@ async function clearData() {
     db.recursiveDelete(db.collection("userIntegrations")),
     db.recursiveDelete(db.collection("lineUserLinks")),
     db.recursiveDelete(db.collection("lineAccountLinkNonces")),
+    db.recursiveDelete(db.collection("lineLoginStates")),
   ]);
 }
 
@@ -41,8 +48,58 @@ before(async () => {
   process.env.GCLOUD_PROJECT = emulatorProjectId;
   process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID = emulatorProjectId;
   helpers = await import("../lib/line-account-link.ts");
+  lineLoginHelpers = await import("../lib/line-login.ts");
   service = await import("../lib/server/line-account-link.ts");
+  lineLoginService = await import("../lib/server/line-login.ts");
   db = getFirestore();
+});
+
+describe("LINE Login server transactions", () => {
+  it("stores a hashed ten-minute state and atomically completes the shared link pair", async () => {
+    const temporary = await lineLoginService.createLineLoginState(uidA);
+    const state = await loginStateRef(temporary.state).get();
+    strictEqual(state.exists, true);
+    strictEqual(state.id === temporary.state, false);
+    strictEqual(state.data().status, "pending");
+    strictEqual(state.data().expiresAt.toMillis() - state.data().createdAt.toMillis(), lineLoginHelpers.LINE_LOGIN_STATE_TTL_MS);
+
+    const result = await lineLoginService.completeLineLoginState({
+      state: temporary.state,
+      lineUserId: lineA,
+      deliveryStatus: "reachable",
+    });
+    strictEqual(result.outcome, "linked");
+    strictEqual((await integrationRef(uidA).get()).data().deliveryStatus, "reachable");
+    strictEqual((await reverseRef(lineA).get()).data().uid, uidA);
+    strictEqual((await loginStateRef(temporary.state).get()).data().status, "consumed");
+  });
+
+  it("is idempotent for the same pair and rejects UID or LINE conflicts without overwrite", async () => {
+    const first = await lineLoginService.createLineLoginState(uidA);
+    await lineLoginService.completeLineLoginState({ state: first.state, lineUserId: lineA, deliveryStatus: "unknown" });
+    strictEqual((await lineLoginService.completeLineLoginState({ state: first.state, lineUserId: lineA, deliveryStatus: "reachable" })).outcome, "already_linked");
+
+    const uidConflict = await lineLoginService.createLineLoginState(uidA);
+    await rejects(
+      () => lineLoginService.completeLineLoginState({ state: uidConflict.state, lineUserId: lineB, deliveryStatus: "unknown" }),
+      (error) => error.code === "uid_already_linked"
+    );
+    const lineConflict = await lineLoginService.createLineLoginState(uidB);
+    await rejects(
+      () => lineLoginService.completeLineLoginState({ state: lineConflict.state, lineUserId: lineA, deliveryStatus: "unknown" }),
+      (error) => error.code === "line_user_already_linked"
+    );
+    strictEqual((await integrationRef(uidA).get()).data().lineUserId, lineA);
+    strictEqual((await integrationRef(uidB).get()).exists, false);
+  });
+
+  it("fails expired states and never creates a link", async () => {
+    const temporary = await lineLoginService.createLineLoginState(uidA);
+    await loginStateRef(temporary.state).update({ expiresAt: Timestamp.fromMillis(Date.now() - 1) });
+    await rejects(() => lineLoginService.readLineLoginState(temporary.state), (error) => error.code === "state_expired");
+    strictEqual((await loginStateRef(temporary.state).get()).data().status, "failed");
+    strictEqual((await integrationRef(uidA).get()).exists, false);
+  });
 });
 
 beforeEach(clearData);

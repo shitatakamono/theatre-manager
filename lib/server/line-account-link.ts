@@ -1,4 +1,4 @@
-import { Timestamp } from "firebase-admin/firestore";
+import { Timestamp, type Transaction } from "firebase-admin/firestore";
 import {
   LINE_ACCOUNT_LINK_NONCE_TTL_MS,
   LineAccountLinkError,
@@ -32,6 +32,77 @@ function reverseLinkRef(lineUserId: string) {
 function nonceRef(nonce: string) {
   return adminDb.collection(LINE_ACCOUNT_LINK_NONCES)
     .doc(getLineAccountLinkNonceId(nonce));
+}
+
+async function getLineAccountLinkDecision(
+  transaction: Transaction,
+  uid: string,
+  lineUserId: string
+): Promise<{
+  decision: "create" | "already_linked";
+  linkRef: ReturnType<typeof integrationRef>;
+  reverseRef: ReturnType<typeof reverseLinkRef>;
+}> {
+  const linkRef = integrationRef(uid);
+  const reverseRef = reverseLinkRef(lineUserId);
+  const [integrationSnapshot, reverseSnapshot] = await Promise.all([
+    transaction.get(linkRef),
+    transaction.get(reverseRef),
+  ]);
+  return {
+    decision: decideLineAccountLink({
+      uid,
+      lineUserId,
+      integration: integrationSnapshot.exists
+        ? { lineUserId: String(integrationSnapshot.data()?.lineUserId ?? "") }
+        : null,
+      reverseLink: reverseSnapshot.exists
+        ? {
+          uid: String(reverseSnapshot.data()?.uid ?? ""),
+          lineUserId: String(reverseSnapshot.data()?.lineUserId ?? ""),
+        }
+        : null,
+    }),
+    linkRef,
+    reverseRef,
+  };
+}
+
+export async function linkFirebaseUserToLineUserInTransaction(
+  transaction: Transaction,
+  input: {
+    uid: string;
+    lineUserId: string;
+    now: Timestamp;
+    deliveryStatus?: "reachable" | "unreachable" | "unknown";
+  }
+): Promise<"linked" | "already_linked"> {
+  const uid = requireFirebaseUid(input.uid);
+  const lineUserId = requireLineUserId(input.lineUserId);
+  const { decision, linkRef, reverseRef } = await getLineAccountLinkDecision(
+    transaction,
+    uid,
+    lineUserId
+  );
+  if (decision === "already_linked") return "already_linked";
+
+  transaction.create(linkRef, {
+    provider: "line",
+    lineUserId,
+    status: "linked",
+    deliveryStatus: input.deliveryStatus ?? "unknown",
+    linkedAt: input.now,
+    updatedAt: input.now,
+    lastFollowAt: null,
+    lastUnfollowAt: null,
+  });
+  transaction.create(reverseRef, {
+    uid,
+    lineUserId,
+    linkedAt: input.now,
+    updatedAt: input.now,
+  });
+  return "linked";
 }
 
 export async function isLineUserLinked(lineUserIdValue: string): Promise<boolean> {
@@ -116,30 +187,11 @@ async function runLineAccountLinkTransaction(input: {
       };
     }
 
-    const linkRef = integrationRef(uid);
-    const reverseRef = reverseLinkRef(lineUserId);
-    const [integrationSnapshot, reverseSnapshot] = await Promise.all([
-      transaction.get(linkRef),
-      transaction.get(reverseRef),
-    ]);
-    const decide = () => decideLineAccountLink({
-      uid,
-      lineUserId,
-      integration: integrationSnapshot.exists
-        ? { lineUserId: String(integrationSnapshot.data()?.lineUserId ?? "") }
-        : null,
-      reverseLink: reverseSnapshot.exists
-        ? {
-          uid: String(reverseSnapshot.data()?.uid ?? ""),
-          lineUserId: String(reverseSnapshot.data()?.lineUserId ?? ""),
-        }
-        : null,
-    });
-
     if (nonceData?.status === "consumed") {
       if (input.allowConsumedReplay) {
         try {
-          if (decide() === "already_linked") return { outcome: "already_linked" };
+          const existing = await getLineAccountLinkDecision(transaction, uid, lineUserId);
+          if (existing.decision === "already_linked") return { outcome: "already_linked" };
         } catch (error) {
           return {
             outcome: "rejected",
@@ -181,9 +233,13 @@ async function runLineAccountLinkTransaction(input: {
       };
     }
 
-    let decision: "create" | "already_linked";
+    let outcome: "linked" | "already_linked";
     try {
-      decision = decide();
+      outcome = await linkFirebaseUserToLineUserInTransaction(transaction, {
+        uid,
+        lineUserId,
+        now,
+      });
     } catch (error) {
       const linkError = error instanceof LineAccountLinkError
         ? error
@@ -192,26 +248,8 @@ async function runLineAccountLinkTransaction(input: {
       return { outcome: "rejected", error: linkError };
     }
 
-    if (decision === "create") {
-      transaction.create(linkRef, {
-        provider: "line",
-        lineUserId,
-        status: "linked",
-        deliveryStatus: "unknown",
-        linkedAt: now,
-        updatedAt: now,
-        lastFollowAt: null,
-        lastUnfollowAt: null,
-      });
-      transaction.create(reverseRef, {
-        uid,
-        lineUserId,
-        linkedAt: now,
-        updatedAt: now,
-      });
-    }
     transaction.update(pendingNonceRef, { status: "consumed", consumedAt: now });
-    return { outcome: decision === "create" ? "linked" : "already_linked" };
+    return { outcome };
   });
 
   if (result.outcome === "rejected") throw result.error;
