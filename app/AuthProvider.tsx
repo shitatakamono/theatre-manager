@@ -23,6 +23,7 @@ type AuthContextValue = {
   login: () => Promise<void>;
   logout: () => Promise<void>;
   membershipNotice: string;
+  loginError: string;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -92,9 +93,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  const value = useMemo<AuthContextValue>(() => ({ loading, profile, login, logout: () => signOut(auth), membershipNotice }), [loading, membershipNotice, profile]);
+  const value = useMemo<AuthContextValue>(() => ({
+    loading,
+    profile,
+    login,
+    logout: () => signOut(auth),
+    membershipNotice,
+    loginError: error,
+  }), [error, loading, membershipNotice, profile]);
 
-  const isPublicPage = pathname === "/" || pathname === "/privacy" || pathname === "/terms";
+  const isPublicPage = pathname === "/"
+    || pathname === "/privacy"
+    || pathname === "/terms"
+    || pathname === "/line/account-link";
 
   if (isPublicPage) {
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

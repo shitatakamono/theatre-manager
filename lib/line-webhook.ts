@@ -18,11 +18,17 @@ export type LineWebhookContext = {
   followUserIds: string[];
   unfollowUserIds: string[];
   accountLinkEvents: LineWebhookAccountLinkEvent[];
+  accountLinkRequestEvents: LineWebhookAccountLinkRequestEvent[];
 };
 
 export type LineWebhookAccountLinkEvent =
   | { result: "ok"; lineUserId: string; nonce: string }
   | { result: "failed"; nonce: string };
+
+export type LineWebhookAccountLinkRequestEvent = {
+  lineUserId: string;
+  replyToken: string;
+};
 
 type ParsedLineWebhook = {
   summary: LineWebhookSummary;
@@ -99,6 +105,32 @@ export function parseLineWebhook(rawBody: Uint8Array): ParsedLineWebhook | null 
       ? [{ result, lineUserId, nonce }]
       : [];
   });
+  const accountLinkRequestEvents = events.flatMap(
+    (event): LineWebhookAccountLinkRequestEvent[] => {
+      if (!event || typeof event !== "object" || (event as { type?: unknown }).type !== "message") {
+        return [];
+      }
+      const message = (event as { message?: unknown }).message;
+      if (!message || typeof message !== "object") return [];
+      const messageType = (message as { type?: unknown }).type;
+      const text = (message as { text?: unknown }).text;
+      if (messageType !== "text" || typeof text !== "string" || text.trim() !== "連携") {
+        return [];
+      }
+      const source = (event as { source?: unknown }).source;
+      const lineUserId = source && typeof source === "object"
+        ? (source as { userId?: unknown }).userId
+        : null;
+      const replyToken = (event as { replyToken?: unknown }).replyToken;
+      return typeof lineUserId === "string"
+        && LINE_USER_ID_PATTERN.test(lineUserId)
+        && typeof replyToken === "string"
+        && replyToken.length > 0
+        && replyToken.length <= 512
+        ? [{ lineUserId, replyToken }]
+        : [];
+    }
+  );
   return {
     summary: {
       eventCount: events.length,
@@ -108,6 +140,7 @@ export function parseLineWebhook(rawBody: Uint8Array): ParsedLineWebhook | null 
       followUserIds: userIdsForType("follow"),
       unfollowUserIds: userIdsForType("unfollow"),
       accountLinkEvents,
+      accountLinkRequestEvents,
     },
   };
 }

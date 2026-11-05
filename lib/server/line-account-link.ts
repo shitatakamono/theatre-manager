@@ -34,6 +34,14 @@ function nonceRef(nonce: string) {
     .doc(getLineAccountLinkNonceId(nonce));
 }
 
+export async function isLineUserLinked(lineUserIdValue: string): Promise<boolean> {
+  const lineUserId = requireLineUserId(lineUserIdValue);
+  const snapshot = await reverseLinkRef(lineUserId).get();
+  return snapshot.exists
+    && snapshot.data()?.lineUserId === lineUserId
+    && typeof snapshot.data()?.uid === "string";
+}
+
 export async function createLineAccountLinkNonce(uidValue: string): Promise<string> {
   const uid = requireFirebaseUid(uidValue);
   for (let attempt = 0; attempt < NONCE_CREATE_ATTEMPTS; attempt += 1) {

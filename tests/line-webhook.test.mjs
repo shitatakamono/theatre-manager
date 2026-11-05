@@ -153,6 +153,23 @@ describe("LINE webhook signature", () => {
     deepStrictEqual(parsed.context.followUserIds, [lineUserId]);
     deepStrictEqual(parsed.context.unfollowUserIds, [lineUserId]);
   });
+
+  it("recognizes only an exact trimmed account-link command with safe source data", () => {
+    const lineUserId = `U${"f".repeat(32)}`;
+    const parsed = parseLineWebhook(encode(JSON.stringify({
+      events: [
+        { type: "message", replyToken: "reply-a", source: { userId: lineUserId }, message: { type: "text", text: " 連携 " } },
+        { type: "message", replyToken: "reply-b", source: { userId: lineUserId }, message: { type: "text", text: "LINE連携" } },
+        { type: "message", replyToken: "reply-c", source: { userId: lineUserId }, message: { type: "image" } },
+        { type: "message", source: { userId: lineUserId }, message: { type: "text", text: "連携" } },
+        { type: "message", replyToken: "reply-d", message: { type: "text", text: "連携" } },
+      ],
+    })));
+    deepStrictEqual(parsed.context.accountLinkRequestEvents, [{
+      lineUserId,
+      replyToken: "reply-a",
+    }]);
+  });
 });
 
 describe("LINE webhook handler", () => {
