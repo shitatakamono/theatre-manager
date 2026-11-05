@@ -12,6 +12,17 @@ export type LineWebhookSummary = {
   eventTypes: LineWebhookEventType[];
 };
 
+export type LineWebhookContext = {
+  followUserIds: string[];
+};
+
+type ParsedLineWebhook = {
+  summary: LineWebhookSummary;
+  context: LineWebhookContext;
+};
+
+const LINE_USER_ID_PATTERN = /^U[0-9a-f]{32}$/i;
+
 export function verifyLineWebhookSignature(
   rawBody: Uint8Array,
   signature: string,
@@ -27,7 +38,7 @@ export function verifyLineWebhookSignature(
     && timingSafeEqual(expectedBytes, signatureBytes);
 }
 
-export function parseLineWebhookSummary(rawBody: Uint8Array): LineWebhookSummary | null {
+export function parseLineWebhook(rawBody: Uint8Array): ParsedLineWebhook | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(rawBody));
@@ -43,14 +54,43 @@ export function parseLineWebhookSummary(rawBody: Uint8Array): LineWebhookSummary
     "message",
     "postback",
   ]);
+  const eventTypes = events.map((event) => {
+    if (!event || typeof event !== "object") return "unknown";
+    const type = (event as { type?: unknown }).type;
+    return typeof type === "string" && knownTypes.has(type as LineWebhookEventType)
+      ? type as LineWebhookEventType
+      : "unknown";
+  });
+  const followUserIds = events.flatMap((event) => {
+    if (!event || typeof event !== "object" || (event as { type?: unknown }).type !== "follow") {
+      return [];
+    }
+    const source = (event as { source?: unknown }).source;
+    if (!source || typeof source !== "object") return [];
+    const userId = (source as { userId?: unknown }).userId;
+    return typeof userId === "string" && LINE_USER_ID_PATTERN.test(userId)
+      ? [userId]
+      : [];
+  });
   return {
-    eventCount: events.length,
-    eventTypes: events.map((event) => {
-      if (!event || typeof event !== "object") return "unknown";
-      const type = (event as { type?: unknown }).type;
-      return typeof type === "string" && knownTypes.has(type as LineWebhookEventType)
-        ? type as LineWebhookEventType
-        : "unknown";
-    }),
+    summary: {
+      eventCount: events.length,
+      eventTypes,
+    },
+    context: { followUserIds },
   };
+}
+
+export function parseLineWebhookSummary(rawBody: Uint8Array): LineWebhookSummary | null {
+  return parseLineWebhook(rawBody)?.summary ?? null;
+}
+
+export async function captureLatestLineFollow(
+  context: LineWebhookContext,
+  save: (lineUserId: string) => Promise<void>
+): Promise<boolean> {
+  const lineUserId = context.followUserIds.at(-1);
+  if (!lineUserId) return false;
+  await save(lineUserId);
+  return true;
 }

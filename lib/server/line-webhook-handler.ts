@@ -1,12 +1,16 @@
 import {
-  parseLineWebhookSummary,
+  parseLineWebhook,
   verifyLineWebhookSignature,
+  type LineWebhookContext,
   type LineWebhookSummary,
 } from "../line-webhook.ts";
 
 type LineWebhookDependencies = {
   getChannelSecret: () => string | undefined;
-  onVerifiedWebhook?: (summary: LineWebhookSummary) => void | Promise<void>;
+  onVerifiedWebhook?: (
+    summary: LineWebhookSummary,
+    context: LineWebhookContext
+  ) => void | Promise<void>;
 };
 
 function json(body: unknown, status: number): Response {
@@ -37,13 +41,13 @@ export function createLineWebhookHandler(dependencies: LineWebhookDependencies) 
       return json({ error: "署名を確認できませんでした", code: "invalid_signature" }, 401);
     }
 
-    const summary = parseLineWebhookSummary(rawBody);
-    if (!summary) {
+    const webhook = parseLineWebhook(rawBody);
+    if (!webhook) {
       return json({ error: "リクエスト本文が不正です", code: "invalid_body" }, 400);
     }
 
     try {
-      await dependencies.onVerifiedWebhook?.(summary);
+      await dependencies.onVerifiedWebhook?.(webhook.summary, webhook.context);
     } catch {
       console.error("line_webhook_processing_failed");
       return json({ error: "Webhookを処理できませんでした", code: "webhook_processing_failed" }, 500);

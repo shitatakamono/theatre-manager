@@ -3,6 +3,8 @@ import { deepStrictEqual, strictEqual } from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  captureLatestLineFollow,
+  parseLineWebhook,
   parseLineWebhookSummary,
   verifyLineWebhookSignature,
 } from "../lib/line-webhook.ts";
@@ -58,6 +60,36 @@ describe("LINE webhook signature", () => {
       eventCount: 3,
       eventTypes: ["follow", "message", "unknown"],
     });
+  });
+
+  it("captures only a valid user ID from a follow event", async () => {
+    const followUserId = `U${"b".repeat(32)}`;
+    const saved = [];
+    const follow = parseLineWebhook(encode(JSON.stringify({
+      events: [{ type: "follow", source: { type: "user", userId: followUserId } }],
+    })));
+    strictEqual(await captureLatestLineFollow(follow.context, async (userId) => {
+      saved.push(userId);
+    }), true);
+    deepStrictEqual(saved, [followUserId]);
+
+    const message = parseLineWebhook(encode(JSON.stringify({
+      events: [{
+        type: "message",
+        source: { type: "user", userId: followUserId },
+        message: { type: "text", text: "not-retained" },
+      }],
+    })));
+    strictEqual(await captureLatestLineFollow(message.context, async () => {
+      throw new Error("message events must not be saved");
+    }), false);
+
+    const missing = parseLineWebhook(encode(JSON.stringify({
+      events: [{ type: "follow", source: { type: "user" } }],
+    })));
+    strictEqual(await captureLatestLineFollow(missing.context, async () => {
+      throw new Error("follow events without a user ID must not be saved");
+    }), false);
   });
 });
 
