@@ -91,6 +91,68 @@ describe("LINE webhook signature", () => {
       throw new Error("follow events without a user ID must not be saved");
     }), false);
   });
+
+  it("parses valid accountLink success and failed events", () => {
+    const lineUserId = `U${"c".repeat(32)}`;
+    const nonce = "valid_account_link_nonce_123456";
+    const parsed = parseLineWebhook(encode(JSON.stringify({
+      events: [
+        {
+          type: "accountLink",
+          source: { type: "user", userId: lineUserId },
+          link: { result: "ok", nonce },
+        },
+        {
+          type: "accountLink",
+          link: { result: "failed", nonce: `${nonce}_failed` },
+        },
+      ],
+    })));
+
+    deepStrictEqual(parsed.summary.eventTypes, ["accountLink", "accountLink"]);
+    deepStrictEqual(parsed.context.accountLinkEvents, [
+      { result: "ok", lineUserId, nonce },
+      { result: "failed", nonce: `${nonce}_failed` },
+    ]);
+  });
+
+  it("does not expose malformed successful accountLink events for processing", () => {
+    const lineUserId = `U${"d".repeat(32)}`;
+    const nonce = "valid_account_link_nonce_123456";
+    const parsed = parseLineWebhook(encode(JSON.stringify({
+      events: [
+        { type: "accountLink", source: { userId: lineUserId }, link: { result: "ok" } },
+        { type: "accountLink", link: { result: "ok", nonce } },
+        { type: "accountLink", source: { userId: "invalid" }, link: { result: "ok", nonce } },
+      ],
+    })));
+
+    strictEqual(parsed.summary.eventTypes.every((type) => type === "accountLink"), true);
+    deepStrictEqual(parsed.context.accountLinkEvents, []);
+  });
+
+  it("accepts failed accountLink without source but requires a nonce", () => {
+    const nonce = "valid_failed_nonce_123456";
+    const parsed = parseLineWebhook(encode(JSON.stringify({
+      events: [
+        { type: "accountLink", link: { result: "failed", nonce } },
+        { type: "accountLink", link: { result: "failed" } },
+      ],
+    })));
+    deepStrictEqual(parsed.context.accountLinkEvents, [{ result: "failed", nonce }]);
+  });
+
+  it("collects follow and unfollow users independently", () => {
+    const lineUserId = `U${"e".repeat(32)}`;
+    const parsed = parseLineWebhook(encode(JSON.stringify({
+      events: [
+        { type: "follow", source: { userId: lineUserId } },
+        { type: "unfollow", source: { userId: lineUserId } },
+      ],
+    })));
+    deepStrictEqual(parsed.context.followUserIds, [lineUserId]);
+    deepStrictEqual(parsed.context.unfollowUserIds, [lineUserId]);
+  });
 });
 
 describe("LINE webhook handler", () => {

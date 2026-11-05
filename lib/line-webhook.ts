@@ -1,10 +1,12 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { isValidLineAccountLinkNonce } from "./line-account-link.ts";
 
 export type LineWebhookEventType =
   | "follow"
   | "unfollow"
   | "message"
   | "postback"
+  | "accountLink"
   | "unknown";
 
 export type LineWebhookSummary = {
@@ -14,7 +16,13 @@ export type LineWebhookSummary = {
 
 export type LineWebhookContext = {
   followUserIds: string[];
+  unfollowUserIds: string[];
+  accountLinkEvents: LineWebhookAccountLinkEvent[];
 };
+
+export type LineWebhookAccountLinkEvent =
+  | { result: "ok"; lineUserId: string; nonce: string }
+  | { result: "failed"; nonce: string };
 
 type ParsedLineWebhook = {
   summary: LineWebhookSummary;
@@ -53,6 +61,7 @@ export function parseLineWebhook(rawBody: Uint8Array): ParsedLineWebhook | null 
     "unfollow",
     "message",
     "postback",
+    "accountLink",
   ]);
   const eventTypes = events.map((event) => {
     if (!event || typeof event !== "object") return "unknown";
@@ -61,8 +70,8 @@ export function parseLineWebhook(rawBody: Uint8Array): ParsedLineWebhook | null 
       ? type as LineWebhookEventType
       : "unknown";
   });
-  const followUserIds = events.flatMap((event) => {
-    if (!event || typeof event !== "object" || (event as { type?: unknown }).type !== "follow") {
+  const userIdsForType = (eventType: "follow" | "unfollow") => events.flatMap((event) => {
+    if (!event || typeof event !== "object" || (event as { type?: unknown }).type !== eventType) {
       return [];
     }
     const source = (event as { source?: unknown }).source;
@@ -72,12 +81,34 @@ export function parseLineWebhook(rawBody: Uint8Array): ParsedLineWebhook | null 
       ? [userId]
       : [];
   });
+  const accountLinkEvents = events.flatMap((event): LineWebhookAccountLinkEvent[] => {
+    if (!event || typeof event !== "object" || (event as { type?: unknown }).type !== "accountLink") {
+      return [];
+    }
+    const link = (event as { link?: unknown }).link;
+    if (!link || typeof link !== "object") return [];
+    const result = (link as { result?: unknown }).result;
+    const nonce = (link as { nonce?: unknown }).nonce;
+    if (typeof nonce !== "string" || !isValidLineAccountLinkNonce(nonce)) return [];
+    if (result === "failed") return [{ result, nonce }];
+    if (result !== "ok") return [];
+    const source = (event as { source?: unknown }).source;
+    if (!source || typeof source !== "object") return [];
+    const lineUserId = (source as { userId?: unknown }).userId;
+    return typeof lineUserId === "string" && LINE_USER_ID_PATTERN.test(lineUserId)
+      ? [{ result, lineUserId, nonce }]
+      : [];
+  });
   return {
     summary: {
       eventCount: events.length,
       eventTypes,
     },
-    context: { followUserIds },
+    context: {
+      followUserIds: userIdsForType("follow"),
+      unfollowUserIds: userIdsForType("unfollow"),
+      accountLinkEvents,
+    },
   };
 }
 

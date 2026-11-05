@@ -62,32 +62,98 @@ type LinkTransactionResult =
   | { outcome: "linked" | "already_linked" }
   | { outcome: "rejected"; error: LineAccountLinkError };
 
-export async function linkLineAccount(input: {
-  uid: string;
+async function runLineAccountLinkTransaction(input: {
+  expectedUid?: string;
   lineUserId: string;
   nonce: string;
+  allowConsumedReplay: boolean;
 }): Promise<{ outcome: "linked" | "already_linked" }> {
-  const uid = requireFirebaseUid(input.uid);
+  const expectedUid = input.expectedUid === undefined
+    ? null
+    : requireFirebaseUid(input.expectedUid);
   const lineUserId = requireLineUserId(input.lineUserId);
-  const linkRef = integrationRef(uid);
-  const reverseRef = reverseLinkRef(lineUserId);
   const pendingNonceRef = nonceRef(input.nonce);
 
   const result = await adminDb.runTransaction<LinkTransactionResult>(async (transaction) => {
-    const [nonceSnapshot, integrationSnapshot, reverseSnapshot] = await Promise.all([
-      transaction.get(pendingNonceRef),
+    const nonceSnapshot = await transaction.get(pendingNonceRef);
+    const nonceData = nonceSnapshot.data();
+    if (!nonceSnapshot.exists) {
+      return {
+        outcome: "rejected",
+        error: new LineAccountLinkError("nonce_not_found", "LINE連携nonceは使用できません"),
+      };
+    }
+    const uidValue = typeof nonceData?.uid === "string" ? nonceData.uid : "";
+    let uid: string;
+    try {
+      uid = requireFirebaseUid(uidValue);
+    } catch {
+      const now = Timestamp.now();
+      if (nonceData?.status === "pending") {
+        transaction.update(pendingNonceRef, { status: "failed", consumedAt: now });
+      }
+      return {
+        outcome: "rejected",
+        error: new LineAccountLinkError("nonce_mismatch", "LINE連携nonceが一致しません"),
+      };
+    }
+    if (expectedUid && uid !== expectedUid) {
+      const now = Timestamp.now();
+      if (nonceData?.status === "pending") {
+        transaction.update(pendingNonceRef, { status: "failed", consumedAt: now });
+      }
+      return {
+        outcome: "rejected",
+        error: new LineAccountLinkError("nonce_mismatch", "LINE連携nonceが一致しません"),
+      };
+    }
+
+    const linkRef = integrationRef(uid);
+    const reverseRef = reverseLinkRef(lineUserId);
+    const [integrationSnapshot, reverseSnapshot] = await Promise.all([
       transaction.get(linkRef),
       transaction.get(reverseRef),
     ]);
-    const nonceData = nonceSnapshot.data();
-    if (!nonceSnapshot.exists || nonceData?.status !== "pending") {
+    const decide = () => decideLineAccountLink({
+      uid,
+      lineUserId,
+      integration: integrationSnapshot.exists
+        ? { lineUserId: String(integrationSnapshot.data()?.lineUserId ?? "") }
+        : null,
+      reverseLink: reverseSnapshot.exists
+        ? {
+          uid: String(reverseSnapshot.data()?.uid ?? ""),
+          lineUserId: String(reverseSnapshot.data()?.lineUserId ?? ""),
+        }
+        : null,
+    });
+
+    if (nonceData?.status === "consumed") {
+      if (input.allowConsumedReplay) {
+        try {
+          if (decide() === "already_linked") return { outcome: "already_linked" };
+        } catch (error) {
+          return {
+            outcome: "rejected",
+            error: error instanceof LineAccountLinkError
+              ? error
+              : new LineAccountLinkError("line_link_failed", "LINE連携を完了できませんでした"),
+          };
+        }
+      }
       return {
         outcome: "rejected",
         error: new LineAccountLinkError("nonce_not_pending", "LINE連携nonceは使用できません"),
       };
     }
+    if (nonceData?.status !== "pending") {
+      return {
+        outcome: "rejected",
+        error: new LineAccountLinkError("nonce_failed", "LINE連携nonceは使用できません"),
+      };
+    }
     const expiresAt = nonceData.expiresAt;
-    if (nonceData.uid !== uid || !(expiresAt instanceof Timestamp)) {
+    if (!(expiresAt instanceof Timestamp)) {
       transaction.update(pendingNonceRef, {
         status: "failed",
         consumedAt: Timestamp.now(),
@@ -109,19 +175,7 @@ export async function linkLineAccount(input: {
 
     let decision: "create" | "already_linked";
     try {
-      decision = decideLineAccountLink({
-        uid,
-        lineUserId,
-        integration: integrationSnapshot.exists
-          ? { lineUserId: String(integrationSnapshot.data()?.lineUserId ?? "") }
-          : null,
-        reverseLink: reverseSnapshot.exists
-          ? {
-            uid: String(reverseSnapshot.data()?.uid ?? ""),
-            lineUserId: String(reverseSnapshot.data()?.lineUserId ?? ""),
-          }
-          : null,
-      });
+      decision = decide();
     } catch (error) {
       const linkError = error instanceof LineAccountLinkError
         ? error
@@ -154,6 +208,51 @@ export async function linkLineAccount(input: {
 
   if (result.outcome === "rejected") throw result.error;
   return result;
+}
+
+export async function linkLineAccount(input: {
+  uid: string;
+  lineUserId: string;
+  nonce: string;
+}): Promise<{ outcome: "linked" | "already_linked" }> {
+  return runLineAccountLinkTransaction({
+    expectedUid: input.uid,
+    lineUserId: input.lineUserId,
+    nonce: input.nonce,
+    allowConsumedReplay: false,
+  });
+}
+
+export async function linkLineAccountFromWebhook(input: {
+  lineUserId: string;
+  nonce: string;
+}): Promise<{ outcome: "linked" | "already_linked" }> {
+  return runLineAccountLinkTransaction({
+    lineUserId: input.lineUserId,
+    nonce: input.nonce,
+    allowConsumedReplay: true,
+  });
+}
+
+export async function failLineAccountLinkNonce(nonce: string): Promise<{
+  outcome: "failed" | "already_failed" | "already_consumed" | "not_found";
+}> {
+  const pendingNonceRef = nonceRef(nonce);
+  return adminDb.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(pendingNonceRef);
+    if (!snapshot.exists) return { outcome: "not_found" as const };
+    const status = snapshot.data()?.status;
+    if (status === "failed") return { outcome: "already_failed" as const };
+    if (status === "consumed") return { outcome: "already_consumed" as const };
+    if (status !== "pending") {
+      throw new LineAccountLinkError("nonce_invalid_state", "LINE連携nonceの状態が不正です");
+    }
+    transaction.update(pendingNonceRef, {
+      status: "failed",
+      consumedAt: Timestamp.now(),
+    });
+    return { outcome: "failed" as const };
+  });
 }
 
 export async function unlinkLineAccount(uidValue: string): Promise<{
