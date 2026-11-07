@@ -12,6 +12,7 @@ let service;
 let helpers;
 let lineLoginHelpers;
 let lineLoginService;
+let lineDeliveryService;
 let db;
 
 function integrationRef(uid) {
@@ -22,16 +23,17 @@ function reverseRef(lineUserId) {
   return db.collection("lineUserLinks").doc(helpers.getLineUserLinkId(lineUserId));
 }
 
-function nonceRef(nonce) {
-  return db.collection("lineAccountLinkNonces").doc(helpers.getLineAccountLinkNonceId(nonce));
-}
-
 function loginStateRef(state) {
   return db.collection("lineLoginStates").doc(lineLoginHelpers.getLineLoginStateId(state));
 }
 
-async function createNonce(uid) {
-  return service.createLineAccountLinkNonce(uid);
+async function linkWithLineLogin(uid, lineUserId, deliveryStatus = "unknown") {
+  const temporary = await lineLoginService.createLineLoginState(uid);
+  return lineLoginService.completeLineLoginState({
+    state: temporary.state,
+    lineUserId,
+    deliveryStatus,
+  });
 }
 
 async function clearData() {
@@ -39,7 +41,6 @@ async function clearData() {
   await Promise.all([
     db.recursiveDelete(db.collection("userIntegrations")),
     db.recursiveDelete(db.collection("lineUserLinks")),
-    db.recursiveDelete(db.collection("lineAccountLinkNonces")),
     db.recursiveDelete(db.collection("lineLoginStates")),
   ]);
 }
@@ -51,7 +52,15 @@ before(async () => {
   lineLoginHelpers = await import("../lib/line-login.ts");
   service = await import("../lib/server/line-account-link.ts");
   lineLoginService = await import("../lib/server/line-login.ts");
+  lineDeliveryService = await import("../lib/server/line-delivery-webhook.ts");
   db = getFirestore();
+});
+
+beforeEach(clearData);
+
+after(async () => {
+  await clearData();
+  await Promise.all(getApps().map((app) => deleteApp(app)));
 });
 
 describe("LINE Login server transactions", () => {
@@ -100,100 +109,33 @@ describe("LINE Login server transactions", () => {
     strictEqual((await loginStateRef(temporary.state).get()).data().status, "failed");
     strictEqual((await integrationRef(uidA).get()).exists, false);
   });
+
+  it("serializes concurrent attempts to link the same LINE user", async () => {
+    const [stateA, stateB] = await Promise.all([
+      lineLoginService.createLineLoginState(uidA),
+      lineLoginService.createLineLoginState(uidB),
+    ]);
+    const results = await Promise.allSettled([
+      lineLoginService.completeLineLoginState({ state: stateA.state, lineUserId: lineA, deliveryStatus: "unknown" }),
+      lineLoginService.completeLineLoginState({ state: stateB.state, lineUserId: lineA, deliveryStatus: "unknown" }),
+    ]);
+    strictEqual(results.filter(({ status }) => status === "fulfilled").length, 1);
+    strictEqual(results.filter(({ status }) => status === "rejected").length, 1);
+  });
 });
 
-beforeEach(clearData);
-
-after(async () => {
-  await clearData();
-  await Promise.all(getApps().map((app) => deleteApp(app)));
-});
-
-describe("LINE account link server transactions", () => {
-  it("stores only a hash document ID for a ten-minute pending nonce", async () => {
-    const before = Date.now();
-    const nonce = await createNonce(uidA);
-    const snapshot = await nonceRef(nonce).get();
-
-    strictEqual(snapshot.exists, true);
-    strictEqual(snapshot.id === nonce, false);
-    strictEqual(snapshot.data().uid, uidA);
-    strictEqual(snapshot.data().status, "pending");
-    strictEqual(snapshot.data().consumedAt, null);
-    const ttl = snapshot.data().expiresAt.toMillis() - snapshot.data().createdAt.toMillis();
-    strictEqual(ttl, helpers.LINE_ACCOUNT_LINK_NONCE_TTL_MS);
-    strictEqual(snapshot.data().createdAt.toMillis() >= before, true);
-  });
-
-  it("links an unlinked pair, consumes the nonce, and rejects nonce reuse", async () => {
-    const nonce = await createNonce(uidA);
-    const result = await service.linkLineAccount({ uid: uidA, lineUserId: lineA, nonce });
-
-    strictEqual(result.outcome, "linked");
-    strictEqual((await integrationRef(uidA).get()).data().lineUserId, lineA);
-    strictEqual((await integrationRef(uidA).get()).data().deliveryStatus, "unknown");
-    strictEqual((await reverseRef(lineA).get()).data().uid, uidA);
-    strictEqual((await nonceRef(nonce).get()).data().status, "consumed");
-    await rejects(
-      () => service.linkLineAccount({ uid: uidA, lineUserId: lineA, nonce }),
-      (error) => error.code === "nonce_not_pending"
-    );
-  });
-
-  it("rejects and fails an expired nonce without creating either link", async () => {
-    const nonce = await createNonce(uidA);
-    await nonceRef(nonce).update({ expiresAt: Timestamp.fromMillis(Date.now() - 1) });
-
-    await rejects(
-      () => service.linkLineAccount({ uid: uidA, lineUserId: lineA, nonce }),
-      (error) => error.code === "nonce_expired"
-    );
-    strictEqual((await nonceRef(nonce).get()).data().status, "failed");
-    strictEqual((await integrationRef(uidA).get()).exists, false);
-    strictEqual((await reverseRef(lineA).get()).exists, false);
-  });
-
-  it("treats a complete existing pair as idempotent with a fresh nonce", async () => {
-    const first = await createNonce(uidA);
-    await service.linkLineAccount({ uid: uidA, lineUserId: lineA, nonce: first });
-    const linkedAt = (await integrationRef(uidA).get()).data().linkedAt.toMillis();
-    const second = await createNonce(uidA);
-    const result = await service.linkLineAccount({ uid: uidA, lineUserId: lineA, nonce: second });
-
-    strictEqual(result.outcome, "already_linked");
-    strictEqual((await integrationRef(uidA).get()).data().linkedAt.toMillis(), linkedAt);
-    strictEqual((await nonceRef(second).get()).data().status, "consumed");
-  });
-
-  it("rejects an already-linked UID and an already-linked LINE user without overwriting", async () => {
-    await service.linkLineAccount({ uid: uidA, lineUserId: lineA, nonce: await createNonce(uidA) });
-
-    const uidConflictNonce = await createNonce(uidA);
-    await rejects(
-      () => service.linkLineAccount({ uid: uidA, lineUserId: lineB, nonce: uidConflictNonce }),
-      (error) => error.code === "uid_already_linked"
-    );
-    const lineConflictNonce = await createNonce(uidB);
-    await rejects(
-      () => service.linkLineAccount({ uid: uidB, lineUserId: lineA, nonce: lineConflictNonce }),
-      (error) => error.code === "line_user_already_linked"
-    );
-
-    strictEqual((await integrationRef(uidA).get()).data().lineUserId, lineA);
-    strictEqual((await integrationRef(uidB).get()).exists, false);
-    strictEqual((await reverseRef(lineA).get()).data().uid, uidA);
-    strictEqual((await reverseRef(lineB).get()).exists, false);
-  });
-
-  it("unlinks a consistent pair, is safe when absent, and rejects a partial pair", async () => {
-    await service.linkLineAccount({ uid: uidA, lineUserId: lineA, nonce: await createNonce(uidA) });
+describe("shared LINE identity transactions", () => {
+  it("unlinks a consistent pair and is idempotent when both sides are absent", async () => {
+    await linkWithLineLogin(uidA, lineA);
     strictEqual((await service.unlinkLineAccount(uidA)).outcome, "unlinked");
     strictEqual((await integrationRef(uidA).get()).exists, false);
     strictEqual((await reverseRef(lineA).get()).exists, false);
     strictEqual((await service.unlinkLineAccount(uidA)).outcome, "already_unlinked");
+  });
 
+  it("rejects UID-only, reverse-only, and mismatched pairs without deleting data", async () => {
     const now = Timestamp.now();
-    await integrationRef(uidA).set({
+    const integrationData = {
       provider: "line",
       lineUserId: lineA,
       status: "linked",
@@ -202,81 +144,42 @@ describe("LINE account link server transactions", () => {
       updatedAt: now,
       lastFollowAt: null,
       lastUnfollowAt: null,
-    });
-    await rejects(
-      () => service.unlinkLineAccount(uidA),
-      (error) => error.code === "line_link_inconsistent"
-    );
+    };
+    await integrationRef(uidA).set(integrationData);
+    await rejects(() => service.unlinkLineAccount(uidA), (error) => error.code === "line_link_inconsistent");
     strictEqual((await integrationRef(uidA).get()).exists, true);
-  });
 
-  it("rejects a reverse-only orphan instead of guessing a deletion", async () => {
-    const now = Timestamp.now();
-    await reverseRef(lineA).set({
-      uid: uidA,
-      lineUserId: lineA,
-      linkedAt: now,
-      updatedAt: now,
-    });
-    await rejects(
-      () => service.unlinkLineAccount(uidA),
-      (error) => error.code === "line_link_inconsistent"
-    );
+    await clearData();
+    await reverseRef(lineA).set({ uid: uidA, lineUserId: lineA, linkedAt: now, updatedAt: now });
+    await rejects(() => service.unlinkLineAccount(uidA), (error) => error.code === "line_link_inconsistent");
     strictEqual((await reverseRef(lineA).get()).exists, true);
-  });
 
-  it("rejects a mismatched pair without deleting either side", async () => {
-    const now = Timestamp.now();
-    await integrationRef(uidA).set({
-      provider: "line",
-      lineUserId: lineA,
-      status: "linked",
-      deliveryStatus: "unknown",
-      linkedAt: now,
-      updatedAt: now,
-      lastFollowAt: null,
-      lastUnfollowAt: null,
-    });
-    await reverseRef(lineA).set({
-      uid: uidB,
-      lineUserId: lineA,
-      linkedAt: now,
-      updatedAt: now,
-    });
-    await rejects(
-      () => service.unlinkLineAccount(uidA),
-      (error) => error.code === "line_link_inconsistent"
-    );
+    await clearData();
+    await integrationRef(uidA).set(integrationData);
+    await reverseRef(lineA).set({ uid: uidB, lineUserId: lineA, linkedAt: now, updatedAt: now });
+    await rejects(() => service.unlinkLineAccount(uidA), (error) => error.code === "line_link_inconsistent");
     strictEqual((await integrationRef(uidA).get()).exists, true);
     strictEqual((await reverseRef(lineA).get()).data().uid, uidB);
   });
 
-  it("updates delivery status for a linked pair and ignores an unknown LINE user", async () => {
-    await service.linkLineAccount({ uid: uidA, lineUserId: lineA, nonce: await createNonce(uidA) });
-    strictEqual((await service.updateLineDeliveryStatus({ lineUserId: lineA, event: "follow" })).outcome, "updated");
+  it("updates delivery status while preserving the identity pair", async () => {
+    await linkWithLineLogin(uidA, lineA);
+    strictEqual((await lineDeliveryService.processLineDeliveryWebhook({
+      followUserIds: [lineA, lineB],
+      unfollowUserIds: [],
+    })).deliveryUpdatedCount, 1);
     let data = (await integrationRef(uidA).get()).data();
     strictEqual(data.deliveryStatus, "reachable");
     strictEqual(data.lastFollowAt instanceof Timestamp, true);
 
-    strictEqual((await service.updateLineDeliveryStatus({ lineUserId: lineA, event: "unfollow" })).outcome, "updated");
+    strictEqual((await lineDeliveryService.processLineDeliveryWebhook({
+      followUserIds: [],
+      unfollowUserIds: [lineA],
+    })).deliveryUpdatedCount, 1);
     data = (await integrationRef(uidA).get()).data();
     strictEqual(data.deliveryStatus, "unreachable");
     strictEqual(data.lastUnfollowAt instanceof Timestamp, true);
-    strictEqual((await service.updateLineDeliveryStatus({ lineUserId: lineB, event: "follow" })).outcome, "not_linked");
-  });
-
-  it("serializes concurrent attempts to claim the same LINE user", async () => {
-    const [nonceA, nonceB] = await Promise.all([createNonce(uidA), createNonce(uidB)]);
-    const results = await Promise.allSettled([
-      service.linkLineAccount({ uid: uidA, lineUserId: lineA, nonce: nonceA }),
-      service.linkLineAccount({ uid: uidB, lineUserId: lineA, nonce: nonceB }),
-    ]);
-
-    strictEqual(results.filter(({ status }) => status === "fulfilled").length, 1);
-    strictEqual(results.filter(({ status }) => status === "rejected").length, 1);
-    const reverse = await reverseRef(lineA).get();
-    strictEqual(reverse.exists, true);
-    const linkedUid = reverse.data().uid;
-    strictEqual((await integrationRef(linkedUid).get()).data().lineUserId, lineA);
+    strictEqual((await reverseRef(lineA).get()).data().uid, uidA);
+    strictEqual((await reverseRef(lineB).get()).exists, false);
   });
 });

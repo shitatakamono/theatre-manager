@@ -1,12 +1,10 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { isValidLineAccountLinkNonce } from "./line-account-link.ts";
 
 export type LineWebhookEventType =
   | "follow"
   | "unfollow"
   | "message"
   | "postback"
-  | "accountLink"
   | "unknown";
 
 export type LineWebhookSummary = {
@@ -17,17 +15,6 @@ export type LineWebhookSummary = {
 export type LineWebhookContext = {
   followUserIds: string[];
   unfollowUserIds: string[];
-  accountLinkEvents: LineWebhookAccountLinkEvent[];
-  accountLinkRequestEvents: LineWebhookAccountLinkRequestEvent[];
-};
-
-export type LineWebhookAccountLinkEvent =
-  | { result: "ok"; lineUserId: string; nonce: string }
-  | { result: "failed"; nonce: string };
-
-export type LineWebhookAccountLinkRequestEvent = {
-  lineUserId: string;
-  replyToken: string;
 };
 
 type ParsedLineWebhook = {
@@ -67,7 +54,6 @@ export function parseLineWebhook(rawBody: Uint8Array): ParsedLineWebhook | null 
     "unfollow",
     "message",
     "postback",
-    "accountLink",
   ]);
   const eventTypes = events.map((event) => {
     if (!event || typeof event !== "object") return "unknown";
@@ -87,50 +73,6 @@ export function parseLineWebhook(rawBody: Uint8Array): ParsedLineWebhook | null 
       ? [userId]
       : [];
   });
-  const accountLinkEvents = events.flatMap((event): LineWebhookAccountLinkEvent[] => {
-    if (!event || typeof event !== "object" || (event as { type?: unknown }).type !== "accountLink") {
-      return [];
-    }
-    const link = (event as { link?: unknown }).link;
-    if (!link || typeof link !== "object") return [];
-    const result = (link as { result?: unknown }).result;
-    const nonce = (link as { nonce?: unknown }).nonce;
-    if (typeof nonce !== "string" || !isValidLineAccountLinkNonce(nonce)) return [];
-    if (result === "failed") return [{ result, nonce }];
-    if (result !== "ok") return [];
-    const source = (event as { source?: unknown }).source;
-    if (!source || typeof source !== "object") return [];
-    const lineUserId = (source as { userId?: unknown }).userId;
-    return typeof lineUserId === "string" && LINE_USER_ID_PATTERN.test(lineUserId)
-      ? [{ result, lineUserId, nonce }]
-      : [];
-  });
-  const accountLinkRequestEvents = events.flatMap(
-    (event): LineWebhookAccountLinkRequestEvent[] => {
-      if (!event || typeof event !== "object" || (event as { type?: unknown }).type !== "message") {
-        return [];
-      }
-      const message = (event as { message?: unknown }).message;
-      if (!message || typeof message !== "object") return [];
-      const messageType = (message as { type?: unknown }).type;
-      const text = (message as { text?: unknown }).text;
-      if (messageType !== "text" || typeof text !== "string" || text.trim() !== "連携") {
-        return [];
-      }
-      const source = (event as { source?: unknown }).source;
-      const lineUserId = source && typeof source === "object"
-        ? (source as { userId?: unknown }).userId
-        : null;
-      const replyToken = (event as { replyToken?: unknown }).replyToken;
-      return typeof lineUserId === "string"
-        && LINE_USER_ID_PATTERN.test(lineUserId)
-        && typeof replyToken === "string"
-        && replyToken.length > 0
-        && replyToken.length <= 512
-        ? [{ lineUserId, replyToken }]
-        : [];
-    }
-  );
   return {
     summary: {
       eventCount: events.length,
@@ -139,22 +81,10 @@ export function parseLineWebhook(rawBody: Uint8Array): ParsedLineWebhook | null 
     context: {
       followUserIds: userIdsForType("follow"),
       unfollowUserIds: userIdsForType("unfollow"),
-      accountLinkEvents,
-      accountLinkRequestEvents,
     },
   };
 }
 
 export function parseLineWebhookSummary(rawBody: Uint8Array): LineWebhookSummary | null {
   return parseLineWebhook(rawBody)?.summary ?? null;
-}
-
-export async function captureLatestLineFollow(
-  context: LineWebhookContext,
-  save: (lineUserId: string) => Promise<void>
-): Promise<boolean> {
-  const lineUserId = context.followUserIds.at(-1);
-  if (!lineUserId) return false;
-  await save(lineUserId);
-  return true;
 }

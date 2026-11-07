@@ -26,7 +26,8 @@ describe("Firebase Authentication login flows", () => {
     assert.match(source, /getRedirectResult/);
     assert.match(source, /completeAuthenticatedUserBootstrap/);
     assert.match(source, /claimPendingUserLinkReservationsClient/);
-    assert.match(source, /allowRedirectFallback/);
-    assert.match(source, /shouldUseFirebaseRedirectFallback/);
+    assert.match(source, /auth\/popup-blocked/);
+    assert.doesNotMatch(source, /allowRedirectFallback/);
+    assert.doesNotMatch(source, /line-in-app-browser/);
   });
 });

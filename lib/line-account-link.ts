@@ -1,14 +1,9 @@
-import { createHash, randomBytes } from "node:crypto";
-
-export const LINE_ACCOUNT_LINK_NONCE_TTL_MS = 10 * 60 * 1000;
-export const LINE_ACCOUNT_LINK_NONCE_MIN_LENGTH = 10;
-export const LINE_ACCOUNT_LINK_NONCE_MAX_LENGTH = 255;
+import { createHash } from "node:crypto";
 
 const LINE_USER_ID_PATTERN = /^U[0-9a-f]{32}$/i;
 
 export type LineDeliveryStatus = "reachable" | "unreachable" | "unknown";
 export type LineAccountLinkStatus = "linked";
-export type LineAccountLinkNonceStatus = "pending" | "consumed" | "failed";
 export type LineDeliveryEvent = "follow" | "unfollow";
 
 export type LineIntegration = {
@@ -27,14 +22,6 @@ export type LineUserLink = {
   lineUserId: string;
   linkedAt: unknown;
   updatedAt: unknown;
-};
-
-export type LineAccountLinkNonce = {
-  uid: string;
-  status: LineAccountLinkNonceStatus;
-  createdAt: unknown;
-  expiresAt: unknown;
-  consumedAt: unknown | null;
 };
 
 export type ExistingLineIntegration = Pick<LineIntegration, "lineUserId"> | null;
@@ -72,27 +59,6 @@ export function sha256Base64Url(value: string): string {
 
 export function getLineUserLinkId(lineUserId: string): string {
   return sha256Base64Url(requireLineUserId(lineUserId));
-}
-
-export function getLineAccountLinkNonceId(nonce: string): string {
-  if (!isValidLineAccountLinkNonce(nonce)) {
-    throw new LineAccountLinkError("invalid_nonce", "LINE連携nonceが不正です");
-  }
-  return sha256Base64Url(nonce);
-}
-
-export function generateLineAccountLinkNonce(): string {
-  const nonce = randomBytes(32).toString("base64url");
-  if (!isValidLineAccountLinkNonce(nonce)) {
-    throw new LineAccountLinkError("nonce_generation_failed", "LINE連携nonceを生成できませんでした");
-  }
-  return nonce;
-}
-
-export function isValidLineAccountLinkNonce(nonce: string): boolean {
-  return nonce.length >= LINE_ACCOUNT_LINK_NONCE_MIN_LENGTH
-    && nonce.length <= LINE_ACCOUNT_LINK_NONCE_MAX_LENGTH
-    && /^[A-Za-z0-9_-]+$/.test(nonce);
 }
 
 export function decideLineAccountLink(input: {

@@ -1,33 +1,20 @@
-import { deepStrictEqual, notStrictEqual, strictEqual, throws } from "node:assert/strict";
+import { deepStrictEqual, strictEqual, throws } from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
   LineAccountLinkError,
   decideLineAccountLink,
-  generateLineAccountLinkNonce,
-  getLineAccountLinkNonceId,
   getLineDeliveryUpdate,
   getLineUserLinkId,
-  isValidLineAccountLinkNonce,
 } from "../lib/line-account-link.ts";
 
 const lineUserId = `U${"a".repeat(32)}`;
 
 describe("LINE account link identifiers", () => {
-  it("generates stable opaque document IDs", () => {
+  it("generates a stable opaque reverse-link document ID", () => {
     strictEqual(getLineUserLinkId(lineUserId), getLineUserLinkId(lineUserId));
     strictEqual(getLineUserLinkId(lineUserId).length, 43);
-    strictEqual(getLineAccountLinkNonceId("valid_nonce_123456"), getLineAccountLinkNonceId("valid_nonce_123456"));
-    notStrictEqual(getLineAccountLinkNonceId("valid_nonce_123456"), "valid_nonce_123456");
-  });
-
-  it("generates distinct 32-byte base64url nonces within the LINE length bounds", () => {
-    const first = generateLineAccountLinkNonce();
-    const second = generateLineAccountLinkNonce();
-    strictEqual(first.length, 43);
-    strictEqual(isValidLineAccountLinkNonce(first), true);
-    strictEqual(isValidLineAccountLinkNonce(second), true);
-    notStrictEqual(first, second);
+    strictEqual(getLineUserLinkId(lineUserId).includes(lineUserId), false);
   });
 });
 

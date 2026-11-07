@@ -15,19 +15,14 @@ import type { UserProfile } from "@/lib/auth";
 import { completeAuthenticatedUserBootstrap } from "@/lib/auth-bootstrap";
 import { claimPendingProjectInvites, syncCurrentUserMemberProfiles } from "@/lib/firestore";
 import { claimPendingUserLinkReservationsClient } from "@/lib/user-link-reservation-client";
-import { shouldUseFirebaseRedirectFallback } from "@/lib/line-in-app-browser";
 import styles from "./auth.module.css";
 
-type LoginOptions = {
-  allowRedirectFallback?: boolean;
-};
-
-type LoginResult = "signed_in" | "redirect_started" | "redirect_blocked" | "cancelled" | "failed";
+type LoginResult = "signed_in" | "redirect_started" | "cancelled" | "failed";
 
 type AuthContextValue = {
   loading: boolean;
   profile: UserProfile | null;
-  login: (options?: LoginOptions) => Promise<LoginResult>;
+  login: () => Promise<LoginResult>;
   logout: () => Promise<void>;
   membershipNotice: string;
   loginError: string;
@@ -86,24 +81,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => { active = false; unsubscribe(); };
   }, []);
 
-  async function login(options: LoginOptions = {}): Promise<LoginResult> {
+  async function login(): Promise<LoginResult> {
     setError("");
     try {
       await signInWithPopup(auth, googleAuthProvider);
       return "signed_in";
     } catch (loginError) {
       const code = loginError instanceof FirebaseError ? loginError.code : "";
-      const allowRedirectFallback = options.allowRedirectFallback !== false;
-      if (shouldUseFirebaseRedirectFallback({ errorCode: code, allowRedirectFallback })) {
-        await signInWithRedirect(auth, googleAuthProvider);
-        return "redirect_started";
-      }
-      if (!allowRedirectFallback && [
+      if ([
         "auth/popup-blocked",
         "auth/operation-not-supported-in-this-environment",
         "auth/web-storage-unsupported",
       ].includes(code)) {
-        return "redirect_blocked";
+        await signInWithRedirect(auth, googleAuthProvider);
+        return "redirect_started";
       }
       if (code === "auth/popup-closed-by-user") return "cancelled";
       setError("Googleログインに失敗しました");
@@ -122,8 +113,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const isPublicPage = pathname === "/"
     || pathname === "/privacy"
-    || pathname === "/terms"
-    || pathname === "/line/account-link";
+    || pathname === "/terms";
 
   if (isPublicPage) {
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

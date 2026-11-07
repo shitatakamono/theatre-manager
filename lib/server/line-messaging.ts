@@ -1,9 +1,4 @@
-import { requireLineLinkToken } from "../line-account-link-authorize.ts";
-
 export const LINE_PUSH_MESSAGE_ENDPOINT = "https://api.line.me/v2/bot/message/push";
-export const LINE_REPLY_MESSAGE_ENDPOINT = "https://api.line.me/v2/bot/message/reply";
-export const LINE_LINK_TOKEN_ENDPOINT_BASE = "https://api.line.me/v2/bot/user";
-export const LINE_TEST_MESSAGE_TEXT = "SeisakuBoardからのLINE連携テストです。";
 
 export type LineMessagingErrorCode =
   | "line_access_token_missing"
@@ -11,8 +6,7 @@ export type LineMessagingErrorCode =
   | "line_rate_limited"
   | "line_request_rejected"
   | "line_server_error"
-  | "line_network_error"
-  | "line_invalid_response";
+  | "line_network_error";
 
 export class LineMessagingError extends Error {
   readonly code: LineMessagingErrorCode;
@@ -68,83 +62,6 @@ async function lineRequest(input: {
     throw new LineMessagingError("line_server_error", 503, response.status);
   }
   throw new LineMessagingError("line_request_rejected", 502, response.status);
-}
-
-export async function issueLineAccountLinkToken(input: {
-  lineUserId: string;
-  accessToken: string | undefined;
-  fetchImpl?: typeof fetch;
-}): Promise<string> {
-  const response = await lineRequest({
-    endpoint: `${LINE_LINK_TOKEN_ENDPOINT_BASE}/${encodeURIComponent(input.lineUserId)}/linkToken`,
-    accessToken: input.accessToken,
-    fetchImpl: input.fetchImpl,
-  });
-  let body: unknown;
-  try {
-    body = await response.json();
-  } catch {
-    throw new LineMessagingError("line_invalid_response", 502, response.status);
-  }
-  const linkToken = body && typeof body === "object"
-    ? (body as { linkToken?: unknown }).linkToken
-    : null;
-  if (typeof linkToken !== "string") {
-    throw new LineMessagingError("line_invalid_response", 502, response.status);
-  }
-  try {
-    return requireLineLinkToken(linkToken);
-  } catch {
-    throw new LineMessagingError("line_invalid_response", 502, response.status);
-  }
-}
-
-export async function replyLineAccountLinkGuide(input: {
-  replyToken: string;
-  accountLinkPageUrl: string;
-  accessToken: string | undefined;
-  fetchImpl?: typeof fetch;
-}): Promise<void> {
-  await lineRequest({
-    endpoint: LINE_REPLY_MESSAGE_ENDPOINT,
-    accessToken: input.accessToken,
-    fetchImpl: input.fetchImpl,
-    body: {
-      replyToken: input.replyToken,
-      messages: [{
-        type: "template",
-        altText: "SeisakuBoardとLINEを連携します。ボタンからログインしてください。",
-        template: {
-          type: "buttons",
-          text: "SeisakuBoardとLINEを連携します。下のボタンからSeisakuBoardにログインしてください。",
-          actions: [{
-            type: "uri",
-            label: "SeisakuBoardと連携する",
-            uri: input.accountLinkPageUrl,
-          }],
-        },
-      }],
-    },
-  });
-}
-
-export async function replyLineAlreadyLinked(input: {
-  replyToken: string;
-  accessToken: string | undefined;
-  fetchImpl?: typeof fetch;
-}): Promise<void> {
-  await lineRequest({
-    endpoint: LINE_REPLY_MESSAGE_ENDPOINT,
-    accessToken: input.accessToken,
-    fetchImpl: input.fetchImpl,
-    body: {
-      replyToken: input.replyToken,
-      messages: [{
-        type: "text",
-        text: "このLINEアカウントはすでにSeisakuBoardと連携されています。",
-      }],
-    },
-  });
 }
 
 export async function sendLinePushTextMessage(input: {
