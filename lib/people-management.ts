@@ -6,7 +6,7 @@ import {
   type Firestore,
 } from "firebase/firestore";
 import { getActivityActorName, type ActivityActor } from "./activity.ts";
-import type { CastMember, StaffRole } from "./performance.ts";
+import { sortStaffMembers, type CastMember, type StaffRole } from "./performance.ts";
 import {
   buildProjectPersonValues,
   type ProjectPerson,
@@ -174,7 +174,7 @@ export function sortManagedPeople(
     });
   const staffPosition = new Map<string, number>();
   let nextStaffPosition = 0;
-  staff.forEach((role) => role.members.forEach((member) => {
+  staff.forEach((role) => sortStaffMembers(role.members).forEach((member) => {
     if (member.personId && !staffPosition.has(member.personId)) {
       staffPosition.set(member.personId, nextStaffPosition);
     }

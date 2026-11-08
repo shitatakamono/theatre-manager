@@ -29,8 +29,11 @@ import {
   calculateEndTime,
   calculateTotalSeats,
   formatPerformanceDate,
+  getNextStaffMemberOrder,
+  moveStaffMember,
   normalizePerformanceData,
   resolveSeatsPerPerformance,
+  sortStaffMembers,
   type CastMember,
   type ContactInfo,
   type CreditInfo,
@@ -480,18 +483,21 @@ export function PerformanceInfoClient({
     }));
   }
 
-  function updateStaffMember(
-    roleIndex: number,
-    memberIndex: number,
-    patch: Partial<StaffMember>
-  ) {
+  function updateStaffMember(roleIndex: number, memberId: string, patch: Partial<StaffMember>) {
     const roles = draft.staff ?? [];
     const role = roles[roleIndex];
     updateStaffRole(roleIndex, {
-      members: role.members.map((member, index) =>
-        index === memberIndex ? { ...member, ...patch } : member
+      members: role.members.map((member) =>
+        member.id === memberId ? { ...member, ...patch } : member
       ),
     });
+  }
+
+  function reorderStaffMember(roleId: string, memberId: string, direction: "up" | "down") {
+    setDraft((current) => ({
+      ...current,
+      staff: moveStaffMember(current.staff ?? [], roleId, memberId, direction),
+    }));
   }
 
   function updateCredit(index: number, patch: Partial<CreditInfo>) {
@@ -638,7 +644,7 @@ export function PerformanceInfoClient({
           {staff.length === 0 ? <p className={styles.empty}>スタッフは未設定です</p> : (
             <dl className={styles.staffList}>
               {staff.map((role) => (
-                <div key={role.id}><dt>{role.role || "役職未設定"}</dt><dd>{role.members.map((member) => resolveStaffMemberPerson(member, people).creditName).filter(Boolean).join(" / ") || "担当者未設定"}</dd></div>
+                <div key={role.id}><dt>{role.role || "役職未設定"}</dt><dd>{sortStaffMembers(role.members).map((member) => resolveStaffMemberPerson(member, people).creditName).filter(Boolean).join(" / ") || "担当者未設定"}</dd></div>
               ))}
             </dl>
           )}
@@ -809,22 +815,26 @@ export function PerformanceInfoClient({
               <div className={styles.repeaterItem} key={role.id}>
                 <div className={styles.repeaterHeader}><Field label="役職" value={role.role} onChange={(value) => updateStaffRole(roleIndex, { role: value })} /><button onClick={() => setDraft((current) => ({ ...current, staff: (current.staff ?? []).filter((_, index) => index !== roleIndex) }))}>役職を削除</button></div>
                 <div className={styles.memberList}>
-                  {role.members.map((member, memberIndex) => (
+                  {sortStaffMembers(role.members).map((member, memberIndex, orderedMembers) => (
                     <div className={styles.memberRow} key={member.id}>
-                      <Field label="氏名" value={member.name} onChange={(value) => updateStaffMember(roleIndex, memberIndex, { name: value })} />
-                      <Field label="掲載名（クレジット）" value={member.creditName ?? ""} onChange={(value) => updateStaffMember(roleIndex, memberIndex, { creditName: value })} placeholder="空欄時は本名を表示" />
-                      <button onClick={() => updateStaffRole(roleIndex, { members: role.members.filter((_, index) => index !== memberIndex) })}>削除</button>
+                      <Field label="氏名" value={member.name} onChange={(value) => updateStaffMember(roleIndex, member.id, { name: value })} />
+                      <Field label="掲載名（クレジット）" value={member.creditName ?? ""} onChange={(value) => updateStaffMember(roleIndex, member.id, { creditName: value })} placeholder="空欄時は本名を表示" />
+                      <div className={styles.staffOrderControls} aria-label={`${member.creditName?.trim() || member.name || "担当者"}の表示順`}>
+                        <button type="button" onClick={() => reorderStaffMember(role.id, member.id, "up")} disabled={saving || memberIndex === 0} aria-label="上へ移動">↑ 上へ</button>
+                        <button type="button" onClick={() => reorderStaffMember(role.id, member.id, "down")} disabled={saving || memberIndex === orderedMembers.length - 1} aria-label="下へ移動">↓ 下へ</button>
+                      </div>
+                      <button type="button" className={styles.memberDeleteButton} onClick={() => updateStaffRole(roleIndex, { members: role.members.filter(({ id }) => id !== member.id) })}>削除</button>
                       <PersonLinkEditor
                         personId={member.personId}
                         people={people}
                         draftPerson={member.personId ? personDrafts[member.personId] : undefined}
                         autoRegisterOnSave={!(data.staff ?? []).some((savedRole) => savedRole.members.some(({ id }) => id === member.id))}
-                        onSelect={(personId) => selectPerson(personId, (nextPersonId) => updateStaffMember(roleIndex, memberIndex, { personId: nextPersonId }))}
+                        onSelect={(personId) => selectPerson(personId, (nextPersonId) => updateStaffMember(roleIndex, member.id, { personId: nextPersonId }))}
                         onUpdate={(patch) => member.personId && updatePersonDraft(member.personId, patch)}
                       />
                     </div>
                   ))}
-                  <button className={styles.subAddButton} onClick={() => updateStaffRole(roleIndex, { members: [...role.members, { id: createId(), name: "" }] })}>＋ この役職に担当者を追加</button>
+                  <button className={styles.subAddButton} onClick={() => updateStaffRole(roleIndex, { members: [...role.members, { id: createId(), order: getNextStaffMemberOrder(role.members), name: "" }] })}>＋ この役職に担当者を追加</button>
                 </div>
               </div>
             ))}

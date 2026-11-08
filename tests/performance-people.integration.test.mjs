@@ -10,6 +10,7 @@ import { getProjectAttendanceParticipants } from "../lib/people.ts";
 import { createProjectPerson, setProjectPersonEnded, updateProjectPerson } from "../lib/people-management.ts";
 import { preparePerformancePeopleForSave } from "../lib/performance-people.ts";
 import { updateProjectPerformancePeopleSection } from "../lib/performance-people-writes.ts";
+import { moveStaffMember } from "../lib/performance.ts";
 
 const emulatorProjectId = "seisakuboard-conflict-test";
 const projectId = "performance-people-integration";
@@ -57,6 +58,59 @@ beforeEach(async () => { await testEnv.clearFirestore(); await seed(); });
 after(async () => { await testEnv.cleanup(); });
 
 describe("performance people atomic writes", () => {
+  it("persists owner and editor staff reordering with revision and activity while viewers remain read-only", async () => {
+    const initial = [{ id: "role-a", role: "演出", members: [
+      { id: "staff-a", name: "A", personId: "person-a" },
+      { id: "staff-b", name: "B", personId: "person-b" },
+    ] }];
+    const drafts = [personDraft("person-a"), personDraft("person-b")];
+    const ownerDb = firestoreFor(ownerUid);
+    await updateProjectPerformancePeopleSection(
+      projectId,
+      "staff",
+      initial,
+      drafts,
+      { actor: actor(ownerUid), expectedRevision: 0 },
+      ownerDb
+    );
+    const ownerOrder = moveStaffMember(initial, "role-a", "staff-b", "up");
+    await updateProjectPerformancePeopleSection(
+      projectId,
+      "staff",
+      ownerOrder,
+      drafts,
+      { actor: actor(ownerUid), expectedRevision: 1 },
+      ownerDb
+    );
+    let project = (await getDoc(doc(ownerDb, "projects", projectId))).data();
+    strictEqual(project?.staff[0].members.map(({ id }) => id).join("|"), "staff-b|staff-a");
+    strictEqual(project?.staff[0].members.map(({ order }) => order).join("|"), "1|2");
+
+    const editorOrder = moveStaffMember(project.staff, "role-a", "staff-a", "up");
+    await updateProjectPerformancePeopleSection(
+      projectId,
+      "staff",
+      editorOrder,
+      drafts,
+      { actor: actor(editorUid), expectedRevision: 2 },
+      firestoreFor(editorUid)
+    );
+    project = (await getDoc(doc(ownerDb, "projects", projectId))).data();
+    strictEqual(project?.staff[0].members.map(({ id }) => id).join("|"), "staff-a|staff-b");
+    strictEqual((await getDocs(collection(ownerDb, "projects", projectId, "activityLogs"))).size, 3);
+
+    await rejects(() => updateProjectPerformancePeopleSection(
+      projectId,
+      "staff",
+      moveStaffMember(project.staff, "role-a", "staff-b", "up"),
+      drafts,
+      { actor: actor(viewerUid), expectedRevision: 3 },
+      firestoreFor(viewerUid)
+    ));
+    project = (await getDoc(doc(ownerDb, "projects", projectId))).data();
+    strictEqual(project?.staff[0].members.map(({ id }) => id).join("|"), "staff-a|staff-b");
+  });
+
   it("automatically registers a newly added cast member without copying the credit name", async () => {
     const db = firestoreFor(ownerUid);
     const prepared = preparePerformancePeopleForSave(

@@ -55,6 +55,8 @@ export type CastMember = {
 export type StaffMember = {
   id: string;
   personId?: string;
+  /** 役職内の掲載順。旧データでは未設定のため配列順へフォールバックする。 */
+  order?: number;
   name: string;
   creditName?: string;
 };
@@ -64,6 +66,56 @@ export type StaffRole = {
   role: string;
   members: StaffMember[];
 };
+
+function staffMemberOrder(member: StaffMember, sourceIndex: number): number {
+  return Number.isInteger(member.order) && (member.order ?? 0) > 0
+    ? member.order!
+    : sourceIndex + 1;
+}
+
+/**
+ * 役職の表示順は維持し、各役職内の担当者だけを明示順で並べる。
+ * order がない旧データや重複値は現在の配列順を安定したフォールバックにする。
+ */
+export function sortStaffMembers(members: readonly StaffMember[]): StaffMember[] {
+  return members
+    .map((member, sourceIndex) => ({ member, sourceIndex }))
+    .sort((left, right) => (
+      staffMemberOrder(left.member, left.sourceIndex)
+      - staffMemberOrder(right.member, right.sourceIndex)
+      || left.sourceIndex - right.sourceIndex
+    ))
+    .map(({ member }) => member);
+}
+
+export function getNextStaffMemberOrder(members: readonly StaffMember[]): number {
+  const highestOrder = members.reduce((highest, member) => (
+    Number.isInteger(member.order) && (member.order ?? 0) > highest
+      ? member.order!
+      : highest
+  ), members.length);
+  return highestOrder + 1;
+}
+
+export function moveStaffMember(
+  staff: readonly StaffRole[],
+  roleId: string,
+  memberId: string,
+  direction: "up" | "down"
+): StaffRole[] {
+  return staff.map((role) => {
+    if (role.id !== roleId) return role;
+    const members = sortStaffMembers(role.members);
+    const currentIndex = members.findIndex((member) => member.id === memberId);
+    const targetIndex = currentIndex + (direction === "up" ? -1 : 1);
+    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= members.length) return role;
+    [members[currentIndex], members[targetIndex]] = [members[targetIndex], members[currentIndex]];
+    return {
+      ...role,
+      members: members.map((member, index) => ({ ...member, order: index + 1 })),
+    };
+  });
+}
 
 export type ContactInfo = {
   name?: string;

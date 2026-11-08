@@ -1,4 +1,5 @@
-import { deepStrictEqual, strictEqual, throws } from "node:assert/strict";
+import { deepStrictEqual, match, strictEqual, throws } from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { describe, it } from "node:test";
 import {
   buildNewPerformancePerson,
@@ -9,6 +10,7 @@ import {
   resolveCastMemberPerson,
   resolveStaffMemberPerson,
 } from "../lib/performance-people.ts";
+import { getNextStaffMemberOrder, moveStaffMember, sortStaffMembers } from "../lib/performance.ts";
 
 const people = [{
   id: "person-a",
@@ -23,6 +25,50 @@ const people = [{
 }];
 
 describe("performance people linking", () => {
+  it("keeps legacy staff order stable and applies explicit order within each role", () => {
+    const legacy = [
+      { id: "staff-a", name: "A" },
+      { id: "staff-b", name: "B" },
+      { id: "staff-c", name: "C" },
+    ];
+    deepStrictEqual(sortStaffMembers(legacy).map(({ id }) => id), ["staff-a", "staff-b", "staff-c"]);
+    deepStrictEqual(sortStaffMembers([
+      { ...legacy[0], order: 2 },
+      legacy[1],
+      { ...legacy[2], order: 1 },
+    ]).map(({ id }) => id), ["staff-c", "staff-a", "staff-b"]);
+    strictEqual(getNextStaffMemberOrder([{ ...legacy[0], order: 10 }, legacy[1]]), 11);
+  });
+
+  it("moves staff only inside the selected role and normalizes that role atomically", () => {
+    const staff = [
+      { id: "role-a", role: "演出", members: [
+        { id: "staff-a", name: "A" },
+        { id: "staff-b", name: "B" },
+        { id: "staff-c", name: "C" },
+      ] },
+      { id: "role-b", role: "制作", members: [{ id: "staff-d", name: "D" }] },
+    ];
+    const moved = moveStaffMember(staff, "role-a", "staff-c", "up");
+    deepStrictEqual(moved[0].members.map(({ id, order }) => [id, order]), [
+      ["staff-a", 1], ["staff-c", 2], ["staff-b", 3],
+    ]);
+    strictEqual(moved[1], staff[1]);
+    strictEqual(moveStaffMember(moved, "role-a", "staff-a", "up")[0], moved[0]);
+    strictEqual(moveStaffMember(moved, "role-a", "staff-b", "down")[0], moved[0]);
+  });
+
+  it("exposes accessible up/down controls while the existing editor remains permission-gated", async () => {
+    const source = await readFile(
+      new URL("../app/projects/[projectId]/info/PerformanceInfoClient.tsx", import.meta.url),
+      "utf8"
+    );
+    match(source, /aria-label="上へ移動"/);
+    match(source, /aria-label="下へ移動"/);
+    match(source, /disabled=\{saving \|\| memberIndex === 0\}/);
+    match(source, /\{canEdit && <button className=\{styles\.editButton\}/);
+  });
+
   it("hides ended people from new selections while keeping an existing ended selection", () => {
     const ended = { ...people[0], id: "ended", active: false };
     deepStrictEqual(getSelectablePerformancePeople([...people, ended]).map(({ id }) => id), ["person-a"]);

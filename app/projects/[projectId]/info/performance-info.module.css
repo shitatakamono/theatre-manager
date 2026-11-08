@@ -161,8 +161,12 @@
 .repeaterHeader > button,
 .memberRow > button { color: #a73b3b; font-size: 10px; font-weight: 700; }
 .memberList { display: grid; gap: 8px; }
-.memberRow { display: grid; grid-template-columns: 1fr 1fr auto; align-items: end; gap: 8px; border-top: 1px solid #edf0ee; padding-top: 8px; }
+.memberRow { display: grid; grid-template-columns: 1fr 1fr auto auto; align-items: end; gap: 8px; border-top: 1px solid #edf0ee; padding-top: 8px; }
 .memberRow > button { min-height: 39px; padding: 0 5px; }
+.staffOrderControls { display: flex; gap: 5px; }
+.staffOrderControls button { min-height: 39px; border: 1px solid #cbd6d1; border-radius: 7px; padding: 0 8px; color: #315a4b; font-size: 10px; font-weight: 800; white-space: nowrap; }
+.staffOrderControls button:disabled { cursor: default; opacity: .35; }
+.memberDeleteButton { color: #a73b3b; }
 .personLinkEditor { display: grid; grid-column: 1 / -1; gap: 9px; margin-top: 10px; border-top: 1px solid #edf0ee; padding-top: 10px; }
 .personDetails { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; border-radius: 8px; background: #f4f7f5; padding: 11px; }
 .participationFields { grid-column: 1 / -1; }
@@ -223,6 +227,8 @@
   .fullField { grid-column: 1; }
   .memberRow { grid-template-columns: 1fr; }
   .memberRow > button { min-height: 32px; justify-self: end; }
+  .staffOrderControls { width: 100%; }
+  .staffOrderControls button { flex: 1; min-height: 38px; }
   .personDetails { grid-template-columns: 1fr; }
   .personDetails .fullField,
   .personLinkStatus { grid-column: 1; }

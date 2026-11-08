@@ -157,14 +157,14 @@ describe("Google Calendar trigger change detection", () => {
         { personId: "person-a", order: 1, displayName: "A" },
         { personId: "person-b", order: 2, displayName: "B" },
       ],
-      staff: [{ role: "演出", members: [{ personId: "person-c", name: "C" }] }],
+      staff: [{ role: "演出", members: [{ personId: "person-c", order: 1, name: "C" }] }],
     };
     const reordered = {
       cast: [
         { personId: "person-b", order: 1, displayName: "B2" },
         { personId: "person-a", order: 2, displayName: "A2" },
       ],
-      staff: [{ role: "Director", members: [{ personId: "person-c", name: "C2" }] }],
+      staff: [{ role: "Director", members: [{ personId: "person-c", order: 99, name: "C2" }] }],
     };
     strictEqual(didProjectCastStaffEligibilityChange(before, reordered), false);
     strictEqual(didProjectCastStaffEligibilityChange(

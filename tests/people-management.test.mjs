@@ -143,7 +143,7 @@ describe("people management values", () => {
     );
   });
 
-  it("reuses cast order and the first staff appearance for published ordering", () => {
+  it("reuses cast order and explicit per-role staff order for published ordering", () => {
     const managedPeople = [
       { id: "other", displayName: "その他", active: true },
       { id: "cast-2", displayName: "キャスト二", active: true },
@@ -160,9 +160,9 @@ describe("people management values", () => {
     ];
     const staff = [
       { id: "role-1", role: "演出", members: [
-        { id: "staff-b", name: "スタッフ二", personId: "staff-2" },
-        { id: "staff-both", name: "兼任", personId: "both" },
-        { id: "staff-multi-1", name: "複数役職", personId: "multi" },
+        { id: "staff-b", order: 3, name: "スタッフ二", personId: "staff-2" },
+        { id: "staff-both", order: 1, name: "兼任", personId: "both" },
+        { id: "staff-multi-1", order: 2, name: "複数役職", personId: "multi" },
       ] },
       { id: "role-2", role: "舞台監督", members: [
         { id: "staff-a", name: "スタッフ一", personId: "staff-1" },
@@ -171,16 +171,16 @@ describe("people management values", () => {
     ];
 
     deepStrictEqual(sortManagedPeople(managedPeople, cast, staff, "cast_order").map(({ id }) => id), [
-      "cast-1", "both", "cast-2", "staff-2", "multi", "staff-1", "other",
+      "cast-1", "both", "cast-2", "multi", "staff-2", "staff-1", "other",
     ]);
     deepStrictEqual(sortManagedPeople(managedPeople, cast, staff, "staff_order").map(({ id }) => id), [
-      "staff-2", "both", "multi", "staff-1", "cast-1", "cast-2", "other",
+      "both", "multi", "staff-2", "staff-1", "cast-1", "cast-2", "other",
     ]);
     deepStrictEqual(sortManagedPeople(managedPeople, cast, staff, "cast_first").map(({ id }) => id), [
-      "cast-1", "both", "cast-2", "staff-2", "multi", "staff-1", "other",
+      "cast-1", "both", "cast-2", "multi", "staff-2", "staff-1", "other",
     ]);
     deepStrictEqual(sortManagedPeople(managedPeople, cast, staff, "staff_first").map(({ id }) => id), [
-      "staff-2", "both", "multi", "staff-1", "cast-1", "cast-2", "other",
+      "both", "multi", "staff-2", "staff-1", "cast-1", "cast-2", "other",
     ]);
   });
 
