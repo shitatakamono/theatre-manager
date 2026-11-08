@@ -7,6 +7,7 @@ import {
   EMPTY_REHEARSAL_INPUT,
   REHEARSAL_TYPES,
   REHEARSAL_TYPE_LABELS,
+  buildRehearsalCopyInput,
   createProjectRehearsal,
   createProjectRehearsals,
   deleteProjectRehearsal,
@@ -28,7 +29,7 @@ import { RehearsalImportDialog } from "./RehearsalImportDialog";
 import { RehearsalTimeline } from "./RehearsalTimeline";
 import styles from "./rehearsals.module.css";
 
-type EditorMode = "single" | "bulk" | "edit" | null;
+type EditorMode = "single" | "bulk" | "copy" | "edit" | null;
 type ScheduleView = "list" | "timeline";
 
 function todayInTokyo(): string {
@@ -47,9 +48,10 @@ function formatTime(rehearsal: Rehearsal): string {
   return end ? `${start}–${end}` : `${start}–`;
 }
 
-function RehearsalRows({ items, canEdit, onEdit, onDelete }: {
+function RehearsalRows({ items, canEdit, deletingId, onEdit, onDelete }: {
   items: Rehearsal[];
   canEdit: boolean;
+  deletingId: string | null;
   onEdit: (item: Rehearsal) => void;
   onDelete: (item: Rehearsal) => void;
 }) {
@@ -65,7 +67,7 @@ function RehearsalRows({ items, canEdit, onEdit, onDelete }: {
             <td data-label="場所">{item.venue || "—"}</td>
             <td data-label="内容" className={styles.longText}>{item.content || "—"}</td>
             <td data-label="備考" className={styles.longText}>{item.note || "—"}</td>
-            {canEdit && <td data-label="操作"><div className={styles.rowActions}><button type="button" onClick={() => onEdit(item)}>編集</button><button className={styles.dangerLink} type="button" onClick={() => onDelete(item)}>削除</button></div></td>}
+            {canEdit && <td data-label="操作"><div className={styles.rowActions}><button type="button" onClick={() => onEdit(item)}>編集</button><button className={styles.dangerLink} disabled={deletingId !== null} type="button" onClick={() => onDelete(item)}>{deletingId === item.id ? "削除中…" : "削除"}</button></div></td>}
           </tr>
         ))}</tbody>
       </table>
@@ -103,7 +105,9 @@ export function RehearsalClient({ projectId }: { projectId: string }) {
   const [draft, setDraft] = useState<RehearsalInput>({ ...EMPTY_REHEARSAL_INPUT, date: todayInTokyo() });
   const [bulkDates, setBulkDates] = useState([todayInTokyo()]);
   const [editing, setEditing] = useState<Rehearsal | null>(null);
+  const [copySource, setCopySource] = useState<Rehearsal | null>(null);
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [formError, setFormError] = useState("");
   const [conflict, setConflict] = useState(false);
   const [notice, setNotice] = useState("");
@@ -142,18 +146,28 @@ export function RehearsalClient({ projectId }: { projectId: string }) {
 
   const openSingle = () => {
     setDraft({ ...EMPTY_REHEARSAL_INPUT, date: todayInTokyo() });
-    setEditing(null); setMode("single"); setFormError(""); setConflict(false);
+    setEditing(null); setCopySource(null); setMode("single"); setFormError(""); setConflict(false);
   };
   const openBulk = () => {
     setDraft({ ...EMPTY_REHEARSAL_INPUT, date: "" });
     setBulkDates([todayInTokyo()]);
-    setEditing(null); setMode("bulk"); setFormError(""); setConflict(false);
+    setEditing(null); setCopySource(null); setMode("bulk"); setFormError(""); setConflict(false);
   };
   const openEdit = (item: Rehearsal) => {
-    setEditing(item); setDraft(rehearsalToInput(item)); setMode("edit"); setFormError(""); setConflict(false);
+    setEditing(item); setCopySource(null); setDraft(rehearsalToInput(item)); setMode("edit"); setFormError(""); setConflict(false);
   };
 
-  const closeEditor = () => { if (!saving) { setMode(null); setEditing(null); setConflict(false); setFormError(""); } };
+  const copyForNewRehearsal = () => {
+    if (!canEdit || !editing || saving || deletingId !== null) return;
+    setCopySource(editing);
+    setDraft(buildRehearsalCopyInput(editing));
+    setEditing(null);
+    setMode("copy");
+    setFormError("");
+    setConflict(false);
+  };
+
+  const closeEditor = () => { if (!saving && deletingId === null) { setMode(null); setEditing(null); setCopySource(null); setConflict(false); setFormError(""); } };
 
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -179,7 +193,7 @@ export function RehearsalClient({ projectId }: { projectId: string }) {
         await createProjectRehearsal(projectId, draft, actor);
         setNotice("稽古予定を追加しました");
       }
-      setMode(null); setEditing(null);
+      setMode(null); setEditing(null); setCopySource(null);
       await load();
     } catch (error) {
       if (isConflictError(error)) setConflict(true);
@@ -202,15 +216,25 @@ export function RehearsalClient({ projectId }: { projectId: string }) {
     } finally { setSaving(false); }
   };
 
-  const remove = async (item: Rehearsal) => {
-    if (!canEdit || !confirm(`${formatDate(item)} ${formatTime(item)} の稽古予定を削除しますか？`)) return;
-    setLoadError(""); setNotice("");
+  const remove = async (item: Rehearsal, fromEditor = false) => {
+    if (!canEdit || deletingId !== null) return;
+    const label = getRehearsalTypeLabel(item.type, item.customType);
+    const confirmed = confirm(`この稽古予定を削除しますか？\n\n${formatDate(item)}\n${formatTime(item)}\n${label}${item.venue ? `\n${item.venue}` : ""}\n\nこの操作は取り消せません。`);
+    if (!confirmed) return;
+    setDeletingId(item.id); setLoadError(""); setFormError(""); setNotice("");
     try {
       await deleteProjectRehearsal(db, projectId, item.id, { actor, expectedRevision: item.revision });
       setNotice("稽古予定を削除しました");
+      if (fromEditor) { setMode(null); setEditing(null); setCopySource(null); }
       await load();
     } catch (error) {
-      setLoadError(isConflictError(error) ? `${CONFLICT_MESSAGE} 一覧を再読み込みしてください。` : error instanceof Error ? error.message : "削除できませんでした");
+      const message = isConflictError(error)
+        ? `${CONFLICT_MESSAGE} 一覧を再読み込みしてください。`
+        : "稽古予定を削除できませんでした。時間をおいてもう一度お試しください。";
+      if (fromEditor) setFormError(message);
+      else setLoadError(message);
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -241,24 +265,26 @@ export function RehearsalClient({ projectId }: { projectId: string }) {
       {view === "list" ? <>
         <section className={styles.schedule} aria-labelledby="upcoming-title">
           <div className={styles.sectionTitle}><p>UPCOMING</p><h2 id="upcoming-title">今後の稽古</h2><span>{upcoming.length}件</span></div>
-          {!loading && upcoming.length === 0 ? <p className={styles.empty}>登録されている今後の稽古はありません。</p> : <RehearsalRows items={upcoming} canEdit={canEdit} onEdit={openEdit} onDelete={remove} />}
+          {!loading && upcoming.length === 0 ? <p className={styles.empty}>登録されている今後の稽古はありません。</p> : <RehearsalRows items={upcoming} canEdit={canEdit} deletingId={deletingId} onEdit={openEdit} onDelete={remove} />}
         </section>
 
         <details className={styles.pastSection}>
           <summary>過去の稽古 <span>{past.length}件</span></summary>
-          {past.length === 0 ? <p className={styles.empty}>過去の稽古はありません。</p> : <RehearsalRows items={past} canEdit={canEdit} onEdit={openEdit} onDelete={remove} />}
+          {past.length === 0 ? <p className={styles.empty}>過去の稽古はありません。</p> : <RehearsalRows items={past} canEdit={canEdit} deletingId={deletingId} onEdit={openEdit} onDelete={remove} />}
         </details>
       </> : <section className={styles.timelineSection} aria-labelledby="timeline-title">
         <div className={styles.sectionTitle}><p>TIMELINE</p><h2 id="timeline-title">今後の稽古時間軸</h2><span>{timelineModel.days.length}日</span></div>
         {loading ? <p className={styles.empty}>読み込み中…</p> : timelineModel.rehearsalCount === 0 ? <p className={styles.empty}>登録されている今後の稽古はありません。</p> : <RehearsalTimeline model={timelineModel} onSelect={canEdit ? (id) => { const item = upcoming.find((rehearsal) => rehearsal.id === id); if (item) openEdit(item); } : undefined} />}
       </section>}
 
-      {mode && <div className={styles.overlay} role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) closeEditor(); }}><section className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby="editor-title"><header><div><p>REHEARSAL</p><h2 id="editor-title">{mode === "edit" ? "稽古を編集" : mode === "bulk" ? "複数日追加" : "稽古を追加"}</h2></div><button aria-label="閉じる" type="button" onClick={closeEditor}>×</button></header><form onSubmit={save}>
+      {mode && <div className={styles.overlay} role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) closeEditor(); }}><section className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby="editor-title"><header><div><p>REHEARSAL</p><h2 id="editor-title">{mode === "edit" ? "稽古を編集" : mode === "copy" ? "稽古予定をコピー" : mode === "bulk" ? "複数日追加" : "稽古を追加"}</h2></div><button aria-label="閉じる" type="button" onClick={closeEditor}>×</button></header><form onSubmit={save}>
+        {mode === "copy" && copySource && <div className={styles.copyNotice} role="status"><strong>新しい稽古予定として登録します</strong><span>元の予定：{formatDate(copySource)} {formatTime(copySource)} {getRehearsalTypeLabel(copySource.type, copySource.customType)}</span><small>日付を含む内容を確認してから登録してください。元の予定は変更されません。</small></div>}
         {mode === "bulk" && <fieldset className={styles.dateList}><legend>日付 *</legend>{bulkDates.map((date, index) => <div key={index}><input required type="date" value={date} onChange={(event) => setBulkDates((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} /><button disabled={bulkDates.length === 1} type="button" onClick={() => setBulkDates((current) => current.filter((_, itemIndex) => itemIndex !== index))}>削除</button></div>)}<button type="button" disabled={bulkDates.length >= 100} onClick={() => setBulkDates((current) => [...current, ""])}>＋ 日付を追加</button><small>同じ日付は1件として登録します（最大100件）</small></fieldset>}
         <RehearsalFields value={draft} onChange={setDraft} hideDate={mode === "bulk"} />
         {conflict && <div className={styles.conflict} role="alert"><strong>他のメンバーによる更新があります</strong><p>{CONFLICT_MESSAGE}</p><button type="button" disabled={saving} onClick={() => void reloadConflict()}>最新の内容を読み込む</button></div>}
         {formError && <p className={styles.formError} role="alert">{formError}</p>}
-        <footer><button className={styles.secondaryButton} type="button" onClick={closeEditor}>キャンセル</button><button type="submit" disabled={saving}>{saving ? "保存中…" : "保存"}</button></footer>
+        <footer className={styles.editorFooter}>{mode === "edit" && <button className={styles.copyButton} type="button" disabled={saving || deletingId !== null} onClick={copyForNewRehearsal}>コピーして新規作成</button>}<button className={styles.secondaryButton} type="button" onClick={closeEditor}>キャンセル</button><button type="submit" disabled={saving || deletingId !== null}>{saving ? "保存中…" : mode === "edit" ? "保存" : "登録"}</button></footer>
+        {mode === "edit" && editing && <section className={styles.dangerZone} aria-label="危険な操作"><div><strong>この稽古予定を削除</strong><p>削除した予定は元に戻せません。</p></div><button type="button" disabled={saving || deletingId !== null} onClick={() => void remove(editing, true)}>{deletingId === editing.id ? "削除中…" : "この稽古予定を削除"}</button></section>}
       </form></section></div>}
     </main>
   );

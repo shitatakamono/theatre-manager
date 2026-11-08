@@ -171,6 +171,14 @@ export function rehearsalToInput(rehearsal: Rehearsal): RehearsalInput {
   };
 }
 
+/**
+ * Returns only the user-editable fields that may be used for a new rehearsal.
+ * Document metadata and external integration state are deliberately excluded.
+ */
+export function buildRehearsalCopyInput(rehearsal: Rehearsal): RehearsalInput {
+  return rehearsalToInput(rehearsal);
+}
+
 function sameTimestamp(left: Timestamp | null, right: Timestamp | null): boolean {
   return left === right || (left !== null && right !== null && left.toMillis() === right.toMillis());
 }

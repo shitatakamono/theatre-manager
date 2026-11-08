@@ -64,6 +64,14 @@
 .conflict button { min-height: 38px; background: #7a571d; border-color: #7a571d; }
 .formError { margin-top: 16px; border-radius: 7px; padding: 10px 12px; font-size: 13px; }
 .dialog footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+.dialog footer .copyButton { margin-right: auto; background: #fff; color: #285c4b; }
+.copyNotice { display: grid; gap: 4px; margin-bottom: 18px; border: 1px solid #a9cbbd; border-radius: 8px; background: #f0f8f5; padding: 12px 14px; color: #245746; }
+.copyNotice span { font-size: 13px; }
+.copyNotice small { color: #5f746c; font-size: 11px; line-height: 1.5; }
+.dangerZone { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 24px; border-top: 1px solid #ead1d1; padding-top: 18px; }
+.dangerZone strong { color: #812d2d; font-size: 13px; }
+.dangerZone p { margin-top: 3px; color: #756363; font-size: 11px; }
+.dangerZone button { min-height: 42px; border: 1px solid #b44545; border-radius: 8px; color: #a23434; padding: 8px 14px; font-weight: 800; }
 .dialog button:disabled { cursor: not-allowed; opacity: .55; }
 .importDialog { width: min(760px, 100%); }
 .importBody { padding: 20px 22px 8px; }
@@ -122,6 +130,10 @@
   .full { grid-column: auto; }
   .overlay { align-items: end; padding: 0; }
   .dialog { max-height: 94vh; border-radius: 14px 14px 0 0; }
+  .editorFooter { flex-wrap: wrap; }
+  .dialog footer .copyButton { width: 100%; margin-right: 0; }
+  .dangerZone { align-items: stretch; flex-direction: column; }
+  .dangerZone button { width: 100%; }
   .fileName { display: block; margin: 8px 0 0; }
   .importBody { padding-inline: 16px; }
   .importFooter { padding-inline: 16px; }
