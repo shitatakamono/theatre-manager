@@ -69,9 +69,12 @@ import {
 import {
   buildProductionTaskTransitionEvents,
   createCustomTaskWithEvent,
+  deleteCustomTaskWithEvent,
   toggleCustomTaskWithEvent,
+  updateCustomTaskWithEvent,
   withProductionBlock,
   withVenueSection,
+  type CustomTaskCreateData,
 } from "./task-events";
 
 /* ================================
@@ -123,6 +126,11 @@ export type Task = {
   assigneeName?: string;
   assignee?: string;
   responsible?: string;
+  source?: "custom";
+  priority?: "low" | "normal" | "high";
+  note?: string;
+  createdByUid?: string;
+  updatedByUid?: string;
 };
 
 export type Category = {
@@ -577,15 +585,23 @@ export async function getTasks(projectId: string): Promise<Task[]> {
 // タスク追加
 export async function addTask(
   projectId: string,
-  data: {
-    title: string;
-    stage?: string;
-    category_parent?: string;
-    category_child?: string;
-  },
+  data: CustomTaskCreateData,
   userUid: string
 ) {
   return createCustomTaskWithEvent(db, projectId, data, userUid);
+}
+
+export async function updateTask(
+  projectId: string,
+  taskId: string,
+  data: CustomTaskCreateData,
+  userUid: string
+) {
+  return updateCustomTaskWithEvent(db, projectId, taskId, data, userUid);
+}
+
+export async function deleteTask(projectId: string, taskId: string, userUid: string) {
+  return deleteCustomTaskWithEvent(db, projectId, taskId, userUid);
 }
 
 // タスク完了/未完了切替

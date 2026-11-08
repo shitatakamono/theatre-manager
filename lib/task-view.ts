@@ -9,7 +9,15 @@ export type TaskCreateInput = {
   stage: string;
   category_parent: string;
   category_child: string;
+  dueDate: string;
+  status: TaskProgressStatus;
+  priority: TaskPriority;
+  assigneeUid: string;
+  assigneeName: string;
+  note: string;
 };
+
+export type TaskPriority = "low" | "normal" | "high";
 
 export const TASK_STATUS_LABELS: Record<TaskProgressStatus, string> = {
   "not-started": "未着手",
@@ -24,16 +32,32 @@ export const TASK_WARNING_LABELS: Record<Exclude<TaskDeadlineWarning, "none">, s
   overdue: "期限超過",
 };
 
+export const TASK_PRIORITY_LABELS: Record<TaskPriority, string> = {
+  low: "低",
+  normal: "通常",
+  high: "高",
+};
+
 const DAY_IN_MILLISECONDS = 24 * 60 * 60 * 1000;
 
 export function buildTaskCreateInput(input: TaskCreateInput): TaskCreateInput | null {
   const title = input.title.trim();
   if (!title) return null;
+  const dueDate = input.dueDate?.trim() ?? "";
+  if (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) return null;
+  const status = Object.hasOwn(TASK_STATUS_LABELS, input.status) ? input.status : "not-started";
+  const priority = Object.hasOwn(TASK_PRIORITY_LABELS, input.priority) ? input.priority : "normal";
   return {
     title,
     stage: input.stage.trim(),
     category_parent: input.category_parent.trim(),
     category_child: input.category_child.trim(),
+    dueDate,
+    status,
+    priority,
+    assigneeUid: input.assigneeUid?.trim() ?? "",
+    assigneeName: input.assigneeName?.trim() ?? "",
+    note: input.note?.trim() ?? "",
   };
 }
 

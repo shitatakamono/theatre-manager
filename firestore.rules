@@ -80,10 +80,12 @@ service cloud.firestore {
           || (source == 'customTask' && request.resource.data.taskId.matches('^custom:.*')))
         && (request.resource.data.section == null
           || request.resource.data.section in ['venue', 'flyer', 'web', 'tickets', 'reception', 'accounting'])
-        && eventType in ['taskCreated', 'statusChanged', 'taskCompleted', 'taskReopened']
+        && eventType in ['taskCreated', 'taskUpdated', 'taskDeleted', 'statusChanged', 'taskCompleted', 'taskReopened']
         && validTaskEventStatus(afterStatus)
         && ((eventType == 'taskCreated' && source == 'customTask'
-            && beforeStatus == null && afterStatus == 'not_started')
+            && beforeStatus == null)
+          || (eventType in ['taskUpdated', 'taskDeleted'] && source == 'customTask'
+            && validTaskEventStatus(beforeStatus) && beforeStatus == afterStatus)
           || (eventType == 'taskCompleted' && validTaskEventStatus(beforeStatus)
             && beforeStatus != 'completed' && afterStatus == 'completed')
           || (eventType == 'taskReopened' && beforeStatus == 'completed'

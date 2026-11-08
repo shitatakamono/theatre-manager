@@ -16,6 +16,7 @@ import {
 
 export type ProductionTaskSource = "standard" | "accountingCustom" | "customTask";
 export type ProductionTaskStatus = "not-started" | "in-progress" | "complete" | "on-hold";
+export type ProductionTaskPriority = "low" | "normal" | "high";
 export type ProductionSectionSlug = "venue" | "flyer" | "web" | "tickets" | "reception" | "accounting";
 
 export type ProductionTaskView = {
@@ -30,6 +31,7 @@ export type ProductionTaskView = {
   assignee: string | null;
   assigneeUid: string | null;
   note: string | null;
+  priority: ProductionTaskPriority | null;
   custom: boolean;
   editTarget: string;
   customTaskId: string | null;
@@ -72,6 +74,7 @@ function standardTask(
     assignee: values.assignee ?? null,
     assigneeUid: null,
     note: values.note ?? null,
+    priority: null,
     custom: false,
     editTarget: `/projects/${projectId}/production/${section}`,
     customTaskId: null,
@@ -299,7 +302,8 @@ export function toCustomProductionTask(projectId: string, task: Task): Productio
     dueDate: validDate(task.dueDate) ?? validDate(task.deadline),
     assignee: text(task.assigneeName) ?? text(task.assignee) ?? text(task.responsible),
     assigneeUid: text(task.assigneeUid),
-    note: null,
+    note: text(task.note),
+    priority: task.priority === "low" || task.priority === "high" ? task.priority : "normal",
     custom: true,
     editTarget: `/projects/${projectId}/tasks`,
     customTaskId: task.id,

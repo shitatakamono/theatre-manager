@@ -302,7 +302,12 @@ export default function ProjectPage({ params }: ProjectPageProps) {
       const done = task.status !== "complete";
       await toggleTask(projectId, task.customTaskId, done, actor.uid);
       const next = { ...task, status: done ? "complete" as const : "not-started" as const };
-      setDashboard((current) => current ? { ...current, tasks: current.tasks.map((item) => item.id === task.customTaskId ? { ...item, done } : item) } : current);
+      setDashboard((current) => current ? {
+        ...current,
+        tasks: current.tasks.map((item) => item.id === task.customTaskId
+          ? { ...item, done, status: done ? "complete" : "not-started" }
+          : item),
+      } : current);
       setSelectedTask(next);
     } finally { setSavingTask(false); }
   }

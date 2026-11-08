@@ -30,6 +30,7 @@
 .actions a { display: grid; min-height: 44px; place-items: center; border-radius: 7px; background: #286c55; color: #fff; font-size: 13px; font-weight: 800; }
 .actions button:disabled { opacity: .55; cursor: wait; }
 .actions span { color: #a6372f; font-size: 12px; }
+.dangerZone { display: grid; gap: 7px; margin-top: 10px; border-top: 1px solid #ead5d1; padding-top: 14px; }.dangerZone p { margin: 0; color: #8a554d; }.dangerZone button { border: 1px solid #c86c61; background: #fff; color: #a53b32; }
 
 @media (max-width: 640px) {
   .drawer { width: 100%; padding: 18px; }

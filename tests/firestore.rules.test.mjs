@@ -1161,6 +1161,14 @@ describe("task events", () => {
       beforeStatus: null,
       afterStatus: "not_started",
     })));
+    await assertSucceeds(setDoc(taskEventRef(firestoreFor(editorUid), "updated-event"), taskEventData(editorUid, {
+      taskId: "custom:task-a", taskSource: "customTask", section: null,
+      eventType: "taskUpdated", beforeStatus: "not_started", afterStatus: "not_started",
+    })));
+    await assertSucceeds(setDoc(taskEventRef(firestoreFor(ownerUid), "deleted-event"), taskEventData(ownerUid, {
+      taskId: "custom:task-a", taskSource: "customTask", section: null,
+      eventType: "taskDeleted", beforeStatus: "in_progress", afterStatus: "in_progress",
+    })));
   });
 
   it("allows members to read and denies nonmembers", async () => {
@@ -1183,6 +1191,7 @@ describe("task events", () => {
     await assertFails(setDoc(taskEventRef(db, "duplicate-event"), taskEventData(ownerUid, { eventType: "statusChanged" })));
     await assertFails(setDoc(taskEventRef(db, "bad-source"), taskEventData(ownerUid, { taskSource: "customTask" })));
     await assertFails(setDoc(taskEventRef(db, "client-time"), taskEventData(ownerUid, { occurredAt: new Date() })));
+    await assertFails(setDoc(taskEventRef(db, "standard-deletion"), taskEventData(ownerUid, { eventType: "taskDeleted" })));
   });
 
   it("keeps task events append-only", async () => {

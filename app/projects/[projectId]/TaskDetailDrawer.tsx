@@ -7,6 +7,7 @@ import {
   getTaskAssignee,
   getTaskDueDate,
   getTaskProgressStatus,
+  TASK_PRIORITY_LABELS,
   TASK_STATUS_LABELS,
 } from "@/lib/task-view";
 import styles from "./task-detail-drawer.module.css";
@@ -17,9 +18,11 @@ type TaskDetailDrawerProps = {
   saving?: boolean;
   onClose: () => void;
   onToggleComplete: (task: ProductionTaskView) => Promise<void>;
+  onEdit?: (task: ProductionTaskView) => void;
+  onDelete?: (task: ProductionTaskView) => Promise<void>;
 };
 
-export function TaskDetailDrawer({ task, canEdit, saving = false, onClose, onToggleComplete }: TaskDetailDrawerProps) {
+export function TaskDetailDrawer({ task, canEdit, saving = false, onClose, onToggleComplete, onEdit, onDelete }: TaskDetailDrawerProps) {
   const [error, setError] = useState<{ taskId: string; message: string } | null>(null);
   if (!task) return null;
 
@@ -37,6 +40,7 @@ export function TaskDetailDrawer({ task, canEdit, saving = false, onClose, onTog
         <div><dt>期限</dt><dd>{dueDate || "未設定"}</dd></div>
         <div><dt>担当</dt><dd>{getTaskAssignee(task)}</dd></div>
         <div><dt>状態</dt><dd>{TASK_STATUS_LABELS[status]}</dd></div>
+        {task.priority && <div><dt>優先度</dt><dd>{TASK_PRIORITY_LABELS[task.priority]}</dd></div>}
         <div><dt>セクション</dt><dd>{[task.sectionLabel, task.detailLabel].filter(Boolean).join(" / ")}</dd></div>
         {task.stage && <div><dt>時期</dt><dd>{task.stage}</dd></div>}
         {task.note && <div><dt>備考</dt><dd>{task.note}</dd></div>}
@@ -45,11 +49,16 @@ export function TaskDetailDrawer({ task, canEdit, saving = false, onClose, onTog
         <p>{canEdit ? "この仕事は制作セクションで編集します。" : "制作セクションで詳細を確認できます。"}</p>
         <Link href={task.editTarget}>{canEdit ? "制作セクションで編集" : "制作セクションを見る"}</Link>
       </div> : canEdit ? <div className={styles.actions}>
-        <p>既存の完了切替のみ、この画面から更新できます。</p>
+        <p>この公演だけで使用する追加タスクです。</p>
+        {onEdit && <button type="button" disabled={saving} onClick={() => onEdit(task)}>内容を編集</button>}
         <button type="button" disabled={saving} onClick={() => {
           setError(null);
           void onToggleComplete(task).catch(() => setError({ taskId: task.id, message: "タスクを更新できませんでした。" }));
         }}>{saving ? "保存中…" : task.status === "complete" ? "未完了に戻す" : "完了にする"}</button>
+        {onDelete && <div className={styles.dangerZone}><p>このタスクが不要になった場合のみ削除してください。</p><button type="button" disabled={saving} onClick={() => {
+          setError(null);
+          void onDelete(task).catch(() => setError({ taskId: task.id, message: "タスクを削除できませんでした。" }));
+        }}>このタスクを削除</button></div>}
         {error?.taskId === task.id && <span role="alert">{error.message}</span>}
       </div> : <p className={styles.readOnly}>閲覧専用です。</p>}
     </aside>

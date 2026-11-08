@@ -2,6 +2,7 @@ import { deepStrictEqual, strictEqual } from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   buildCustomTaskTransitionEvent,
+  buildCustomTaskLifecycleEvent,
   buildProductionTaskTransitionEvents,
   buildTaskCreatedEvent,
   getPerformanceDateSnapshot,
@@ -46,6 +47,16 @@ describe("custom task events", () => {
     strictEqual(reopened?.beforeStatus, "completed");
     strictEqual(reopened?.afterStatus, "not_started");
     strictEqual(buildCustomTaskTransitionEvent({ projectId, before: base, after: base, userUid, performanceDateSnapshot: null }), null);
+  });
+
+  it("records metadata edits and deletion without copying note contents", () => {
+    const task = { id: "task-a", title: "追加作業", stage: "", category_parent: "会場", category_child: "", done: false, note: "非公開メモ" };
+    const updated = buildCustomTaskLifecycleEvent({ projectId, task, eventType: "taskUpdated", userUid, performanceDateSnapshot: null });
+    const deleted = buildCustomTaskLifecycleEvent({ projectId, task, eventType: "taskDeleted", userUid, performanceDateSnapshot: null });
+    strictEqual(updated.eventType, "taskUpdated");
+    strictEqual(deleted.eventType, "taskDeleted");
+    strictEqual("note" in updated, false);
+    strictEqual(updated.beforeStatus, updated.afterStatus);
   });
 });
 

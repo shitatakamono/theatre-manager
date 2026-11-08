@@ -1,5 +1,6 @@
 import { deepStrictEqual, strictEqual } from "node:assert/strict";
 import { describe, it } from "node:test";
+import { readFile } from "node:fs/promises";
 import {
   aggregateTaskWarning,
   buildTaskCreateInput,
@@ -87,6 +88,20 @@ describe("production task adapter", () => {
     strictEqual(new Set(tasks.map((task) => task.id)).size, tasks.length);
   });
 
+  it("maps all additional-task fields without affecting standard work", () => {
+    const custom = toCustomProductionTask("p1", {
+      id: "c1", title: "公演情報を集める", stage: "前期", category_parent: "Web", category_child: "調査",
+      done: false, status: "in-progress", dueDate: "2026-11-20", priority: "high",
+      assigneeUid: "u1", assigneeName: "田中", note: "候補をまとめる", source: "custom",
+    });
+    strictEqual(custom.status, "in-progress");
+    strictEqual(custom.dueDate, "2026-11-20");
+    strictEqual(custom.priority, "high");
+    strictEqual(custom.assigneeUid, "u1");
+    strictEqual(custom.assignee, "田中");
+    strictEqual(custom.note, "候補をまとめる");
+  });
+
   it("uses filtered task totals for each section", () => {
     const tasks = buildProductionTaskViews(project({
       tickets: { methods: { reservationForm: true }, seating: { mode: "reserved" } },
@@ -124,10 +139,14 @@ describe("production task adapter", () => {
 
 describe("task view helpers", () => {
   it("normalizes task creation values and rejects an empty title", () => {
-    deepStrictEqual(buildTaskCreateInput({ title: "  入稿  ", stage: " 前期 ", category_parent: " 広報 ", category_child: " チラシ " }), {
-      title: "入稿", stage: "前期", category_parent: "広報", category_child: "チラシ",
+    deepStrictEqual(buildTaskCreateInput({
+      title: "  入稿  ", stage: " 前期 ", category_parent: " 広報 ", category_child: " チラシ ",
+      dueDate: "2026-11-20", status: "in-progress", priority: "high", assigneeUid: " u1 ", assigneeName: " 田中 ", note: " 確認 ",
+    }), {
+      title: "入稿", stage: "前期", category_parent: "広報", category_child: "チラシ", dueDate: "2026-11-20",
+      status: "in-progress", priority: "high", assigneeUid: "u1", assigneeName: "田中", note: "確認",
     });
-    strictEqual(buildTaskCreateInput({ title: "  ", stage: "", category_parent: "", category_child: "" }), null);
+    strictEqual(buildTaskCreateInput({ ...{ title: "  ", stage: "", category_parent: "", category_child: "" }, dueDate: "", status: "not-started", priority: "normal", assigneeUid: "", assigneeName: "", note: "" }), null);
   });
 
   it("keeps progress status separate from explicit deadline warnings", () => {
@@ -173,5 +192,22 @@ describe("task view helpers", () => {
   it("uses a quiet dash for tasks without deadlines", () => {
     strictEqual(formatTaskDueDate(null), "—");
     strictEqual(formatTaskDueDate("2026-10-25"), "10/25");
+  });
+});
+
+describe("additional task UI", () => {
+  it("offers create, edit, delete, assignment and mobile-friendly shared task controls", async () => {
+    const page = await readFile(new URL("../app/projects/[projectId]/tasks/page.tsx", import.meta.url), "utf8");
+    const drawer = await readFile(new URL("../app/projects/[projectId]/TaskDetailDrawer.tsx", import.meta.url), "utf8");
+    strictEqual(page.includes("＋ タスクを追加"), true);
+    strictEqual(page.includes("追加タスクを編集"), true);
+    strictEqual(page.includes("getProjectMembers"), true);
+    strictEqual(page.includes("updateTask(projectId"), true);
+    strictEqual(page.includes("deleteTask(projectId"), true);
+    strictEqual(page.includes("window.confirm"), true);
+    strictEqual(page.includes("if (!window.confirm"), true);
+    strictEqual(page.includes("placeholder=\"例：制作\""), true);
+    strictEqual(drawer.includes("このタスクを削除"), true);
+    strictEqual(drawer.includes("task.source !== \"customTask\""), true);
   });
 });

@@ -19,7 +19,7 @@ import type { ProjectPerformanceData } from "./performance.ts";
 import type { ProductionManagement } from "./venue-management.ts";
 
 export const TASK_EVENT_SOURCES = ["standard", "accountingCustom", "customTask"] as const satisfies readonly ProductionTaskSource[];
-export const TASK_EVENT_TYPES = ["taskCreated", "statusChanged", "taskCompleted", "taskReopened"] as const;
+export const TASK_EVENT_TYPES = ["taskCreated", "taskUpdated", "taskDeleted", "statusChanged", "taskCompleted", "taskReopened"] as const;
 export const TASK_EVENT_STATUSES = ["not_started", "in_progress", "completed", "on_hold"] as const;
 
 export type TaskEventType = (typeof TASK_EVENT_TYPES)[number];
@@ -49,7 +49,40 @@ export type CustomTaskCreateData = {
   stage?: string;
   category_parent?: string;
   category_child?: string;
+  dueDate?: string;
+  status?: ProductionTaskStatus;
+  priority?: "low" | "normal" | "high";
+  assigneeUid?: string;
+  assigneeName?: string;
+  note?: string;
 };
+
+function normalizeCustomTaskData(data: CustomTaskCreateData): Required<CustomTaskCreateData> {
+  const title = data.title.trim();
+  if (!title || title.length > 200) throw new Error("タスク名を正しく入力してください");
+  const dueDate = data.dueDate?.trim() ?? "";
+  if (dueDate && !validDate(dueDate)) throw new Error("期限を正しく入力してください");
+  const status = data.status ?? "not-started";
+  if (!["not-started", "in-progress", "complete", "on-hold"].includes(status)) {
+    throw new Error("タスクの状態が不正です");
+  }
+  const priority = data.priority ?? "normal";
+  if (!["low", "normal", "high"].includes(priority)) throw new Error("優先度が不正です");
+  const note = data.note?.trim() ?? "";
+  if (note.length > 2000) throw new Error("メモは2000文字以内で入力してください");
+  return {
+    title,
+    stage: data.stage?.trim() ?? "",
+    category_parent: data.category_parent?.trim() ?? "",
+    category_child: data.category_child?.trim() ?? "",
+    dueDate,
+    status,
+    priority,
+    assigneeUid: data.assigneeUid?.trim() ?? "",
+    assigneeName: data.assigneeName?.trim() ?? "",
+    note,
+  };
+}
 
 function eventStatus(status: ProductionTaskStatus): TaskEventStatus {
   if (status === "in-progress") return "in_progress";
@@ -112,6 +145,28 @@ export function buildTaskCreatedEvent(input: {
     eventType: "taskCreated",
     beforeStatus: null,
     afterStatus: eventStatus(task.status),
+    taskTitle: task.title,
+    performanceDateSnapshot: input.performanceDateSnapshot,
+    userUid: input.userUid,
+  };
+}
+
+export function buildCustomTaskLifecycleEvent(input: {
+  projectId: string;
+  task: CustomTaskLike;
+  eventType: "taskUpdated" | "taskDeleted";
+  userUid: string;
+  performanceDateSnapshot: string | null;
+}): TaskEventDraft {
+  const task = toCustomProductionTask(input.projectId, input.task);
+  const status = eventStatus(task.status);
+  return {
+    taskId: task.id,
+    taskSource: task.source,
+    section: task.section,
+    eventType: input.eventType,
+    beforeStatus: status,
+    afterStatus: status,
     taskTitle: task.title,
     performanceDateSnapshot: input.performanceDateSnapshot,
     userUid: input.userUid,
@@ -222,13 +277,17 @@ export async function createCustomTaskWithEvent(
   const projectRef = doc(firestore, "projects", projectId);
   const taskRef = doc(collection(projectRef, "tasks"));
   const eventRef = doc(collection(projectRef, "taskEvents"));
+  const values = normalizeCustomTaskData(data);
+  const status = values.status;
   const task = {
-    title: data.title,
-    stage: data.stage ?? "",
-    category_parent: data.category_parent ?? "",
-    category_child: data.category_child ?? "",
-    done: false,
+    ...values,
+    status,
+    source: "custom" as const,
+    done: status === "complete",
     createdAt: serverTimestamp(),
+    createdByUid: userUid,
+    updatedAt: serverTimestamp(),
+    updatedByUid: userUid,
   };
   await runTransaction(firestore, async (transaction) => {
     const project = await transaction.get(projectRef);
@@ -242,6 +301,78 @@ export async function createCustomTaskWithEvent(
     }), serverTimestamp()));
   });
   return taskRef.id;
+}
+
+export async function updateCustomTaskWithEvent(
+  firestore: Firestore,
+  projectId: string,
+  taskId: string,
+  data: CustomTaskCreateData,
+  userUid: string
+): Promise<void> {
+  const values = normalizeCustomTaskData(data);
+  const projectRef = doc(firestore, "projects", projectId);
+  const taskRef = doc(projectRef, "tasks", taskId);
+  const eventRef = doc(collection(projectRef, "taskEvents"));
+  await runTransaction(firestore, async (transaction) => {
+    const [project, taskSnapshot] = await Promise.all([
+      transaction.get(projectRef),
+      transaction.get(taskRef),
+    ]);
+    if (!project.exists()) throw new Error("公演が見つかりません");
+    if (!taskSnapshot.exists()) throw new Error("タスクが見つかりません");
+    if (taskSnapshot.data().source && taskSnapshot.data().source !== "custom") {
+      throw new Error("追加タスク以外は編集できません");
+    }
+    const before = { id: taskSnapshot.id, ...(taskSnapshot.data() as Omit<CustomTaskLike, "id">) } as CustomTaskLike;
+    const status = values.status;
+    const updates = {
+      ...values,
+      status,
+      source: "custom" as const,
+      done: status === "complete",
+      updatedAt: serverTimestamp(),
+      updatedByUid: userUid,
+    };
+    const after = { ...before, ...updates } as CustomTaskLike;
+    const performanceDateSnapshot = getPerformanceDateSnapshot(project.data());
+    const event = buildCustomTaskTransitionEvent({ projectId, before, after, userUid, performanceDateSnapshot })
+      ?? buildCustomTaskLifecycleEvent({ projectId, task: after, eventType: "taskUpdated", userUid, performanceDateSnapshot });
+    transaction.update(taskRef, updates);
+    transaction.set(eventRef, buildTaskEventPayload(event, serverTimestamp()));
+  });
+}
+
+export async function deleteCustomTaskWithEvent(
+  firestore: Firestore,
+  projectId: string,
+  taskId: string,
+  userUid: string
+): Promise<void> {
+  const projectRef = doc(firestore, "projects", projectId);
+  const taskRef = doc(projectRef, "tasks", taskId);
+  const eventRef = doc(collection(projectRef, "taskEvents"));
+  await runTransaction(firestore, async (transaction) => {
+    const [project, taskSnapshot] = await Promise.all([
+      transaction.get(projectRef),
+      transaction.get(taskRef),
+    ]);
+    if (!project.exists()) throw new Error("公演が見つかりません");
+    if (!taskSnapshot.exists()) throw new Error("タスクが見つかりません");
+    if (taskSnapshot.data().source && taskSnapshot.data().source !== "custom") {
+      throw new Error("追加タスク以外は削除できません");
+    }
+    const task = { id: taskSnapshot.id, ...(taskSnapshot.data() as Omit<CustomTaskLike, "id">) } as CustomTaskLike;
+    const event = buildCustomTaskLifecycleEvent({
+      projectId,
+      task,
+      eventType: "taskDeleted",
+      userUid,
+      performanceDateSnapshot: getPerformanceDateSnapshot(project.data()),
+    });
+    transaction.delete(taskRef);
+    transaction.set(eventRef, buildTaskEventPayload(event, serverTimestamp()));
+  });
 }
 
 export async function toggleCustomTaskWithEvent(
@@ -262,7 +393,7 @@ export async function toggleCustomTaskWithEvent(
     if (!project.exists()) throw new Error("公演が見つかりません");
     if (!taskSnapshot.exists()) throw new Error("タスクが見つかりません");
     const before = { id: taskSnapshot.id, ...(taskSnapshot.data() as Omit<CustomTaskLike, "id">) } as CustomTaskLike;
-    const after = { ...before, done };
+    const after = { ...before, done, status: done ? "complete" : "not-started" };
     const taskEvent = buildCustomTaskTransitionEvent({
       projectId,
       before,
@@ -270,7 +401,7 @@ export async function toggleCustomTaskWithEvent(
       userUid,
       performanceDateSnapshot: getPerformanceDateSnapshot(project.data()),
     });
-    transaction.update(taskRef, { done });
+    transaction.update(taskRef, { done, status: done ? "complete" : "not-started", updatedAt: serverTimestamp(), updatedByUid: userUid });
     if (taskEvent) transaction.set(eventRef, buildTaskEventPayload(taskEvent, serverTimestamp()));
   });
 }
