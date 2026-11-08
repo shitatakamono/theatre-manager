@@ -1,0 +1,25 @@
+.page { width: min(760px, 100%); min-height: 100vh; margin: 0 auto; padding: 34px 24px 48px; color: #20332c; }
+.header { border-bottom: 2px solid #286c55; padding-bottom: 18px; }
+.header p { color: #39725f; font-size: 11px; font-weight: 900; letter-spacing: .14em; }
+.header h1 { margin-top: 6px; font-size: clamp(24px, 5vw, 36px); font-weight: 900; line-height: 1.25; }
+.header span { display: block; margin-top: 7px; color: #5a6d66; font-size: 14px; font-weight: 800; }
+.notice { margin-top: 18px; border-radius: 8px; background: #eef5f2; padding: 11px 13px; color: #52665f; font-size: 12px; line-height: 1.6; }
+.schedule { display: grid; gap: 10px; margin-top: 22px; }
+.card { display: grid; grid-template-columns: 120px minmax(0, 1fr); border: 1px solid #d3ded9; border-radius: 10px; background: #fff; overflow: hidden; }
+.date { display: grid; place-items: center; background: #f0f5f3; padding: 18px 12px; font-size: 15px; font-weight: 900; }
+.details { display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: center; gap: 10px 14px; padding: 16px; }
+.time { font-variant-numeric: tabular-nums; font-size: 16px; font-weight: 900; white-space: nowrap; }
+.type { border-radius: 999px; background: #dcece6; padding: 4px 9px; color: #1d5d48; font-size: 11px; font-weight: 850; white-space: nowrap; }
+.type[data-type="japanese_dance"] { background: #eadff1; color: #704c8a; }.type[data-type="stage_combat"] { background: #f2dfd7; color: #8a4a34; }.type[data-type="meeting"] { background: #dfeaf4; color: #42658a; }.type[data-type="other"] { background: #e5e9e7; color: #626d69; }
+.venue { min-width: 0; color: #4f615a; font-size: 14px; overflow-wrap: anywhere; }
+.empty { margin-top: 24px; border: 1px solid #d5dfdb; border-radius: 9px; padding: 26px 18px; color: #61726b; text-align: center; }
+.footer { display: flex; justify-content: space-between; gap: 16px; margin-top: 28px; border-top: 1px solid #d8e1dd; padding-top: 14px; color: #77857f; font-size: 11px; }
+
+@media (max-width: 560px) {
+  .page { padding: 22px 14px 36px; }
+  .card { grid-template-columns: 1fr; }
+  .date { display: block; padding: 11px 14px; text-align: left; }
+  .details { grid-template-columns: 1fr auto; padding: 13px 14px 15px; }
+  .venue { grid-column: 1 / -1; }
+  .footer { flex-direction: column; gap: 4px; }
+}

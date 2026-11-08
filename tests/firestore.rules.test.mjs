@@ -1485,3 +1485,13 @@ describe("server-only LINE integration state", () => {
     }
   });
 });
+
+describe("server-only rehearsal share state", () => {
+  it("denies public and authenticated client access to share credentials", async () => {
+    for (const db of [firestoreFor(), firestoreFor(ownerUid)]) {
+      const ref = doc(db, "publicRehearsalShares", projectId);
+      await assertFails(getDoc(ref));
+      await assertFails(setDoc(ref, { enabled: true, token: "secret", tokenHash: "hash" }));
+    }
+  });
+});

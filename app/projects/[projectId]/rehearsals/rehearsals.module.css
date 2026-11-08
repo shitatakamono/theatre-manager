@@ -17,6 +17,19 @@
 .sectionTitle h2 { font-size: 20px; font-weight: 850; white-space: nowrap; }
 .sectionTitle span { color: #708078; font-size: 12px; white-space: nowrap; }
 .viewSwitch { display: flex; gap: 4px; margin-top: 22px; border-bottom: 1px solid #cbd5d1; }
+.sharePanel { display: grid; grid-template-columns: minmax(220px, 1fr) auto; align-items: center; gap: 16px 24px; margin-top: 22px; border: 1px solid #cbdad4; border-radius: 10px; background: #f8fbfa; padding: 16px 18px; }
+.sharePanel > div:first-child > p { color: #3d7763; font-size: 10px; font-weight: 900; letter-spacing: .12em; }
+.sharePanel h2 { margin-top: 2px; font-size: 17px; font-weight: 850; }
+.sharePanel span { display: block; margin-top: 4px; color: #63736d; font-size: 12px; line-height: 1.55; }
+.shareControls { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.shareControls strong { color: #28634f; font-size: 12px; }
+.shareControls button { min-height: 38px; border: 1px solid #2c6a55; border-radius: 7px; background: #fff; color: #245c49; padding: 7px 11px; font-size: 12px; font-weight: 800; }
+.shareControls button:first-of-type { background: #286c55; color: #fff; }
+.shareControls .shareStopButton { border-color: #c48179; color: #9a3c33; background: #fff; }
+.shareControls button:disabled { cursor: wait; opacity: .55; }
+.shareLoading { color: #65746f; font-size: 12px; }
+.shareSuccess, .shareError { grid-column: 1 / -1; font-size: 12px; }
+.shareSuccess { color: #23664e; }.shareError { color: #a23434; }
 .viewSwitch button { min-width: 92px; min-height: 42px; border-bottom: 3px solid transparent; color: #5d6c67; font-size: 13px; font-weight: 850; }
 .viewSwitch button[data-selected="true"] { border-color: #21634f; color: #18513f; }
 .schedule, .timelineSection { margin-top: 22px; }
@@ -120,6 +133,10 @@
   .headerActions > button, .headerActions > .actionLink { flex: 1 1 calc(50% - 4px); }
   .headerActions button, .headerActions .actionLink { width: 100%; justify-content: center; padding-inline: 10px; }
   .viewSwitch button { flex: 1; }
+  .sharePanel { grid-template-columns: 1fr; padding: 14px; }
+  .shareControls { justify-content: stretch; }
+  .shareControls strong { width: 100%; }
+  .shareControls button { flex: 1 1 calc(50% - 4px); }
   .tableWrap { overflow: visible; border: 0; }
   .table, .table tbody { display: block; }
   .table thead { display: none; }
