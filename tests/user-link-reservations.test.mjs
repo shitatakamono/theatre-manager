@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import {
   findUserLinkReservationMemberByEmail,
+  getUserLinkReservationInviteOutcome,
   getUserLinkReservationId,
   isValidUserLinkReservationEmail,
   normalizeUserLinkReservationEmail,
@@ -20,10 +21,12 @@ function management(overrides = {}) {
     createReservation: async (input) => ({
       outcome: "pending",
       reservation: { id: "reservation-a", ...input },
+      inviteOutcome: "created",
     }),
     changeReservation: async (input) => ({
       outcome: "pending",
       reservation: { id: "reservation-b", ...input },
+      inviteOutcome: "existing",
     }),
     cancelReservation: async () => undefined,
     ...overrides,
@@ -72,6 +75,14 @@ describe("user link reservation identity", () => {
       { uid: "user-b", email: "PERSON@example.test" },
     ], "person@example.test"), { kind: "ambiguous" });
   });
+
+  it("creates an invite only when membership and an active/accepted invite are absent", () => {
+    strictEqual(getUserLinkReservationInviteOutcome({ memberExists: true }), "not_needed");
+    strictEqual(getUserLinkReservationInviteOutcome({ memberExists: false }), "created");
+    strictEqual(getUserLinkReservationInviteOutcome({ memberExists: false, inviteStatus: "revoked" }), "created");
+    strictEqual(getUserLinkReservationInviteOutcome({ memberExists: false, inviteStatus: "pending" }), "existing");
+    strictEqual(getUserLinkReservationInviteOutcome({ memberExists: false, inviteStatus: "accepted" }), "existing");
+  });
 });
 
 describe("user link reservation management handlers", () => {
@@ -86,11 +97,11 @@ describe("user link reservation management handlers", () => {
       getReservations: async (input) => { calls.push(["get", input]); return []; },
       createReservation: async (input) => {
         calls.push(["create", input]);
-        return { outcome: "pending", reservation: input };
+        return { outcome: "pending", reservation: input, inviteOutcome: "created" };
       },
       changeReservation: async (input) => {
         calls.push(["change", input]);
-        return { outcome: "pending", reservation: input };
+        return { outcome: "pending", reservation: input, inviteOutcome: "existing" };
       },
       cancelReservation: async (input) => { calls.push(["cancel", input]); },
     });
@@ -116,10 +127,10 @@ describe("user link reservation management handlers", () => {
 
   it("returns immediate and idempotent formal-link outcomes without a reservation", async () => {
     const linked = management({
-      createReservation: async () => ({ outcome: "linked", reservation: null }),
+      createReservation: async () => ({ outcome: "linked", reservation: null, inviteOutcome: "not_needed" }),
     });
     const alreadyLinked = management({
-      createReservation: async () => ({ outcome: "already_linked", reservation: null }),
+      createReservation: async () => ({ outcome: "already_linked", reservation: null, inviteOutcome: "not_needed" }),
     });
     const linkedResponse = await linked.POST(request("POST", {
       personId: "person-a",
@@ -135,11 +146,13 @@ describe("user link reservation management handlers", () => {
       success: true,
       outcome: "linked",
       reservation: null,
+      inviteOutcome: "not_needed",
     });
     deepStrictEqual(await alreadyResponse.json(), {
       success: true,
       outcome: "already_linked",
       reservation: null,
+      inviteOutcome: "not_needed",
     });
   });
 

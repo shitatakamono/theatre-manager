@@ -114,16 +114,23 @@ export function isInviteEmailCooldownActive(
 
 export function validateInviteEmailSend(input: {
   memberRole: ProjectRole | null;
+  requestUid?: string;
   projectExists: boolean;
   inviteExists: boolean;
   requestedEmail: string;
   storedEmail?: unknown;
   status?: unknown;
   role?: unknown;
+  source?: unknown;
+  invitedByUid?: unknown;
   lastAttemptAtMs: number | null;
   nowMs: number;
 }): { email: string; role: InviteRole } {
-  if (input.memberRole !== "owner") {
+  const canSendAutomaticViewerInvite = input.memberRole === "editor"
+    && input.role === "viewer"
+    && input.source === "user_link_reservation"
+    && input.invitedByUid === input.requestUid;
+  if (input.memberRole !== "owner" && !canSendAutomaticViewerInvite) {
     throw new InviteEmailRequestError(403, "owner_required", "招待メールを送信できるのはOwnerのみです");
   }
   if (!input.projectExists || !input.inviteExists) {

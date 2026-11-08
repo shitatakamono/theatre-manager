@@ -52,12 +52,15 @@ async function reserveInviteSend(input: {
       : null;
     const authorized = validateInviteEmailSend({
       memberRole,
+      requestUid: input.uid,
       projectExists: projectSnapshot.exists,
       inviteExists: inviteSnapshot.exists,
       requestedEmail: normalizedEmail,
       storedEmail: invite.email,
       status: invite.status,
       role: invite.role,
+      source: invite.source,
+      invitedByUid: invite.invitedByUid,
       lastAttemptAtMs,
       nowMs: input.nowMs,
     });

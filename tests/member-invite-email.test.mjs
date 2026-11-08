@@ -134,6 +134,36 @@ describe("invite email authorization policy", () => {
     deepStrictEqual(validateInviteEmailSend(policy({ role: "viewer" })), { email: "member@example.com", role: "viewer" });
   });
 
+  it("allows an editor to send only their own automatic viewer invite", () => {
+    deepStrictEqual(validateInviteEmailSend(policy({
+      memberRole: "editor",
+      requestUid: "editor-a",
+      role: "viewer",
+      source: "user_link_reservation",
+      invitedByUid: "editor-a",
+    })), { email: "member@example.com", role: "viewer" });
+    for (const overrides of [
+      { role: "editor" },
+      { source: "manual" },
+      { invitedByUid: "another-editor" },
+    ]) {
+      try {
+        validateInviteEmailSend(policy({
+          memberRole: "editor",
+          requestUid: "editor-a",
+          role: "viewer",
+          source: "user_link_reservation",
+          invitedByUid: "editor-a",
+          ...overrides,
+        }));
+        throw new Error("expected policy rejection");
+      } catch (error) {
+        equal(error instanceof InviteEmailRequestError, true);
+        equal(error.status, 403);
+      }
+    }
+  });
+
   for (const memberRole of ["editor", "viewer", null]) {
     it(`rejects ${memberRole ?? "nonmember"}`, () => {
       try {

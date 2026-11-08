@@ -95,11 +95,91 @@ describe("user link reservation server transactions", () => {
       email: " Person@Example.test ",
     });
     strictEqual(result.outcome, "pending");
+    strictEqual(result.inviteOutcome, "created");
     strictEqual(result.reservation.email, "person@example.test");
     strictEqual(result.reservation.status, "pending");
     strictEqual((await projectRef().collection("people").doc("person-a").get()).data().linkedUserUid, null);
     strictEqual((await projectRef().collection("participants").doc("person-a").get()).exists, false);
     strictEqual((await projectRef().collection("participantLinkedUsers").get()).empty, true);
+    const invite = (await projectRef().collection("memberInvites").doc("person@example.test").get()).data();
+    strictEqual(invite.status, "pending");
+    strictEqual(invite.role, "viewer");
+    strictEqual(invite.source, "user_link_reservation");
+    strictEqual(invite.emailStatus, "not_sent");
+  });
+
+  it("keeps pending and accepted invites, but recreates a revoked invite as viewer", async () => {
+    const scenarios = [
+      { email: "pending@example.test", status: "pending", expected: "existing" },
+      { email: "accepted@example.test", status: "accepted", expected: "existing" },
+      { email: "revoked@example.test", status: "revoked", expected: "created" },
+    ];
+    for (const [index, scenario] of scenarios.entries()) {
+      const personId = index === 0 ? "person-a" : index === 1 ? "person-b" : `person-${index}`;
+      if (index > 1) await projectRef().collection("people").doc(personId).set(personData(`Person ${index}`));
+      await projectRef().collection("memberInvites").doc(scenario.email).set({
+        email: scenario.email,
+        status: scenario.status,
+        role: "editor",
+        marker: scenario.status,
+      });
+      const result = await service.createProjectUserLinkReservation({
+        uid: editorUid,
+        projectId,
+        personId,
+        email: scenario.email,
+      });
+      strictEqual(result.inviteOutcome, scenario.expected);
+      const invite = (await projectRef().collection("memberInvites").doc(scenario.email).get()).data();
+      if (scenario.status === "revoked") {
+        strictEqual(invite.status, "pending");
+        strictEqual(invite.role, "viewer");
+      } else {
+        strictEqual(invite.marker, scenario.status);
+        strictEqual(invite.role, "editor");
+      }
+    }
+  });
+
+  it("is idempotent for the same pending reservation and never duplicates its invite", async () => {
+    const input = {
+      uid: ownerUid,
+      projectId,
+      personId: "person-a",
+      email: "idempotent@example.test",
+    };
+    const first = await service.createProjectUserLinkReservation(input);
+    const second = await service.createProjectUserLinkReservation(input);
+    strictEqual(first.inviteOutcome, "created");
+    strictEqual(second.outcome, "pending");
+    strictEqual(second.inviteOutcome, "existing");
+    strictEqual((await projectRef().collection("memberInvites").get()).size, 1);
+    strictEqual((await projectRef().collection("userLinkReservations").get()).size, 1);
+    strictEqual((await projectRef().collection("activityLogs").get()).size, 2);
+  });
+
+  it("never revokes an independently created manual invite when cancelling a reservation", async () => {
+    const email = "manual-invite@example.test";
+    await projectRef().collection("memberInvites").doc(email).set({
+      email,
+      status: "pending",
+      role: "editor",
+      source: "manual",
+    });
+    await service.createProjectUserLinkReservation({
+      uid: ownerUid,
+      projectId,
+      personId: "person-a",
+      email,
+    });
+    await service.cancelProjectUserLinkReservation({
+      uid: ownerUid,
+      projectId,
+      personId: "person-a",
+    });
+    const invite = (await projectRef().collection("memberInvites").doc(email).get()).data();
+    strictEqual(invite.status, "pending");
+    strictEqual(invite.role, "editor");
   });
 
   it("immediately links an existing unlinked member instead of creating a pending reservation", async () => {
@@ -118,12 +198,29 @@ describe("user link reservation server transactions", () => {
     });
 
     strictEqual(result.outcome, "linked");
+    strictEqual(result.inviteOutcome, "not_needed");
     strictEqual(result.reservation, null);
     strictEqual((await projectRef().collection("people").doc("person-a").get()).data().linkedUserUid, "existing-user");
     strictEqual((await projectRef().collection("participants").doc("person-a").get()).data().linkedUserUid, "existing-user");
     strictEqual((await projectRef().collection("participantLinkedUsers").doc("existing-user").get()).data().participantId, "person-a");
     strictEqual((await projectRef().collection("userLinkReservations").get()).empty, true);
+    strictEqual((await projectRef().collection("memberInvites").get()).empty, true);
     strictEqual((await projectRef().collection("activityLogs").get()).size, 1);
+  });
+
+  it("never overwrites an existing owner role when linking by email", async () => {
+    const email = "owner@example.test";
+    await projectRef().collection("members").doc(ownerUid).update({ email });
+    const result = await service.createProjectUserLinkReservation({
+      uid: editorUid,
+      projectId,
+      personId: "person-a",
+      email,
+    });
+    strictEqual(result.outcome, "linked");
+    strictEqual(result.inviteOutcome, "not_needed");
+    strictEqual((await projectRef().collection("members").doc(ownerUid).get()).data().role, "owner");
+    strictEqual((await projectRef().collection("memberInvites").get()).empty, true);
   });
 
   it("treats an already complete link to the requested person as idempotent success", async () => {
@@ -137,8 +234,10 @@ describe("user link reservation server transactions", () => {
     });
 
     strictEqual(result.outcome, "already_linked");
+    strictEqual(result.inviteOutcome, "not_needed");
     strictEqual(result.reservation, null);
     strictEqual((await projectRef().collection("userLinkReservations").get()).empty, true);
+    strictEqual((await projectRef().collection("memberInvites").get()).empty, true);
     strictEqual((await projectRef().collection("activityLogs").get()).empty, true);
   });
 
@@ -159,6 +258,7 @@ describe("user link reservation server transactions", () => {
     strictEqual((await projectRef().collection("people").doc("person-b").get()).data().linkedUserUid, "linked-user");
     strictEqual((await projectRef().collection("participantLinkedUsers").doc("linked-user").get()).data().participantId, "person-b");
     strictEqual((await projectRef().collection("userLinkReservations").get()).empty, true);
+    strictEqual((await projectRef().collection("memberInvites").get()).empty, true);
   });
 
   it("serializes duplicate email and duplicate-person concurrent reservations", async () => {
@@ -218,12 +318,15 @@ describe("user link reservation server transactions", () => {
     strictEqual(changed.email, "second@example.test");
     strictEqual(changed.status, "pending");
     strictEqual((await projectRef().collection("userLinkReservations").doc(first.id).get()).data().status, "cancelled");
+    strictEqual((await projectRef().collection("memberInvites").doc("first@example.test").get()).data().status, "revoked");
+    strictEqual((await projectRef().collection("memberInvites").doc("second@example.test").get()).data().status, "pending");
     await service.cancelProjectUserLinkReservation({
       uid: editorUid,
       projectId,
       personId: "person-a",
     });
     strictEqual((await projectRef().collection("userLinkReservations").doc(changed.id).get()).data().status, "cancelled");
+    strictEqual((await projectRef().collection("memberInvites").doc("second@example.test").get()).data().status, "revoked");
     strictEqual((await projectRef().collection("userLinkReservationLocks").doc("person-a").get()).exists, false);
   });
 
@@ -338,7 +441,7 @@ describe("user link reservation server transactions", () => {
     const reservations = await projectRef().collection("userLinkReservations").where("email", "==", email).get();
     strictEqual(reservations.docs[0].data().status, "claimed");
     strictEqual((await projectRef().collection("userLinkReservationLocks").doc("person-a").get()).exists, false);
-    strictEqual((await projectRef().collection("activityLogs").get()).size, 2);
+    strictEqual((await projectRef().collection("activityLogs").get()).size, 3);
   });
 
   it("rejects unverified/non-Google identities and existing link conflicts", async () => {

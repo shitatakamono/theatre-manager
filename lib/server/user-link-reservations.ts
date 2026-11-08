@@ -2,6 +2,7 @@ import type { DecodedIdToken } from "firebase-admin/auth";
 import { Timestamp } from "firebase-admin/firestore";
 import {
   findUserLinkReservationMemberByEmail,
+  getUserLinkReservationInviteOutcome,
   getUserLinkReservationId,
   isValidUserLinkReservationEmail,
   normalizeUserLinkReservationEmail,
@@ -9,6 +10,7 @@ import {
   type UserLinkReservation,
   type UserLinkReservationMutationResult,
 } from "../user-link-reservations.ts";
+import { buildMemberInvitePayload } from "../member-invites.ts";
 import { getLegacyRehearsalParticipationTypes } from "../rehearsal-participation.ts";
 import { adminAuth, adminDb } from "./firebase-admin.ts";
 
@@ -52,6 +54,25 @@ function activityPayload(actor: ReservationActor, changedFields: string[], now: 
     sectionLabel: "関係者",
     changedFields,
     createdAt: now,
+  };
+}
+
+function automaticInvitePayload(
+  projectId: string,
+  projectName: string,
+  email: string,
+  actor: ReservationActor,
+  now: Timestamp
+) {
+  return {
+    ...buildMemberInvitePayload({
+      projectId,
+      projectName,
+      email,
+      role: "viewer",
+      invitedBy: { uid: actor.uid, displayName: actor.name },
+    }, now),
+    source: "user_link_reservation" as const,
   };
 }
 
@@ -311,14 +332,18 @@ export async function createProjectUserLinkReservation(input: {
   const lockRef = projectRef.collection(RESERVATION_LOCKS).doc(personId);
   const personRef = projectRef.collection("people").doc(personId);
   const activityRef = projectRef.collection("activityLogs").doc();
+  const inviteActivityRef = projectRef.collection("activityLogs").doc();
+  const inviteRef = projectRef.collection("memberInvites").doc(email);
 
-  const outcome = await adminDb.runTransaction(async (transaction) => {
-    const [member, person, reservation, lock, members] = await Promise.all([
+  const result = await adminDb.runTransaction(async (transaction) => {
+    const [member, person, reservation, lock, members, project, invite] = await Promise.all([
       transaction.get(projectRef.collection("members").doc(input.uid)),
       transaction.get(personRef),
       transaction.get(reservationRef),
       transaction.get(lockRef),
       transaction.get(projectRef.collection("members")),
+      transaction.get(projectRef),
+      transaction.get(inviteRef),
     ]);
     const role = member.data()?.role;
     if (!member.exists || (role !== "owner" && role !== "editor")) {
@@ -352,15 +377,6 @@ export async function createProjectUserLinkReservation(input: {
         "この関係者はすでにシステム利用者と連携されています"
       );
     }
-    if (memberMatch.kind === "none" && reservation.exists
-      && reservation.data()?.status === "pending") {
-      throw new UserLinkReservationError(
-        "email_already_reserved",
-        409,
-        "このメールアドレスはすでに予約されています"
-      );
-    }
-
     const now = Timestamp.now();
     const actor = reservationActor(input.uid, member);
     if (memberMatch.kind === "match") {
@@ -397,28 +413,47 @@ export async function createProjectUserLinkReservation(input: {
           transaction.delete(lockRef);
         }
       }
-      return state === "already_linked" ? "already_linked" : "linked";
+      return {
+        outcome: state === "already_linked" ? "already_linked" as const : "linked" as const,
+        inviteOutcome: "not_needed" as const,
+      };
     }
 
-    transaction.set(reservationRef, {
-      personId,
-      email,
-      status: "pending",
-      createdAt: now,
-      createdByUid: input.uid,
-      updatedAt: now,
-      updatedByUid: input.uid,
-      claimedAt: null,
-      claimedByUid: null,
-      cancelledAt: null,
+    const samePendingReservation = reservation.exists
+      && reservation.data()?.status === "pending"
+      && reservation.data()?.personId === personId
+      && lock.exists
+      && lock.data()?.reservationId === reservationId;
+    if (!samePendingReservation) {
+      transaction.set(reservationRef, {
+        personId,
+        email,
+        status: "pending",
+        createdAt: now,
+        createdByUid: input.uid,
+        updatedAt: now,
+        updatedByUid: input.uid,
+        claimedAt: null,
+        claimedByUid: null,
+        cancelledAt: null,
+      });
+      transaction.set(lockRef, { reservationId, email, updatedAt: now });
+      transaction.set(activityRef, activityPayload(actor, ["システム利用者連携予約を作成"], now));
+    }
+    const inviteOutcome = getUserLinkReservationInviteOutcome({
+      memberExists: false,
+      inviteStatus: invite.data()?.status,
     });
-    transaction.set(lockRef, { reservationId, email, updatedAt: now });
-    transaction.set(activityRef, activityPayload(actor, ["システム利用者連携予約を作成"], now));
-    return "pending";
+    if (inviteOutcome === "created") {
+      const projectName = typeof project.data()?.title === "string" ? project.data()!.title : "";
+      transaction.set(inviteRef, automaticInvitePayload(projectId, projectName, email, actor, now));
+      transaction.set(inviteActivityRef, activityPayload(actor, ["システム利用者招待を作成"], now));
+    }
+    return { outcome: "pending" as const, inviteOutcome };
   });
   return {
-    outcome,
-    reservation: outcome === "pending" ? mapReservation(await reservationRef.get()) : null,
+    ...result,
+    reservation: result.outcome === "pending" ? mapReservation(await reservationRef.get()) : null,
   };
 }
 
@@ -437,14 +472,18 @@ export async function changeProjectUserLinkReservation(input: {
   const newReservationRef = projectRef.collection(RESERVATIONS).doc(newReservationId);
   const personRef = projectRef.collection("people").doc(personId);
   const activityRef = projectRef.collection("activityLogs").doc();
+  const inviteActivityRef = projectRef.collection("activityLogs").doc();
+  const inviteRef = projectRef.collection("memberInvites").doc(email);
 
-  const outcome = await adminDb.runTransaction(async (transaction) => {
-    const [member, person, lock, newReservation, members] = await Promise.all([
+  const result = await adminDb.runTransaction(async (transaction) => {
+    const [member, person, lock, newReservation, members, project, invite] = await Promise.all([
       transaction.get(projectRef.collection("members").doc(input.uid)),
       transaction.get(personRef),
       transaction.get(lockRef),
       transaction.get(newReservationRef),
       transaction.get(projectRef.collection("members")),
+      transaction.get(projectRef),
+      transaction.get(inviteRef),
     ]);
     const role = member.data()?.role;
     if (!member.exists || (role !== "owner" && role !== "editor")) {
@@ -484,10 +523,6 @@ export async function changeProjectUserLinkReservation(input: {
         "この関係者はすでにシステム利用者と連携されています"
       );
     }
-    if (memberMatch.kind === "none" && oldReservationId === newReservationId) {
-      throw new UserLinkReservationError("reservation_conflict", 409, "同じメールアドレスが指定されています");
-    }
-
     const now = Timestamp.now();
     const actor = reservationActor(input.uid, member);
     if (memberMatch.kind === "match") {
@@ -525,8 +560,28 @@ export async function changeProjectUserLinkReservation(input: {
         updatedByUid: input.uid,
       });
       transaction.delete(lockRef);
-      return state === "already_linked" ? "already_linked" : "linked";
+      return {
+        outcome: state === "already_linked" ? "already_linked" as const : "linked" as const,
+        inviteOutcome: "not_needed" as const,
+      };
     }
+
+    if (oldReservationId === newReservationId) {
+      const inviteOutcome = getUserLinkReservationInviteOutcome({
+        memberExists: false,
+        inviteStatus: invite.data()?.status,
+      });
+      if (inviteOutcome === "created") {
+        const projectName = typeof project.data()?.title === "string" ? project.data()!.title : "";
+        transaction.set(inviteRef, automaticInvitePayload(projectId, projectName, email, actor, now));
+        transaction.set(inviteActivityRef, activityPayload(actor, ["システム利用者招待を作成"], now));
+      }
+      return { outcome: "pending" as const, inviteOutcome };
+    }
+
+    const oldReservationEmail = reservationEmail(String(oldReservation.data()?.email ?? ""));
+    const oldInviteRef = projectRef.collection("memberInvites").doc(oldReservationEmail);
+    const oldInvite = await transaction.get(oldInviteRef);
 
     transaction.update(oldReservationRef, {
       status: "cancelled",
@@ -534,6 +589,10 @@ export async function changeProjectUserLinkReservation(input: {
       updatedAt: now,
       updatedByUid: input.uid,
     });
+    if (oldInvite.data()?.status === "pending"
+      && oldInvite.data()?.source === "user_link_reservation") {
+      transaction.update(oldInviteRef, { status: "revoked", updatedAt: now });
+    }
     transaction.set(newReservationRef, {
       personId,
       email,
@@ -548,11 +607,20 @@ export async function changeProjectUserLinkReservation(input: {
     });
     transaction.set(lockRef, { reservationId: newReservationId, email, updatedAt: now });
     transaction.set(activityRef, activityPayload(actor, ["システム利用者連携予約を変更"], now));
-    return "pending";
+    const inviteOutcome = getUserLinkReservationInviteOutcome({
+      memberExists: false,
+      inviteStatus: invite.data()?.status,
+    });
+    if (inviteOutcome === "created") {
+      const projectName = typeof project.data()?.title === "string" ? project.data()!.title : "";
+      transaction.set(inviteRef, automaticInvitePayload(projectId, projectName, email, actor, now));
+      transaction.set(inviteActivityRef, activityPayload(actor, ["システム利用者招待を作成"], now));
+    }
+    return { outcome: "pending" as const, inviteOutcome };
   });
   return {
-    outcome,
-    reservation: outcome === "pending" ? mapReservation(await newReservationRef.get()) : null,
+    ...result,
+    reservation: result.outcome === "pending" ? mapReservation(await newReservationRef.get()) : null,
   };
 }
 
@@ -588,6 +656,9 @@ export async function cancelProjectUserLinkReservation(input: {
       || reservation.data()?.personId !== personId) {
       throw new UserLinkReservationError("reservation_conflict", 409, "予約情報が競合しています");
     }
+    const email = reservationEmail(String(reservation.data()?.email ?? ""));
+    const inviteRef = projectRef.collection("memberInvites").doc(email);
+    const invite = await transaction.get(inviteRef);
     const now = Timestamp.now();
     transaction.update(reservationRef, {
       status: "cancelled",
@@ -595,6 +666,10 @@ export async function cancelProjectUserLinkReservation(input: {
       updatedAt: now,
       updatedByUid: input.uid,
     });
+    if (invite.data()?.status === "pending"
+      && invite.data()?.source === "user_link_reservation") {
+      transaction.update(inviteRef, { status: "revoked", updatedAt: now });
+    }
     transaction.delete(lockRef);
     transaction.set(activityRef, activityPayload({
       uid: input.uid,

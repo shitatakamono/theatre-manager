@@ -22,9 +22,16 @@ export type UserLinkReservationMutationOutcome =
   | "linked"
   | "already_linked";
 
+export type UserLinkReservationInviteOutcome =
+  | "created"
+  | "existing"
+  | "not_needed";
+
 export type UserLinkReservationMutationResult = {
   outcome: UserLinkReservationMutationOutcome;
   reservation: UserLinkReservation | null;
+  inviteOutcome: UserLinkReservationInviteOutcome;
+  inviteEmailStatus?: "sent" | "failed";
 };
 
 export type UserLinkReservationMemberMatch =
@@ -90,4 +97,15 @@ export function findUserLinkReservationMemberByEmail(
   if (matches.length === 0) return { kind: "none" };
   if (matches.length > 1) return { kind: "ambiguous" };
   return { kind: "match", uid: matches[0].uid.trim() };
+}
+
+export function getUserLinkReservationInviteOutcome(input: {
+  memberExists: boolean;
+  inviteStatus?: unknown;
+}): UserLinkReservationInviteOutcome {
+  if (input.memberExists) return "not_needed";
+  if (input.inviteStatus === "pending" || input.inviteStatus === "accepted") {
+    return "existing";
+  }
+  return "created";
 }

@@ -167,7 +167,15 @@ export function PeopleManagementClient({
       ]);
       setReservationEmail(reservation.email);
       setReservationEditing(false);
-      setNotice(change ? "紐づけ予約を変更しました" : "紐づけ予約を登録しました");
+      if (result.inviteOutcome === "created") {
+        setNotice(result.inviteEmailStatus === "sent"
+          ? "Googleアカウントを予約登録し、SeisakuBoardへの招待メールを送信しました"
+          : "Googleアカウントを予約登録し、SeisakuBoardへの招待を作成しました。招待メールはシステム利用者画面から再送できます");
+      } else {
+        setNotice(change
+          ? "Googleアカウントの予約を変更しました。招待はすでに作成されています"
+          : "Googleアカウントを予約登録しました。招待はすでに作成されています");
+      }
     } catch (saveError) {
       setReservationError(saveError instanceof Error
         ? saveError.message
@@ -335,6 +343,7 @@ export function PeopleManagementClient({
           {editing && !reservationLoading && reservationView.kind !== "hidden" && <section className={styles.reservationSection} aria-label="Googleアカウントで紐づけ予約">
             <strong>Googleアカウントで紐づけ予約</strong>
             <p>本人がこの公演へ招待され、同じGoogleアカウントでログインすると自動で紐づけられます。</p>
+            <p>このメールアドレスがまだSeisakuBoardに招待されていない場合、閲覧権限で自動的に招待します。</p>
             {reservationView.kind === "pending" && !reservationEditing ? <>
               <span className={styles.reservationPending}>登録待ち：{reservationView.email}</span>
               {reservationView.conflictPersonName && <p className={styles.reservationConflict} role="alert">

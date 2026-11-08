@@ -73,6 +73,10 @@ describe("user link reservation management view", () => {
     assert.match(source, /予約変更/);
     assert.match(source, /予約解除/);
     assert.match(source, /この予約は既存の紐づけと競合しています/);
+    assert.match(source, /閲覧権限で自動的に招待します/);
+    assert.match(source, /招待メールを送信しました/);
+    assert.match(source, /招待はすでに作成されています/);
+    assert.match(client, /requestMemberInviteEmail/);
     assert.match(client, /Authorization: `Bearer \$\{idToken\}`/);
   });
 });
