@@ -261,7 +261,7 @@ export function RehearsalClient({ projectId }: { projectId: string }) {
       {notice && <p className={styles.success} role="status">{notice}</p>}
       {loadError && <p className={styles.error} role="alert">{loadError} <button type="button" onClick={() => void load()}>再読み込み</button></p>}
 
-      {canEdit && <RehearsalSharePanel projectId={projectId} />}
+      {role && <RehearsalSharePanel projectId={projectId} canManage={canEdit} />}
 
       <div className={styles.viewSwitch} role="group" aria-label="稽古予定の表示形式"><button type="button" data-selected={view === "list"} onClick={() => setView("list")}>一覧</button><button type="button" data-selected={view === "timeline"} onClick={() => setView("timeline")}>時間軸</button></div>
 

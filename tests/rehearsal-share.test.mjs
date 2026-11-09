@@ -59,9 +59,14 @@ describe("rehearsal share management handlers", () => {
     const base = dependencies();
     strictEqual((await createRehearsalShareGetHandler(base.value)(request("GET", false), context())).status, 401);
     const viewer = dependencies({ getProjectRole: async () => "viewer" });
+    strictEqual((await createRehearsalShareGetHandler(viewer.value)(request("GET"), context())).status, 200);
     strictEqual((await createRehearsalSharePostHandler(viewer.value)(request("POST"), context())).status, 403);
+    strictEqual((await createRehearsalSharePatchHandler(viewer.value)(request("PATCH"), context())).status, 403);
+    strictEqual((await createRehearsalShareDeleteHandler(viewer.value)(request("DELETE"), context())).status, 403);
     const editor = dependencies({ getProjectRole: async () => "editor" });
     strictEqual((await createRehearsalSharePostHandler(editor.value)(request("POST"), context())).status, 200);
+    strictEqual((await createRehearsalSharePatchHandler(editor.value)(request("PATCH"), context())).status, 200);
+    strictEqual((await createRehearsalShareDeleteHandler(editor.value)(request("DELETE"), context())).status, 200);
   });
 
   it("routes issue, regeneration and disable without accepting identifiers from a body", async () => {
@@ -106,6 +111,9 @@ describe("rehearsal share UI boundaries", () => {
     match(panel, /再発行すると、現在の共有URLは使えなくなります/);
     match(panel, /新しいURLを改めて案内する必要があります/);
     match(panel, /共有を停止すると、このURLから稽古予定を閲覧できなくなります/);
-    match(schedule, /\{canEdit && <RehearsalSharePanel/);
+    match(panel, /canManage && <details/);
+    match(panel, /canManage\s*\? <button[^>]+[\s\S]*共有リンクを発行/);
+    match(panel, /共有リンクはまだ発行されていません/);
+    match(schedule, /\{role && <RehearsalSharePanel projectId=\{projectId\} canManage=\{canEdit\}/);
   });
 });

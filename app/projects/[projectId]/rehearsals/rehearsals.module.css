@@ -32,6 +32,7 @@
 .shareControls .shareStopButton { border-color: #c48179; color: #9a3c33; background: #fff; }
 .shareControls button:disabled { cursor: wait; opacity: .55; }
 .shareLoading { color: #65746f; font-size: 12px; }
+.shareReadOnly { color: #65746f; font-size: 12px; }
 .shareSuccess, .shareError { grid-column: 1 / -1; font-size: 12px; }
 .shareSuccess { color: #23664e; }.shareError { color: #a23434; }
 .viewSwitch button { min-width: 92px; min-height: 42px; border-bottom: 3px solid transparent; color: #5d6c67; font-size: 13px; font-weight: 850; }

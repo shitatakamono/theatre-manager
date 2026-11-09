@@ -1,4 +1,4 @@
-import { canEditProject, type ProjectRole } from "../auth.ts";
+import { canEditProject, canViewProject, type ProjectRole } from "../auth.ts";
 
 type Status = { enabled: boolean; path: string | null };
 type Context = { params: Promise<{ projectId: string }> };
@@ -24,7 +24,8 @@ function projectIdFrom(raw: string): string | null {
 async function authorize(
   request: Request,
   context: Context,
-  dependencies: RehearsalShareHandlerDependencies
+  dependencies: RehearsalShareHandlerDependencies,
+  access: "view" | "edit"
 ): Promise<{ response: Response } | { projectId: string; uid: string }> {
   const token = request.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
   if (!token) return { response: error("ログインが必要です", "authentication_required", 401) };
@@ -38,14 +39,17 @@ async function authorize(
   const projectId = projectIdFrom(raw);
   if (!projectId) return { response: error("公演情報が不正です", "invalid_project", 400) };
   const role = await dependencies.getProjectRole(projectId, uid);
-  if (!canEditProject(role ?? undefined)) return { response: error("共有設定を変更する権限がありません", "forbidden", 403) };
+  const allowed = access === "view"
+    ? canViewProject(role ?? undefined)
+    : canEditProject(role ?? undefined);
+  if (!allowed) return { response: error(access === "view" ? "共有設定を確認する権限がありません" : "共有設定を変更する権限がありません", "forbidden", 403) };
   return { projectId, uid };
 }
 
 function createHandler(operation: "getStatus" | "issue" | "regenerate" | "disable") {
   return (dependencies: RehearsalShareHandlerDependencies) => async (request: Request, context: Context): Promise<Response> => {
     try {
-      const auth = await authorize(request, context, dependencies);
+      const auth = await authorize(request, context, dependencies, operation === "getStatus" ? "view" : "edit");
       if ("response" in auth) return auth.response;
       const result = operation === "getStatus"
         ? await dependencies.getStatus(auth.projectId)

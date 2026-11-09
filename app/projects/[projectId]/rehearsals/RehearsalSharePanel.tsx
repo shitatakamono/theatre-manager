@@ -6,7 +6,7 @@ import styles from "./rehearsals.module.css";
 
 type ShareStatus = { enabled: boolean; path: string | null };
 
-export function RehearsalSharePanel({ projectId }: { projectId: string }) {
+export function RehearsalSharePanel({ projectId, canManage }: { projectId: string; canManage: boolean }) {
   const [status, setStatus] = useState<ShareStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -36,6 +36,7 @@ export function RehearsalSharePanel({ projectId }: { projectId: string }) {
   }, [projectId]);
 
   async function update(method: "POST" | "PATCH" | "DELETE") {
+    if (!canManage) return;
     setBusy(true); setError(""); setMessage("");
     try {
       const result = await request(method);
@@ -68,7 +69,7 @@ export function RehearsalSharePanel({ projectId }: { projectId: string }) {
     {status === null ? <p className={styles.shareLoading}>共有状態を確認しています…</p> : status.enabled ? <div className={styles.shareControls}>
       <strong>共有中</strong>
       <button className={styles.sharePrimaryAction} type="button" disabled={busy} onClick={() => void copyUrl()}>共有URLをコピー</button>
-      <details className={styles.shareAuxiliary}>
+      {canManage && <details className={styles.shareAuxiliary}>
         <summary>その他の操作</summary>
         <div className={styles.shareAuxiliaryActions}>
           <button type="button" disabled={busy} onClick={() => {
@@ -78,10 +79,12 @@ export function RehearsalSharePanel({ projectId }: { projectId: string }) {
             if (window.confirm("稽古スケジュールの共有を停止しますか？\n\n共有を停止すると、このURLから稽古予定を閲覧できなくなります。")) void update("DELETE");
           }}>共有を停止</button>
         </div>
-      </details>
+      </details>}
     </div> : <div className={styles.shareControls}>
       <strong>未共有</strong>
-      <button className={styles.sharePrimaryAction} type="button" disabled={busy} onClick={() => void update("POST")}>{busy ? "発行中…" : "共有リンクを発行"}</button>
+      {canManage
+        ? <button className={styles.sharePrimaryAction} type="button" disabled={busy} onClick={() => void update("POST")}>{busy ? "発行中…" : "共有リンクを発行"}</button>
+        : <span className={styles.shareReadOnly}>共有リンクはまだ発行されていません。</span>}
     </div>}
     {message && <p className={styles.shareSuccess} role="status">{message}</p>}
     {error && <p className={styles.shareError} role="alert">{error}</p>}
