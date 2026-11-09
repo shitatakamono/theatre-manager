@@ -24,7 +24,11 @@
 .shareControls { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 .shareControls strong { color: #28634f; font-size: 12px; }
 .shareControls button { min-height: 38px; border: 1px solid #2c6a55; border-radius: 7px; background: #fff; color: #245c49; padding: 7px 11px; font-size: 12px; font-weight: 800; }
-.shareControls button:first-of-type { background: #286c55; color: #fff; }
+.shareControls .sharePrimaryAction { background: #286c55; color: #fff; }
+.shareAuxiliary { position: relative; }
+.shareAuxiliary summary { cursor: pointer; color: #60716a; font-size: 11px; font-weight: 800; text-decoration: underline; text-underline-offset: 3px; }
+.shareAuxiliaryActions { position: absolute; z-index: 5; top: calc(100% + 8px); right: 0; display: grid; width: max-content; min-width: 160px; gap: 6px; border: 1px solid #cbdad4; border-radius: 8px; background: #fff; padding: 8px; box-shadow: 0 10px 28px rgb(28 55 45 / .14); }
+.shareAuxiliaryActions button { width: 100%; text-align: left; }
 .shareControls .shareStopButton { border-color: #c48179; color: #9a3c33; background: #fff; }
 .shareControls button:disabled { cursor: wait; opacity: .55; }
 .shareLoading { color: #65746f; font-size: 12px; }
@@ -136,7 +140,10 @@
   .sharePanel { grid-template-columns: 1fr; padding: 14px; }
   .shareControls { justify-content: stretch; }
   .shareControls strong { width: 100%; }
-  .shareControls button { flex: 1 1 calc(50% - 4px); }
+  .shareControls > .sharePrimaryAction { width: 100%; }
+  .shareAuxiliary { width: 100%; }
+  .shareAuxiliary summary { width: fit-content; }
+  .shareAuxiliaryActions { position: static; width: 100%; margin-top: 8px; box-shadow: none; }
   .tableWrap { overflow: visible; border: 0; }
   .table, .table tbody { display: block; }
   .table thead { display: none; }

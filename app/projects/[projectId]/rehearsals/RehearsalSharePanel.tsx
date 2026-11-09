@@ -63,20 +63,25 @@ export function RehearsalSharePanel({ projectId }: { projectId: string }) {
     <div>
       <p>SHARE</p>
       <h2 id="rehearsal-share-title">稽古スケジュール共有</h2>
-      <span>このURLを知っている人は、ログインせずに今後の稽古予定を閲覧できます。</span>
+      <span>このURLを共有すると、ログインせずに最新の稽古予定を確認できます。</span>
     </div>
     {status === null ? <p className={styles.shareLoading}>共有状態を確認しています…</p> : status.enabled ? <div className={styles.shareControls}>
       <strong>共有中</strong>
-      <button type="button" disabled={busy} onClick={() => void copyUrl()}>URLをコピー</button>
-      <button type="button" disabled={busy} onClick={() => {
-        if (window.confirm("共有URLを再発行しますか？\n\n現在のURLはすぐに使えなくなります。")) void update("PATCH");
-      }}>URLを再発行</button>
-      <button className={styles.shareStopButton} type="button" disabled={busy} onClick={() => {
-        if (window.confirm("稽古スケジュールの共有を停止しますか？\n\n現在のURLからは閲覧できなくなります。")) void update("DELETE");
-      }}>共有を停止</button>
+      <button className={styles.sharePrimaryAction} type="button" disabled={busy} onClick={() => void copyUrl()}>共有URLをコピー</button>
+      <details className={styles.shareAuxiliary}>
+        <summary>その他の操作</summary>
+        <div className={styles.shareAuxiliaryActions}>
+          <button type="button" disabled={busy} onClick={() => {
+            if (window.confirm("共有URLを再発行しますか？\n\n再発行すると、現在の共有URLは使えなくなります。\nすでにURLを共有している場合は、新しいURLを改めて案内する必要があります。")) void update("PATCH");
+          }}>URLを再発行</button>
+          <button className={styles.shareStopButton} type="button" disabled={busy} onClick={() => {
+            if (window.confirm("稽古スケジュールの共有を停止しますか？\n\n共有を停止すると、このURLから稽古予定を閲覧できなくなります。")) void update("DELETE");
+          }}>共有を停止</button>
+        </div>
+      </details>
     </div> : <div className={styles.shareControls}>
       <strong>未共有</strong>
-      <button type="button" disabled={busy} onClick={() => void update("POST")}>{busy ? "発行中…" : "共有リンクを発行"}</button>
+      <button className={styles.sharePrimaryAction} type="button" disabled={busy} onClick={() => void update("POST")}>{busy ? "発行中…" : "共有リンクを発行"}</button>
     </div>}
     {message && <p className={styles.shareSuccess} role="status">{message}</p>}
     {error && <p className={styles.shareError} role="alert">{error}</p>}

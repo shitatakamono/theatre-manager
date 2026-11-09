@@ -96,4 +96,16 @@ describe("rehearsal share UI boundaries", () => {
     doesNotMatch(service, /content:/);
     doesNotMatch(service, /note:/);
   });
+
+  it("keeps copying primary while retaining regeneration and stop as secondary actions", async () => {
+    const panel = await readFile(new URL("../app/projects/[projectId]/rehearsals/RehearsalSharePanel.tsx", import.meta.url), "utf8");
+    const schedule = await readFile(new URL("../app/projects/[projectId]/rehearsals/RehearsalClient.tsx", import.meta.url), "utf8");
+    match(panel, /共有リンクを発行/);
+    match(panel, /sharePrimaryAction[^>]+[\s\S]*共有URLをコピー/);
+    match(panel, /<summary>その他の操作<\/summary>/);
+    match(panel, /再発行すると、現在の共有URLは使えなくなります/);
+    match(panel, /新しいURLを改めて案内する必要があります/);
+    match(panel, /共有を停止すると、このURLから稽古予定を閲覧できなくなります/);
+    match(schedule, /\{canEdit && <RehearsalSharePanel/);
+  });
 });
