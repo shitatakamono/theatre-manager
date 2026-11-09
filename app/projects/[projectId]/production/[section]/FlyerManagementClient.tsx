@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { ProjectPerformanceRecord } from "@/lib/firestore";
 import { formatPerformanceDate } from "@/lib/performance";
 import { getProjectRevision } from "@/lib/project-revisions";
@@ -81,6 +82,7 @@ export function FlyerManagementClient({ project, management }: { project: Projec
             { label: "ロゴ素材確認", complete: editor.data.information?.logoMaterialsReady },
             { label: "校正", complete: editor.data.information?.proofread },
           ]} />
+          <Link className={styles.materialLink} href={`/projects/${project.id}/assets`}>登録済みの制作素材を見る →</Link>
         </ManagementSection>
         <ManagementSection id="distribution" title={labels.distribution} block="distribution" onEdit={editor.open}>
           <DetailList items={[{ label: "配布開始日", value: displayValue(editor.data.distribution?.distributionStartDate) }]} />

@@ -21,7 +21,7 @@ describe("project navigation", () => {
       { label: "稽古スケジュール", href: "/projects/project-1/rehearsals" },
       { label: "制作タスク", href: "/projects/project-1/tasks" },
     ]);
-    deepStrictEqual(navigation.management.map(({ label }) => label), ["関係者管理", "他団体公演・折込", "システム利用者", "更新履歴", "使い方"]);
+    deepStrictEqual(navigation.management.map(({ label }) => label), ["関係者管理", "制作素材", "他団体公演・折込", "システム利用者", "更新履歴", "使い方"]);
     strictEqual([...navigation.primary, ...navigation.management].some(({ label }) => label === "制作ロードマップ"), false);
     strictEqual([...navigation.primary, ...navigation.management].some(({ label }) => label === "公演情報"), false);
   });
@@ -29,6 +29,7 @@ describe("project navigation", () => {
   it("shows owner, editor, and viewer items using existing role boundaries", () => {
     const member = buildProjectNavigation("p").management.map(({ label }) => label);
     strictEqual(member.includes("関係者管理"), true);
+    strictEqual(member.includes("制作素材"), true);
     strictEqual(member.includes("他団体公演・折込"), true);
     strictEqual(member.includes("システム利用者"), true);
     strictEqual(member.includes("更新履歴"), true);

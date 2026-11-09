@@ -444,6 +444,16 @@
   color: #176046;
 }
 
+.materialLink {
+  display: inline-flex;
+  margin-top: 12px;
+  color: #24684f;
+  font-size: 11px;
+  font-weight: 850;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .scheduleList,
 .accountingList {
   display: grid;
