@@ -64,6 +64,7 @@ export function getFeedbackPageLabel(path: string): string {
   if (/\/info\/?$/.test(path)) return "公演情報";
   if (/\/activity\/?$/.test(path)) return "更新履歴";
   if (/\/people\/?$/.test(path)) return "関係者管理";
+  if (/\/external-performances\/?$/.test(path)) return "他団体公演・折込";
   if (/\/members\/?$/.test(path)) return "メンバー管理";
   if (/\/tasks\/?$/.test(path)) return "タスク一覧";
   if (/\/feedback\/?$/.test(path)) return "フィードバック";

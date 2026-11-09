@@ -21,6 +21,7 @@ describe("feedback labels", () => {
     strictEqual(getFeedbackPageLabel("/projects/project-a"), "公演トップ");
     strictEqual(getFeedbackPageLabel("/projects/project-a/info"), "公演情報");
     strictEqual(getFeedbackPageLabel("/projects/project-a/people"), "関係者管理");
+    strictEqual(getFeedbackPageLabel("/projects/project-a/external-performances"), "他団体公演・折込");
     strictEqual(getFeedbackPageLabel("/projects/project-a/rehearsals"), "稽古");
     strictEqual(getFeedbackPageLabel("/projects/project-a/production/flyer"), "チラシ・ポスター");
     strictEqual(getFeedbackPageLabel("/projects/project-a/production/accounting"), "会計");

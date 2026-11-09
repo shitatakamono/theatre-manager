@@ -61,6 +61,19 @@ function rehearsalRef(db, id = "rehearsal-a", targetProjectId = projectId) {
   return doc(db, "projects", targetProjectId, "rehearsals", id);
 }
 
+function externalPerformanceRef(db, id = "external-a", targetProjectId = projectId) {
+  return doc(db, "projects", targetProjectId, "externalPerformances", id);
+}
+
+function externalPerformanceData(uid, overrides = {}) {
+  return {
+    organizationName: "外部劇団", performanceName: "秋公演", startDate: "2026-11-15", endDate: "",
+    venue: "外部劇場", contact: "", contactMethod: "", contactPerson: "", note: "", insertion: null,
+    revision: 0, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), createdByUid: uid, updatedByUid: uid,
+    ...overrides,
+  };
+}
+
 function rehearsalData(uid, overrides = {}) {
   return {
     startAt: new Date("2026-11-15T04:00:00Z"),
@@ -549,6 +562,55 @@ describe("section revisions", () => {
       "revisions.accounting": 1,
     }));
     await assertFails(updateDoc(projectRef(db), { "revisions.flyer": 1 }));
+  });
+});
+
+describe("external performances", () => {
+  it("allows owners and editors to create, edit, and delete", async () => {
+    for (const uid of [ownerUid, editorUid]) {
+      const db = firestoreFor(uid);
+      const ref = externalPerformanceRef(db, `external-${uid}`);
+      await assertSucceeds(setDoc(ref, externalPerformanceData(uid)));
+      await assertSucceeds(updateDoc(ref, { venue: "変更後の会場", revision: 1, updatedAt: serverTimestamp(), updatedByUid: uid }));
+      await assertSucceeds(deleteDoc(ref));
+    }
+  });
+
+  it("keeps viewers read-only and denies nonmembers", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(externalPerformanceRef(context.firestore()), externalPerformanceData(ownerUid));
+    });
+    const viewerDb = firestoreFor(viewerUid);
+    await assertSucceeds(getDoc(externalPerformanceRef(viewerDb)));
+    await assertFails(setDoc(externalPerformanceRef(viewerDb, "viewer-create"), externalPerformanceData(viewerUid)));
+    await assertFails(updateDoc(externalPerformanceRef(viewerDb), { venue: "変更不可" }));
+    await assertFails(deleteDoc(externalPerformanceRef(viewerDb)));
+    const outsiderDb = firestoreFor(outsiderUid);
+    await assertFails(getDoc(externalPerformanceRef(outsiderDb)));
+    await assertFails(setDoc(externalPerformanceRef(outsiderDb, "outsider-create"), externalPerformanceData(outsiderUid)));
+    const publicDb = firestoreFor();
+    await assertFails(getDoc(externalPerformanceRef(publicDb)));
+    await assertFails(setDoc(externalPerformanceRef(publicDb, "public-create"), externalPerformanceData("public")));
+  });
+
+  it("isolates each project's records", async () => {
+    const otherProjectId = "other-external-project";
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(projectRef(db, otherProjectId), { title: "別公演", memberUids: [ownerUid] });
+      await setDoc(memberRef(db, ownerUid, otherProjectId), { uid: ownerUid, role: "owner" });
+      await setDoc(externalPerformanceRef(db, "external-other", otherProjectId), externalPerformanceData(ownerUid));
+    });
+    await assertFails(getDoc(externalPerformanceRef(firestoreFor(viewerUid), "external-other", otherProjectId)));
+  });
+
+  it("requires the safe schema, server metadata, and exact revision increments", async () => {
+    const db = firestoreFor(ownerUid);
+    await assertFails(setDoc(externalPerformanceRef(db, "missing-name"), externalPerformanceData(ownerUid, { organizationName: "" })));
+    const ref = externalPerformanceRef(db, "revision-check");
+    await assertSucceeds(setDoc(ref, externalPerformanceData(ownerUid)));
+    await assertFails(updateDoc(ref, { venue: "不正更新", revision: 2, updatedAt: serverTimestamp(), updatedByUid: ownerUid }));
+    await assertFails(updateDoc(ref, { secretField: "保存不可", revision: 1, updatedAt: serverTimestamp(), updatedByUid: ownerUid }));
   });
 });
 

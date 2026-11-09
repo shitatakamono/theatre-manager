@@ -200,6 +200,85 @@ service cloud.firestore {
         && request.resource.data.updatedAt == request.time;
     }
 
+    function validExternalPerformanceDate(value) {
+      return value == ''
+        || (value is string
+          && value.matches('^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'));
+    }
+
+    function validExternalPerformanceInsertion(value) {
+      return value == null
+        || (value is map
+          && value.keys().hasOnly([
+            'method', 'dateTimeText', 'quantity', 'postalAddress',
+            'postalRecipient', 'postalArrivalText', 'note', 'status'
+          ])
+          && value.keys().hasAll([
+            'method', 'dateTimeText', 'quantity', 'postalAddress',
+            'postalRecipient', 'postalArrivalText', 'note', 'status'
+          ])
+          && value.method in ['with_work', 'without_work', 'postal']
+          && value.dateTimeText is string && value.dateTimeText.size() <= 200
+          && value.quantity is int && value.quantity > 0 && value.quantity <= 1000000
+          && value.postalAddress is string && value.postalAddress.size() <= 500
+          && value.postalRecipient is string && value.postalRecipient.size() <= 200
+          && value.postalArrivalText is string && value.postalArrivalText.size() <= 200
+          && value.note is string && value.note.size() <= 2000
+          && value.status in ['before_contact', 'contacted', 'confirmed', 'completed']
+          && (value.method == 'postal'
+            || (value.postalAddress == '' && value.postalRecipient == '' && value.postalArrivalText == '')));
+    }
+
+    function validExternalPerformanceData() {
+      return request.resource.data.keys().hasOnly([
+          'organizationName', 'performanceName', 'startDate', 'endDate', 'venue',
+          'contact', 'contactMethod', 'contactPerson', 'note', 'insertion',
+          'revision', 'createdAt', 'updatedAt', 'createdByUid', 'updatedByUid'
+        ])
+        && request.resource.data.keys().hasAll([
+          'organizationName', 'performanceName', 'startDate', 'endDate', 'venue',
+          'contact', 'contactMethod', 'contactPerson', 'note', 'insertion',
+          'revision', 'createdAt', 'updatedAt', 'createdByUid', 'updatedByUid'
+        ])
+        && request.resource.data.organizationName is string
+        && request.resource.data.organizationName.size() > 0
+        && request.resource.data.organizationName.size() <= 200
+        && request.resource.data.performanceName is string
+        && request.resource.data.performanceName.size() > 0
+        && request.resource.data.performanceName.size() <= 200
+        && validExternalPerformanceDate(request.resource.data.startDate)
+        && validExternalPerformanceDate(request.resource.data.endDate)
+        && (request.resource.data.startDate == '' || request.resource.data.endDate == ''
+          || request.resource.data.startDate <= request.resource.data.endDate)
+        && request.resource.data.venue is string && request.resource.data.venue.size() <= 300
+        && request.resource.data.contact is string && request.resource.data.contact.size() <= 300
+        && request.resource.data.contactMethod is string && request.resource.data.contactMethod.size() <= 200
+        && request.resource.data.contactPerson is string && request.resource.data.contactPerson.size() <= 200
+        && request.resource.data.note is string && request.resource.data.note.size() <= 3000
+        && validExternalPerformanceInsertion(request.resource.data.insertion)
+        && request.resource.data.revision is int && request.resource.data.revision >= 0
+        && request.resource.data.createdByUid is string
+        && request.resource.data.updatedByUid is string;
+    }
+
+    function validExternalPerformanceCreate() {
+      return validExternalPerformanceData()
+        && request.resource.data.revision == 0
+        && request.resource.data.createdByUid == request.auth.uid
+        && request.resource.data.updatedByUid == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function validExternalPerformanceUpdate() {
+      return validExternalPerformanceData()
+        && request.resource.data.revision == resource.data.revision + 1
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.createdByUid == resource.data.createdByUid
+        && request.resource.data.updatedByUid == request.auth.uid
+        && request.resource.data.updatedAt == request.time;
+    }
+
     function participantPath(projectId, participantId) {
       return /databases/$(database)/documents/projects/$(projectId)/participants/$(participantId);
     }
@@ -697,6 +776,13 @@ service cloud.firestore {
       match /tasks/{taskId} {
         allow read: if isMember(projectId);
         allow create, update, delete: if canEdit(projectId);
+      }
+
+      match /externalPerformances/{externalPerformanceId} {
+        allow read: if isMember(projectId);
+        allow create: if canEdit(projectId) && validExternalPerformanceCreate();
+        allow update: if canEdit(projectId) && validExternalPerformanceUpdate();
+        allow delete: if canEdit(projectId);
       }
 
       match /rehearsals/{rehearsalId} {
