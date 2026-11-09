@@ -42,7 +42,7 @@ export type ExternalPerformanceInput = {
 };
 
 export type ExternalPerformanceInsertion = Omit<ExternalPerformanceInsertionInput, "quantity"> & {
-  quantity: number;
+  quantity?: number;
 };
 
 export type ExternalPerformanceValues = Omit<ExternalPerformanceInput, "insertion"> & {
@@ -97,13 +97,16 @@ export function buildExternalPerformanceValues(input: ExternalPerformanceInput):
   if (input.insertion) {
     if (!METHODS.includes(input.insertion.method)) throw new Error("折込方法が不正です");
     if (!STATUSES.includes(input.insertion.status)) throw new Error("折込状況が不正です");
-    const quantity = Number(input.insertion.quantity);
-    if (!Number.isInteger(quantity) || quantity <= 0 || quantity > 1000000) throw new Error("部数は1以上の整数で入力してください");
+    const quantityText = input.insertion.quantity.trim();
+    const quantity = quantityText ? Number(quantityText) : undefined;
+    if (quantity !== undefined && (!Number.isInteger(quantity) || quantity <= 0 || quantity > 1000000)) {
+      throw new Error("部数は1以上の整数で入力してください");
+    }
     const postal = input.insertion.method === "postal";
     insertion = {
       method: input.insertion.method,
-      dateTimeText: trimmed(input.insertion.dateTimeText, 200, "折込日時"),
-      quantity,
+      dateTimeText: trimmed(input.insertion.dateTimeText, 200, "折込・受渡日時"),
+      ...(quantity !== undefined ? { quantity } : {}),
       postalAddress: postal ? trimmed(input.insertion.postalAddress, 500, "郵送先住所") : "",
       postalRecipient: postal ? trimmed(input.insertion.postalRecipient, 200, "宛名") : "",
       postalArrivalText: postal ? trimmed(input.insertion.postalArrivalText, 200, "到着指定") : "",
@@ -127,7 +130,7 @@ export function externalPerformanceToInput(item: ExternalPerformance): ExternalP
     startDate: item.startDate, endDate: item.endDate, venue: item.venue,
     contact: item.contact, contactMethod: item.contactMethod, contactPerson: item.contactPerson,
     note: item.note,
-    insertion: item.insertion ? { ...item.insertion, quantity: String(item.insertion.quantity) } : null,
+    insertion: item.insertion ? { ...item.insertion, quantity: item.insertion.quantity === undefined ? "" : String(item.insertion.quantity) } : null,
   };
 }
 
@@ -152,7 +155,17 @@ export function filterExternalPerformances(items: ExternalPerformance[], filter:
 export function getInsertionSummary(insertion: ExternalPerformanceInsertion | null): string {
   if (!insertion) return "―";
   const method = INSERTION_METHOD_OPTIONS.find(({ value }) => value === insertion.method)?.shortLabel ?? "";
-  return `${insertion.quantity.toLocaleString("ja-JP")}部・${method}`;
+  const quantity = insertion.quantity === undefined ? "部数未定" : `${insertion.quantity.toLocaleString("ja-JP")}部`;
+  return `${quantity}・${method}`;
+}
+
+export function getInsertionDateTimeLabel(insertion: ExternalPerformanceInsertion | null): string {
+  if (!insertion) return "―";
+  const values = [
+    insertion.dateTimeText,
+    insertion.method === "postal" && insertion.postalArrivalText ? `到着：${insertion.postalArrivalText}` : "",
+  ].filter(Boolean);
+  return values.join(" / ") || "未定";
 }
 
 export function getInsertionStatusLabel(insertion: ExternalPerformanceInsertion | null): string {

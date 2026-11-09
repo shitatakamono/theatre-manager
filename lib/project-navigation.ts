@@ -22,7 +22,6 @@ export function buildProjectNavigation(projectId: string): ProjectNavigationMode
     ],
     management: [
       { label: "関係者管理", href: `${base}/people` },
-      { label: "他団体公演・折込", href: `${base}/external-performances` },
       { label: "システム利用者", href: `${base}/members` },
       { label: "更新履歴", href: `${base}/activity` },
       { label: "使い方", action: "help" as const },

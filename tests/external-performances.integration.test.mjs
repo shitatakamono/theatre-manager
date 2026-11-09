@@ -52,13 +52,24 @@ describe("external performance transactions", () => {
     await updateProjectExternalPerformance(db, projectId, id, {
       ...externalPerformanceToInput(current),
       insertion: {
-        method: "with_work", dateTimeText: "11/20 18時頃", quantity: "300",
-        postalAddress: "", postalRecipient: "", postalArrivalText: "", note: "", status: "confirmed",
+        method: "with_work", dateTimeText: "11/20 18時頃", quantity: "",
+        postalAddress: "", postalRecipient: "", postalArrivalText: "", note: "", status: "contacted",
       },
     }, context(ownerUid, current.revision));
     current = (await getProjectExternalPerformances(projectId, db))[0];
+    strictEqual(Object.hasOwn(current.insertion ?? {}, "quantity"), false);
+    strictEqual(externalPerformanceToInput(current).insertion?.quantity, "");
+
+    await updateProjectExternalPerformance(db, projectId, id, {
+      ...externalPerformanceToInput(current), insertion: { ...externalPerformanceToInput(current).insertion, quantity: "300" },
+    }, context(ownerUid, current.revision));
+    current = (await getProjectExternalPerformances(projectId, db))[0];
     strictEqual(current.insertion?.quantity, 300);
-    strictEqual(current.insertion?.status, "confirmed");
+    await updateProjectExternalPerformance(db, projectId, id, {
+      ...externalPerformanceToInput(current), insertion: { ...externalPerformanceToInput(current).insertion, quantity: "" },
+    }, context(ownerUid, current.revision));
+    current = (await getProjectExternalPerformances(projectId, db))[0];
+    strictEqual(Object.hasOwn(current.insertion ?? {}, "quantity"), false);
 
     await updateProjectExternalPerformance(db, projectId, id, { ...externalPerformanceToInput(current), insertion: null }, context(ownerUid, current.revision));
     current = (await getProjectExternalPerformances(projectId, db))[0];
@@ -67,7 +78,7 @@ describe("external performance transactions", () => {
     strictEqual((await getDoc(recordRef(db, id))).exists(), false);
 
     const entries = (await logs(db)).docs.map((entry) => entry.data());
-    deepStrictEqual(entries.map(({ action }) => action).sort(), ["create", "delete", "update", "update"]);
+    deepStrictEqual(entries.map(({ action }) => action).sort(), ["create", "delete", "update", "update", "update", "update"]);
     strictEqual(entries.some((entry) => JSON.stringify(entry).includes("11/20 18時頃")), false);
     strictEqual(entries.some((entry) => entry.changedFields.includes("折込情報追加")), true);
     strictEqual(entries.some((entry) => entry.changedFields.includes("折込情報削除")), true);

@@ -214,12 +214,13 @@ service cloud.firestore {
             'postalRecipient', 'postalArrivalText', 'note', 'status'
           ])
           && value.keys().hasAll([
-            'method', 'dateTimeText', 'quantity', 'postalAddress',
+            'method', 'dateTimeText', 'postalAddress',
             'postalRecipient', 'postalArrivalText', 'note', 'status'
           ])
           && value.method in ['with_work', 'without_work', 'postal']
           && value.dateTimeText is string && value.dateTimeText.size() <= 200
-          && value.quantity is int && value.quantity > 0 && value.quantity <= 1000000
+          && (!value.keys().hasAny(['quantity'])
+            || (value.quantity is int && value.quantity > 0 && value.quantity <= 1000000))
           && value.postalAddress is string && value.postalAddress.size() <= 500
           && value.postalRecipient is string && value.postalRecipient.size() <= 200
           && value.postalArrivalText is string && value.postalArrivalText.size() <= 200

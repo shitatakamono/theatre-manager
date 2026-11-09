@@ -4,7 +4,7 @@ import { describe, it } from "node:test";
 import {
   buildExternalPerformanceValues, filterExternalPerformances,
   getExternalPerformanceCapabilities, getExternalPerformanceChangedFields,
-  getInsertionStatusLabel, getInsertionSummary, sortExternalPerformances,
+  getInsertionDateTimeLabel, getInsertionStatusLabel, getInsertionSummary, sortExternalPerformances,
 } from "../lib/external-performances.ts";
 
 const base = {
@@ -42,6 +42,15 @@ describe("external performance values", () => {
     }}), /整数/);
   });
 
+  it("allows an undecided quantity but rejects zero, negative, decimal, and oversized values", () => {
+    const insertion = { method: "with_work", dateTimeText: "11/20 18時頃", quantity: "", postalAddress: "", postalRecipient: "", postalArrivalText: "", note: "", status: "contacted" };
+    const undecided = buildExternalPerformanceValues({ ...base, insertion });
+    strictEqual(Object.hasOwn(undecided.insertion ?? {}, "quantity"), false);
+    for (const quantity of ["0", "-1", "1.5", "1000001"]) {
+      throws(() => buildExternalPerformanceValues({ ...base, insertion: { ...insertion, quantity } }), /整数/);
+    }
+  });
+
   it("sorts dated records first and uses organization, performance, and id as stable ties", () => {
     const sorted = sortExternalPerformances([
       item("z", { startDate: "" }), item("b", { startDate: "2026-11-10", organizationName: "B団体" }),
@@ -61,6 +70,10 @@ describe("external performance values", () => {
     strictEqual(getInsertionSummary(null), "―");
     strictEqual(getInsertionSummary(pending.insertion), "300部・持込");
     strictEqual(getInsertionSummary(completed.insertion), "500部・郵送");
+    strictEqual(getInsertionSummary({ ...pending.insertion, quantity: undefined }), "部数未定・持込");
+    strictEqual(getInsertionDateTimeLabel(pending.insertion), "未定");
+    strictEqual(getInsertionDateTimeLabel({ ...pending.insertion, dateTimeText: "11/20 18時頃" }), "11/20 18時頃");
+    strictEqual(getInsertionDateTimeLabel({ ...completed.insertion, dateTimeText: "", postalArrivalText: "11/20必着" }), "到着：11/20必着");
     strictEqual(getInsertionStatusLabel(completed.insertion), "完了");
   });
 
@@ -82,6 +95,9 @@ describe("external performance values", () => {
     strictEqual(source.includes("折込情報を編集"), true);
     strictEqual(source.includes("折込情報も削除されます"), true);
     strictEqual(source.includes("折込情報だけを削除"), true);
+    strictEqual(source.includes("折込・受渡日時"), true);
+    strictEqual(source.includes("到着日時指定"), true);
+    strictEqual(source.includes("未定の場合は空欄"), true);
     strictEqual(source.includes("canEdit && <button"), true);
   });
 });

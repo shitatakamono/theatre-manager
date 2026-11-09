@@ -22,7 +22,7 @@ describe("project navigation", () => {
       { label: "制作タスク", href: "/projects/project-1/tasks" },
       { label: "制作素材", href: "/projects/project-1/assets" },
     ]);
-    deepStrictEqual(navigation.management.map(({ label }) => label), ["関係者管理", "他団体公演・折込", "システム利用者", "更新履歴", "使い方"]);
+    deepStrictEqual(navigation.management.map(({ label }) => label), ["関係者管理", "システム利用者", "更新履歴", "使い方"]);
     strictEqual([...navigation.primary, ...navigation.management].some(({ label }) => label === "制作ロードマップ"), false);
     strictEqual([...navigation.primary, ...navigation.management].some(({ label }) => label === "公演情報"), false);
   });
@@ -32,7 +32,7 @@ describe("project navigation", () => {
     const member = navigation.management.map(({ label }) => label);
     strictEqual(member.includes("関係者管理"), true);
     strictEqual(navigation.primary.some(({ label }) => label === "制作素材"), true);
-    strictEqual(member.includes("他団体公演・折込"), true);
+    strictEqual(member.includes("他団体公演・折込"), false);
     strictEqual(member.includes("システム利用者"), true);
     strictEqual(member.includes("更新履歴"), true);
     strictEqual(canManageMembers("owner"), true);

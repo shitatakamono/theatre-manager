@@ -612,6 +612,29 @@ describe("external performances", () => {
     await assertFails(updateDoc(ref, { venue: "不正更新", revision: 2, updatedAt: serverTimestamp(), updatedByUid: ownerUid }));
     await assertFails(updateDoc(ref, { secretField: "保存不可", revision: 1, updatedAt: serverTimestamp(), updatedByUid: ownerUid }));
   });
+
+  it("allows an undecided insertion quantity and validates a supplied quantity", async () => {
+    const db = firestoreFor(ownerUid);
+    const insertion = {
+      method: "with_work", dateTimeText: "11/20 18時頃", postalAddress: "",
+      postalRecipient: "", postalArrivalText: "", note: "", status: "contacted",
+    };
+    const ref = externalPerformanceRef(db, "optional-quantity");
+    await assertSucceeds(setDoc(ref, externalPerformanceData(ownerUid, { insertion })));
+    await assertSucceeds(updateDoc(ref, {
+      insertion: { ...insertion, quantity: 300 }, revision: 1,
+      updatedAt: serverTimestamp(), updatedByUid: ownerUid,
+    }));
+    await assertSucceeds(updateDoc(ref, {
+      insertion, revision: 2, updatedAt: serverTimestamp(), updatedByUid: ownerUid,
+    }));
+    for (const quantity of [0, -1, 1.5, 1000001]) {
+      await assertFails(setDoc(
+        externalPerformanceRef(db, `bad-quantity-${String(quantity).replace(".", "-")}`),
+        externalPerformanceData(ownerUid, { insertion: { ...insertion, quantity } }),
+      ));
+    }
+  });
 });
 
 describe("rehearsals", () => {
