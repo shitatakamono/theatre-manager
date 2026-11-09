@@ -15,6 +15,7 @@ import type { UserProfile } from "@/lib/auth";
 import { completeAuthenticatedUserBootstrap } from "@/lib/auth-bootstrap";
 import { claimPendingProjectInvites, syncCurrentUserMemberProfiles } from "@/lib/firestore";
 import { claimPendingUserLinkReservationsClient } from "@/lib/user-link-reservation-client";
+import { isPublicAppPath } from "@/lib/auth-paths";
 import styles from "./auth.module.css";
 
 type LoginResult = "signed_in" | "redirect_started" | "cancelled" | "failed";
@@ -111,9 +112,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loginError: error,
   }), [error, loading, membershipNotice, profile]);
 
-  const isPublicPage = pathname === "/"
-    || pathname === "/privacy"
-    || pathname === "/terms";
+  const isPublicPage = isPublicAppPath(pathname);
 
   if (isPublicPage) {
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
