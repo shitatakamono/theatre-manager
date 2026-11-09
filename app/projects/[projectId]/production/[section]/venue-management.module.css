@@ -214,6 +214,116 @@
   line-height: 1.6;
 }
 
+.inlineError {
+  margin: 10px 0;
+  border-left: 3px solid #b23d3d;
+  background: #fff0f0;
+  color: #8b2929;
+  padding: 9px 11px;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.variantList {
+  display: grid;
+  gap: 8px;
+}
+
+.variantItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border-top: 1px solid #e1e7e4;
+  padding: 11px 0 3px;
+}
+
+.variantItem:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.variantMain {
+  min-width: 0;
+}
+
+.variantTitle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.variantTitle strong {
+  font-size: 13px;
+}
+
+.variantTitle span,
+.variantTitle em {
+  border-radius: 999px;
+  padding: 3px 7px;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.variantTitle span {
+  background: #edf1ef;
+  color: #5e6b66;
+}
+
+.variantTitle em {
+  background: #e8ecea;
+  color: #57645f;
+}
+
+.variantTitle em[data-status="in-progress"] { background: #e4eef8; color: #285b82; }
+.variantTitle em[data-status="review"] { background: #fff0d7; color: #835718; }
+.variantTitle em[data-status="complete"] { background: #dcf1e8; color: #176046; }
+
+.variantMain p {
+  overflow: hidden;
+  margin-top: 5px;
+  max-width: 600px;
+  color: #5f6f68;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.variantMain small {
+  display: block;
+  margin-top: 4px;
+  color: #7b8782;
+  font-size: 9px;
+}
+
+.variantActions {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
+.variantActions button {
+  min-height: 32px;
+  border: 1px solid #ccd7d2;
+  border-radius: 6px;
+  background: #fff;
+  color: #31584b;
+  padding: 5px 9px;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.variantActions .dangerButton {
+  border-color: #e5c4c4;
+  color: #9b3434;
+}
+
+.variantActions button:disabled {
+  opacity: .5;
+}
+
 .referenceDetails {
   border-left: 3px solid #b9d0c7;
   background: #f2f7f5;
@@ -828,5 +938,20 @@
 
   .fullField {
     grid-column: 1;
+  }
+
+  .variantItem {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .variantActions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .variantActions button {
+    min-height: 40px;
   }
 }

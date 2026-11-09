@@ -24,6 +24,7 @@ import {
   styles,
   useProductionEditor,
 } from "./ProductionCommon";
+import { FlyerVariantsPanel } from "./FlyerVariantsPanel";
 
 type Block = keyof FlyerManagement & string;
 const labels: Record<Block, string> = {
@@ -33,7 +34,14 @@ const labels: Record<Block, string> = {
   information: "掲載情報確認",
   distribution: "配布",
 };
-const links = Object.entries(labels).map(([id, label]) => ({ id, label }));
+const links = [
+  { id: "specifications", label: labels.specifications },
+  { id: "flyer", label: labels.flyer },
+  { id: "flyer-variants", label: "チラシパターン" },
+  { id: "poster", label: labels.poster },
+  { id: "information", label: labels.information },
+  { id: "distribution", label: labels.distribution },
+];
 
 export function FlyerManagementClient({ project, management }: { project: ProjectPerformanceRecord; management?: FlyerManagement }) {
   const editor = useProductionEditor(project.id, "flyer", normalizeFlyer(management), getProjectRevision(project.revisions, "flyer"));
@@ -64,6 +72,7 @@ export function FlyerManagementClient({ project, management }: { project: Projec
           ]} />
         </ManagementSection>
         {renderPrintSection("flyer", "チラシ")}
+        <FlyerVariantsPanel projectId={project.id} legacyFlyer={editor.data.flyer} />
         {renderPrintSection("poster", "ポスター")}
         <ManagementSection id="information" title={labels.information} block="information" onEdit={editor.open}>
           <CheckList items={[
