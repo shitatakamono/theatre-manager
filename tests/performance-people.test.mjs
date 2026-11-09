@@ -10,7 +10,7 @@ import {
   resolveCastMemberPerson,
   resolveStaffMemberPerson,
 } from "../lib/performance-people.ts";
-import { getNextStaffMemberOrder, moveStaffMember, sortStaffMembers } from "../lib/performance.ts";
+import { getNextStaffMemberOrder, moveStaffMember, sortStaffMembers, sortStaffRoles } from "../lib/performance.ts";
 
 const people = [{
   id: "person-a",
@@ -25,6 +25,20 @@ const people = [{
 }];
 
 describe("performance people linking", () => {
+  it("sorts staff roles by role order while preserving legacy and tied source order", () => {
+    const legacy = [
+      { id: "role-a", role: "作", members: [] },
+      { id: "role-b", role: "演出", members: [] },
+      { id: "role-c", role: "照明", members: [] },
+    ];
+    deepStrictEqual(sortStaffRoles(legacy).map(({ id }) => id), ["role-a", "role-b", "role-c"]);
+    deepStrictEqual(sortStaffRoles([
+      { ...legacy[0], order: 20 },
+      { ...legacy[1], order: 10 },
+      { ...legacy[2], order: 10 },
+    ]).map(({ id }) => id), ["role-b", "role-c", "role-a"]);
+  });
+
   it("keeps legacy staff order stable and applies explicit order within each role", () => {
     const legacy = [
       { id: "staff-a", name: "A" },
@@ -66,6 +80,8 @@ describe("performance people linking", () => {
     match(source, /aria-label="上へ移動"/);
     match(source, /aria-label="下へ移動"/);
     match(source, /disabled=\{saving \|\| memberIndex === 0\}/);
+    match(source, /label="表示順" type="number" min=\{1\} step=\{1\} value=\{role\.order \?\? ""\}/);
+    match(source, /sortStaffRoles\(data\.staff \?\? \[\]\)/);
     match(source, /\{canEdit && <button className=\{styles\.editButton\}/);
   });
 

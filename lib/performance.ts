@@ -64,8 +64,30 @@ export type StaffMember = {
 export type StaffRole = {
   id: string;
   role: string;
+  /** 役職そのものの掲載順。旧データでは未設定のため配列順へフォールバックする。 */
+  order?: number;
   members: StaffMember[];
 };
+
+function staffRoleOrder(role: StaffRole, sourceIndex: number): number {
+  return Number.isInteger(role.order) && (role.order ?? 0) > 0
+    ? role.order!
+    : sourceIndex + 1;
+}
+
+/**
+ * 役職を明示順で並べ、未設定や同値の場合は現在の配列順を安定したフォールバックにする。
+ */
+export function sortStaffRoles(staff: readonly StaffRole[]): StaffRole[] {
+  return staff
+    .map((role, sourceIndex) => ({ role, sourceIndex }))
+    .sort((left, right) => (
+      staffRoleOrder(left.role, left.sourceIndex)
+      - staffRoleOrder(right.role, right.sourceIndex)
+      || left.sourceIndex - right.sourceIndex
+    ))
+    .map(({ role }) => role);
+}
 
 function staffMemberOrder(member: StaffMember, sourceIndex: number): number {
   return Number.isInteger(member.order) && (member.order ?? 0) > 0

@@ -6,7 +6,7 @@ import {
   type Firestore,
 } from "firebase/firestore";
 import { getActivityActorName, type ActivityActor } from "./activity.ts";
-import { sortStaffMembers, type CastMember, type StaffRole } from "./performance.ts";
+import { sortStaffMembers, sortStaffRoles, type CastMember, type StaffRole } from "./performance.ts";
 import {
   buildProjectPersonValues,
   type ProjectPerson,
@@ -132,7 +132,7 @@ export function getPersonAssociations(
   staff: readonly StaffRole[]
 ): PersonAssociations {
   const castMembers = cast.filter((member) => member.personId === personId);
-  const staffRoles = staff
+  const staffRoles = sortStaffRoles(staff)
     .filter((role) => role.members.some((member) => member.personId === personId))
     .map((role) => role.role.trim() || "役職未設定");
   const castCreditNames = [...new Set(castMembers
@@ -174,7 +174,7 @@ export function sortManagedPeople(
     });
   const staffPosition = new Map<string, number>();
   let nextStaffPosition = 0;
-  staff.forEach((role) => sortStaffMembers(role.members).forEach((member) => {
+  sortStaffRoles(staff).forEach((role) => sortStaffMembers(role.members).forEach((member) => {
     if (member.personId && !staffPosition.has(member.personId)) {
       staffPosition.set(member.personId, nextStaffPosition);
     }

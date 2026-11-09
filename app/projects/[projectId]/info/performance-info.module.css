@@ -158,6 +158,8 @@
 .repeaterItem { border: 1px solid #d9e1dd; border-radius: 10px; background: #fff; padding: 13px; }
 .repeaterHeader { display: flex; align-items: end; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
 .repeaterHeader > .field { flex: 1; }
+.staffRoleHeader { display: grid; grid-template-columns: minmax(0, 1fr) 90px auto; }
+.staffRoleHeader > .field { flex: none; }
 .repeaterHeader > button,
 .memberRow > button { color: #a73b3b; font-size: 10px; font-weight: 700; }
 .memberList { display: grid; gap: 8px; }

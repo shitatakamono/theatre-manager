@@ -159,28 +159,28 @@ describe("people management values", () => {
       { id: "cast-a", order: 5, name: "キャスト一", personId: "cast-1" },
     ];
     const staff = [
-      { id: "role-1", role: "演出", members: [
+      { id: "role-1", role: "演出", order: 20, members: [
         { id: "staff-b", order: 3, name: "スタッフ二", personId: "staff-2" },
         { id: "staff-both", order: 1, name: "兼任", personId: "both" },
         { id: "staff-multi-1", order: 2, name: "複数役職", personId: "multi" },
       ] },
-      { id: "role-2", role: "舞台監督", members: [
+      { id: "role-2", role: "舞台監督", order: 10, members: [
         { id: "staff-a", name: "スタッフ一", personId: "staff-1" },
         { id: "staff-multi-2", name: "複数役職", personId: "multi" },
       ] },
     ];
 
     deepStrictEqual(sortManagedPeople(managedPeople, cast, staff, "cast_order").map(({ id }) => id), [
-      "cast-1", "both", "cast-2", "multi", "staff-2", "staff-1", "other",
+      "cast-1", "both", "cast-2", "staff-1", "multi", "staff-2", "other",
     ]);
     deepStrictEqual(sortManagedPeople(managedPeople, cast, staff, "staff_order").map(({ id }) => id), [
-      "both", "multi", "staff-2", "staff-1", "cast-1", "cast-2", "other",
+      "staff-1", "multi", "both", "staff-2", "cast-1", "cast-2", "other",
     ]);
     deepStrictEqual(sortManagedPeople(managedPeople, cast, staff, "cast_first").map(({ id }) => id), [
-      "cast-1", "both", "cast-2", "multi", "staff-2", "staff-1", "other",
+      "cast-1", "both", "cast-2", "staff-1", "multi", "staff-2", "other",
     ]);
     deepStrictEqual(sortManagedPeople(managedPeople, cast, staff, "staff_first").map(({ id }) => id), [
-      "both", "multi", "staff-2", "staff-1", "cast-1", "cast-2", "other",
+      "staff-1", "multi", "both", "staff-2", "cast-1", "cast-2", "other",
     ]);
   });
 

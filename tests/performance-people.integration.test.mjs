@@ -10,7 +10,7 @@ import { getProjectAttendanceParticipants } from "../lib/people.ts";
 import { createProjectPerson, setProjectPersonEnded, updateProjectPerson } from "../lib/people-management.ts";
 import { preparePerformancePeopleForSave } from "../lib/performance-people.ts";
 import { updateProjectPerformancePeopleSection } from "../lib/performance-people-writes.ts";
-import { moveStaffMember } from "../lib/performance.ts";
+import { moveStaffMember, sortStaffRoles } from "../lib/performance.ts";
 
 const emulatorProjectId = "seisakuboard-conflict-test";
 const projectId = "performance-people-integration";
@@ -58,6 +58,26 @@ beforeEach(async () => { await testEnv.clearFirestore(); await seed(); });
 after(async () => { await testEnv.cleanup(); });
 
 describe("performance people atomic writes", () => {
+  it("persists staff role display order without rewriting the stored role array", async () => {
+    const staff = [
+      { id: "role-a", role: "作", order: 20, members: [] },
+      { id: "role-b", role: "演出", order: 10, members: [] },
+      { id: "role-c", role: "照明", members: [] },
+    ];
+    const ownerDb = firestoreFor(ownerUid);
+    await updateProjectPerformancePeopleSection(
+      projectId,
+      "staff",
+      staff,
+      [],
+      { actor: actor(ownerUid), expectedRevision: 0 },
+      ownerDb
+    );
+    const saved = (await getDoc(doc(ownerDb, "projects", projectId))).data()?.staff;
+    strictEqual(saved.map(({ id }) => id).join("|"), "role-a|role-b|role-c");
+    strictEqual(sortStaffRoles(saved).map(({ id }) => id).join("|"), "role-c|role-b|role-a");
+  });
+
   it("persists owner and editor staff reordering with revision and activity while viewers remain read-only", async () => {
     const initial = [{ id: "role-a", role: "演出", members: [
       { id: "staff-a", name: "A", personId: "person-a" },

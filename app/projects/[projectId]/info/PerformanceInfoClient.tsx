@@ -34,6 +34,7 @@ import {
   normalizePerformanceData,
   resolveSeatsPerPerformance,
   sortStaffMembers,
+  sortStaffRoles,
   type CastMember,
   type ContactInfo,
   type CreditInfo,
@@ -98,6 +99,12 @@ function numberOrUndefined(value: string) {
   return value === "" ? undefined : Number(value);
 }
 
+function positiveIntegerOrUndefined(value: string) {
+  if (value === "") return undefined;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
 function externalUrl(value: string) {
   return /^https?:\/\//i.test(value) ? value : `https://${value}`;
 }
@@ -145,6 +152,7 @@ type FieldProps = {
   onChange: (value: string) => void;
   type?: "text" | "number" | "date" | "time" | "email" | "url" | "tel";
   min?: number;
+  step?: number;
   placeholder?: string;
 };
 
@@ -154,6 +162,7 @@ function Field({
   onChange,
   type = "text",
   min,
+  step,
   placeholder,
 }: FieldProps) {
   return (
@@ -162,6 +171,7 @@ function Field({
       <input
         type={type}
         min={min}
+        step={step}
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
@@ -319,7 +329,7 @@ export function PerformanceInfoClient({
     () => [...(data.cast ?? [])].sort((a, b) => a.order - b.order),
     [data.cast]
   );
-  const staff = data.staff ?? [];
+  const staff = useMemo(() => sortStaffRoles(data.staff ?? []), [data.staff]);
   const contact = data.contact as ContactInfo;
   const credits = data.credits ?? [];
   const displayTitle = basic.title || project.legacyTitle || "公演タイトル未設定";
@@ -813,7 +823,11 @@ export function PerformanceInfoClient({
           <div className={styles.repeater}>
             {(draft.staff ?? []).map((role, roleIndex) => (
               <div className={styles.repeaterItem} key={role.id}>
-                <div className={styles.repeaterHeader}><Field label="役職" value={role.role} onChange={(value) => updateStaffRole(roleIndex, { role: value })} /><button onClick={() => setDraft((current) => ({ ...current, staff: (current.staff ?? []).filter((_, index) => index !== roleIndex) }))}>役職を削除</button></div>
+                <div className={`${styles.repeaterHeader} ${styles.staffRoleHeader}`}>
+                  <Field label="役職" value={role.role} onChange={(value) => updateStaffRole(roleIndex, { role: value })} />
+                  <Field label="表示順" type="number" min={1} step={1} value={role.order ?? ""} onChange={(value) => updateStaffRole(roleIndex, { order: positiveIntegerOrUndefined(value) })} />
+                  <button onClick={() => setDraft((current) => ({ ...current, staff: (current.staff ?? []).filter((_, index) => index !== roleIndex) }))}>役職を削除</button>
+                </div>
                 <div className={styles.memberList}>
                   {sortStaffMembers(role.members).map((member, memberIndex, orderedMembers) => (
                     <div className={styles.memberRow} key={member.id}>
