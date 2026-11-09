@@ -30,8 +30,8 @@
 @media (max-width: 700px) {
   .bar { min-height: 50px; gap: 5px; padding: 0 8px; }
   .brand { display: none; }
-  .groups { min-width: 0; flex: 1; display: grid; grid-template-columns: 1.15fr .75fr 1.15fr .75fr; overflow: visible; }
-  .directLink, .managementButton { width: 100%; min-height: 50px; padding-inline: 4px; font-size: 12px; }
+  .groups { min-width: 0; flex: 1; display: grid; grid-template-columns: 1.1fr 1.5fr 1fr .9fr .65fr; overflow: visible; }
+  .directLink, .managementButton { width: 100%; min-height: 50px; padding-inline: 3px; font-size: 11px; }
   .managementButton span { font-size: 8px; }
   .menu { position: fixed; top: 50px; right: 8px; left: 8px; width: auto; border-radius: 0 0 9px 9px; }
   .menu a, .menu button { min-height: 44px; }

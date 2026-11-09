@@ -14,22 +14,24 @@ import {
 import { canEditProject, canManageMembers } from "../lib/auth.ts";
 
 describe("project navigation", () => {
-  it("uses three direct links and keeps only management as a menu", () => {
+  it("places production assets between tasks and management", () => {
     const navigation = buildProjectNavigation("project-1");
     deepStrictEqual(navigation.primary, [
       { label: "公演トップ", href: "/projects/project-1" },
       { label: "稽古スケジュール", href: "/projects/project-1/rehearsals" },
       { label: "制作タスク", href: "/projects/project-1/tasks" },
+      { label: "制作素材", href: "/projects/project-1/assets" },
     ]);
-    deepStrictEqual(navigation.management.map(({ label }) => label), ["関係者管理", "制作素材", "他団体公演・折込", "システム利用者", "更新履歴", "使い方"]);
+    deepStrictEqual(navigation.management.map(({ label }) => label), ["関係者管理", "他団体公演・折込", "システム利用者", "更新履歴", "使い方"]);
     strictEqual([...navigation.primary, ...navigation.management].some(({ label }) => label === "制作ロードマップ"), false);
     strictEqual([...navigation.primary, ...navigation.management].some(({ label }) => label === "公演情報"), false);
   });
 
   it("shows owner, editor, and viewer items using existing role boundaries", () => {
-    const member = buildProjectNavigation("p").management.map(({ label }) => label);
+    const navigation = buildProjectNavigation("p");
+    const member = navigation.management.map(({ label }) => label);
     strictEqual(member.includes("関係者管理"), true);
-    strictEqual(member.includes("制作素材"), true);
+    strictEqual(navigation.primary.some(({ label }) => label === "制作素材"), true);
     strictEqual(member.includes("他団体公演・折込"), true);
     strictEqual(member.includes("システム利用者"), true);
     strictEqual(member.includes("更新履歴"), true);

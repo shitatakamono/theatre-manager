@@ -18,10 +18,10 @@ export function buildProjectNavigation(projectId: string): ProjectNavigationMode
       { label: "公演トップ", href: base },
       { label: "稽古スケジュール", href: `${base}/rehearsals` },
       { label: "制作タスク", href: `${base}/tasks` },
+      { label: "制作素材", href: `${base}/assets` },
     ],
     management: [
       { label: "関係者管理", href: `${base}/people` },
-      { label: "制作素材", href: `${base}/assets` },
       { label: "他団体公演・折込", href: `${base}/external-performances` },
       { label: "システム利用者", href: `${base}/members` },
       { label: "更新履歴", href: `${base}/activity` },
