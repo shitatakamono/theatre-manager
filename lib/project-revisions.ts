@@ -19,6 +19,7 @@ export const REVISION_KEYS = [
   "performanceInfo",
   "venue",
   "flyer",
+  "dm",
   "web",
   "ticket",
   "reception",

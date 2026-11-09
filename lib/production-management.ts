@@ -40,6 +40,17 @@ export type FlyerManagement = {
   };
 };
 
+export type DmManagement = {
+  preparation?: {
+    invitationReady?: boolean;
+    flyerReady?: boolean;
+    otherReady?: boolean;
+    otherLabel?: string;
+    envelopeReady?: boolean;
+    mailedDate?: string;
+  };
+};
+
 export type WebManagement = {
   channels?: {
     website?: boolean;
@@ -232,6 +243,7 @@ export type AccountingManagement = {
 
 export type ProductionSectionDataMap = {
   flyer: FlyerManagement;
+  dm: DmManagement;
   web: WebManagement;
   tickets: TicketManagement;
   reception: ReceptionManagement;
@@ -242,6 +254,7 @@ export type ManagedProductionSection = keyof ProductionSectionDataMap;
 
 export const PRODUCTION_BLOCKS = {
   flyer: ["specifications", "flyer", "poster", "information", "distribution"],
+  dm: ["preparation"],
   web: ["channels", "page", "announcements", "assets", "consistency", "postShow"],
   tickets: ["methods", "sales", "reservations", "handoff"],
   reception: ["basic", "staff", "operation", "preparations", "merchandise", "timetable", "opening", "closingByPerformance"],
@@ -324,6 +337,10 @@ export function normalizeFlyer(data?: FlyerManagement): FlyerManagement {
     information: { ...legacy?.information },
     distribution: { ...legacy?.distribution },
   };
+}
+
+export function normalizeDm(data?: DmManagement): DmManagement {
+  return { preparation: { ...data?.preparation } };
 }
 
 export function normalizeWeb(data?: WebManagement): WebManagement {

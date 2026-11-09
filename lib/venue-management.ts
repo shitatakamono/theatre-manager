@@ -1,5 +1,6 @@
 import type {
   AccountingManagement,
+  DmManagement,
   FlyerManagement,
   ReceptionManagement,
   TicketManagement,
@@ -81,6 +82,7 @@ export type VenueManagement = {
 export type ProductionManagement = {
   venue?: VenueManagement;
   flyer?: FlyerManagement;
+  dm?: DmManagement;
   web?: WebManagement;
   tickets?: TicketManagement;
   reception?: ReceptionManagement;

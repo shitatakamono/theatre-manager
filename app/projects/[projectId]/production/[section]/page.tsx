@@ -7,6 +7,7 @@ import type { Project } from "@/lib/firestore";
 import { pickPerformanceData } from "@/lib/performance";
 import { AccountingManagementClient } from "./AccountingManagementClient";
 import { FlyerManagementClient } from "./FlyerManagementClient";
+import { DmManagementClient } from "./DmManagementClient";
 import { ReceptionManagementClient } from "./ReceptionManagementClient";
 import { TicketManagementClient } from "./TicketManagementClient";
 import { VenueManagementClient } from "./VenueManagementClient";
@@ -19,6 +20,7 @@ type ProductionSectionPageProps = {
 const sectionNames: Record<string, string> = {
   venue: "会場",
   flyer: "チラシ・ポスター",
+  dm: "DM管理",
   web: "WEB／SNS",
   tickets: "チケット",
   reception: "当日受付",
@@ -80,6 +82,13 @@ export default function ProductionSectionPage({
         <FlyerManagementClient
           project={projectRecord}
           management={project.production?.flyer}
+        />
+      );
+    case "dm":
+      return (
+        <DmManagementClient
+          project={projectRecord}
+          management={project.production?.dm}
         />
       );
     case "web":

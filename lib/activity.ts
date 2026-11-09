@@ -97,6 +97,7 @@ const venueDefinitions: Record<VenueManagementSection, ActivityDefinition> = {
 
 const productionLabels: Record<ManagedProductionSection, string> = {
   flyer: "チラシ・ポスター",
+  dm: "DM管理",
   web: "WEB／SNS",
   tickets: "チケット",
   reception: "当日受付",
@@ -110,6 +111,16 @@ const productionFields: Record<ManagedProductionSection, Record<string, readonly
     poster: [field("enabled", "ポスター使用"), field("size", "ポスターサイズ"), field("sides", "ポスター印刷面"), field("quantity", "ポスター部数"), field("printer", "ポスター印刷会社"), field("submissionPlannedDate", "ポスター入稿予定日"), field("submissionDate", "ポスター入稿日"), field("deliveryPlannedDate", "ポスター納品予定日"), field("deliveryDate", "ポスター納品日"), field("printCost", "ポスター印刷費")],
     information: [field("informationFinalized", "掲載情報確定"), field("sponsorInfoReady", "協賛情報"), field("logoMaterialsReady", "ロゴ素材"), field("proofread", "校正")],
     distribution: [field("distributionStartDate", "配布開始日"), field("venue", "会場配布"), field("facilities", "施設配布"), field("inserts", "折り込み"), field("dm", "DM"), field("performers", "出演者配布"), field("other", "その他の配布"), field("note", "配布備考")],
+  },
+  dm: {
+    preparation: [
+      field("invitationReady", "案内状"),
+      field("flyerReady", "チラシ"),
+      field("otherReady", "その他"),
+      field("otherLabel", "その他内容"),
+      field("envelopeReady", "封筒"),
+      field("mailedDate", "投函日"),
+    ],
   },
   web: {
     channels: [field("website", "Webサイト"), field("x", "X"), field("instagram", "Instagram"), field("facebook", "Facebook"), field("youtube", "YouTube"), field("other", "その他の媒体")],

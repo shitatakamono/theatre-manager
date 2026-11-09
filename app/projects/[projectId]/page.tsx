@@ -416,7 +416,10 @@ export default function ProjectPage({ params }: ProjectPageProps) {
                         <span aria-hidden="true">{expanded ? "▾" : "▸"}</span><strong>{section.label}</strong>
                       </button>
                       <div className={styles.sectionMeta}>
-                        {section.slug === "dm" && <Link href={`/projects/${projectId}/external-performances`}>折込管理</Link>}
+                        {section.slug === "dm" && <>
+                          <Link href={`/projects/${projectId}/production/dm`}>DM管理</Link>
+                          <Link href={`/projects/${projectId}/external-performances`}>折込管理</Link>
+                        </>}
                         {tasks.length > 0 && <small>{tasks.length}件</small>}
                         {sectionWarning !== "none" && <em data-warning={sectionWarning}>{TASK_WARNING_LABELS[sectionWarning]}</em>}
                       </div>

@@ -815,6 +815,7 @@ service cloud.firestore {
           && productionChanged
           && ((productionSections.hasOnly(['venue']) && revisionIncremented('venue'))
             || (productionSections.hasOnly(['flyer']) && revisionIncremented('flyer'))
+            || (productionSections.hasOnly(['dm']) && revisionIncremented('dm'))
             || (productionSections.hasOnly(['web']) && revisionIncremented('web'))
             || (productionSections.hasOnly(['tickets']) && revisionIncremented('ticket'))
             || (productionSections.hasOnly(['reception']) && revisionIncremented('reception'))
