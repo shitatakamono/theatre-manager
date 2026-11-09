@@ -17,12 +17,13 @@ import {
   toCustomProductionTask,
 } from "../lib/production-task-view.ts";
 import { STANDARD_ACCOUNTING_TASKS } from "../lib/production-management.ts";
+import { mergeBuiltInTaskCategories } from "../lib/task-categories.ts";
 
 const viewTask = (id, values = {}) => ({
   id,
   source: "standard",
   section: "web",
-  sectionLabel: "Web・SNS",
+  sectionLabel: "WEB／SNS",
   title: id,
   status: "not-started",
   dueDate: null,
@@ -86,6 +87,23 @@ describe("production task adapter", () => {
     strictEqual(custom?.id, "custom:contract");
     strictEqual(custom?.section, "venue");
     strictEqual(new Set(tasks.map((task) => task.id)).size, tasks.length);
+  });
+
+  it("classifies only explicit DM and insertion categories into the new section", () => {
+    const tasks = buildProductionTaskViews(project(), [
+      { id: "dm", title: "折込依頼", stage: "前期", category_parent: "制作", category_child: "DM・折込", done: false },
+      { id: "postal", title: "郵送準備", stage: "中期", category_parent: "制作", category_child: "郵送", done: false },
+      { id: "publicity", title: "従来広報", stage: "前期", category_parent: "制作", category_child: "広報", done: false },
+    ]);
+    deepStrictEqual(tasks.filter((task) => task.section === "dm").map(({ id }) => id), ["custom:dm", "custom:postal"]);
+    strictEqual(tasks.find((task) => task.id === "custom:publicity")?.section, null);
+    strictEqual(tasks.some((task) => task.source === "standard" && task.section === "dm"), false);
+  });
+
+  it("adds new production categories without removing the existing publicity category", () => {
+    deepStrictEqual(mergeBuiltInTaskCategories({ 制作: ["広報", "受付", "会計"] }).制作, [
+      "広報", "受付", "会計", "WEB／SNS", "DM・折込",
+    ]);
   });
 
   it("maps all additional-task fields without affecting standard work", () => {
@@ -196,6 +214,15 @@ describe("task view helpers", () => {
 });
 
 describe("additional task UI", () => {
+  it("places DM and insertion between flyer and WEB/SNS with the existing management link", async () => {
+    const page = await readFile(new URL("../app/projects/[projectId]/page.tsx", import.meta.url), "utf8");
+    const flyer = page.indexOf('slug: "flyer", label: "チラシ・ポスター"');
+    const dm = page.indexOf('slug: "dm", label: "DM・折込"');
+    const web = page.indexOf('slug: "web", label: "WEB／SNS"');
+    strictEqual(flyer >= 0 && flyer < dm && dm < web, true);
+    strictEqual(page.includes('href={`/projects/${projectId}/external-performances`}>折込管理</Link>'), true);
+  });
+
   it("offers create, edit, delete, assignment and mobile-friendly shared task controls", async () => {
     const page = await readFile(new URL("../app/projects/[projectId]/tasks/page.tsx", import.meta.url), "utf8");
     const drawer = await readFile(new URL("../app/projects/[projectId]/TaskDetailDrawer.tsx", import.meta.url), "utf8");

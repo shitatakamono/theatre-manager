@@ -45,7 +45,7 @@ describe("feedback payload", () => {
       reporterName: " テストユーザー ",
       reporterRole: "editor",
       currentPath: "/projects/project-a/production/web",
-      pageLabel: "Web・SNS",
+      pageLabel: "WEB／SNS",
     }, "timestamp"), {
       type: "improvement",
       body: "もっと見やすくしてほしい",
@@ -54,7 +54,7 @@ describe("feedback payload", () => {
       reporterName: "テストユーザー",
       reporterRole: "editor",
       currentPath: "/projects/project-a/production/web",
-      pageLabel: "Web・SNS",
+      pageLabel: "WEB／SNS",
       adminNote: "",
       createdAt: "timestamp",
       updatedAt: "timestamp",

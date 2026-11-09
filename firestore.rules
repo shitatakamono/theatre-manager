@@ -79,7 +79,7 @@ service cloud.firestore {
           || (source == 'accountingCustom' && request.resource.data.taskId.matches('^accounting-custom:.*'))
           || (source == 'customTask' && request.resource.data.taskId.matches('^custom:.*')))
         && (request.resource.data.section == null
-          || request.resource.data.section in ['venue', 'flyer', 'web', 'tickets', 'reception', 'accounting'])
+          || request.resource.data.section in ['venue', 'flyer', 'dm', 'web', 'tickets', 'reception', 'accounting'])
         && eventType in ['taskCreated', 'taskUpdated', 'taskDeleted', 'statusChanged', 'taskCompleted', 'taskReopened']
         && validTaskEventStatus(afterStatus)
         && ((eventType == 'taskCreated' && source == 'customTask'

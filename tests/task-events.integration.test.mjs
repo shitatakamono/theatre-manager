@@ -13,6 +13,7 @@ import {
   updateCustomTaskWithEvent,
   withProductionBlock,
 } from "../lib/task-events.ts";
+import { toCustomProductionTask } from "../lib/production-task-view.ts";
 
 const emulatorProjectId = "seisakuboard-conflict-test";
 const projectId = "task-events-project";
@@ -78,21 +79,22 @@ describe("task event writes", () => {
   it("stores, edits, and deletes a detailed additional task with matching events", async () => {
     const db = firestoreFor(editorUid);
     const taskId = await createCustomTaskWithEvent(db, projectId, {
-      title: "他劇団の公演情報を集めてまとめる", category_parent: "Web", dueDate: "2026-11-20",
+      title: "他劇団の公演情報を集めてまとめる", category_parent: "制作", category_child: "DM・折込", dueDate: "2026-11-20",
       status: "not-started", priority: "normal", assigneeUid: "", assigneeName: "", note: "候補をまとめる",
     }, editorUid);
     await updateCustomTaskWithEvent(db, projectId, taskId, {
-      title: "他劇団の公演情報を集める", category_parent: "Web", dueDate: "2026-11-21",
+      title: "他劇団の公演情報を集める", category_parent: "制作", category_child: "DM・折込", dueDate: "2026-11-21",
       status: "in-progress", priority: "high", assigneeUid: editorUid, assigneeName: "Editor", note: "更新後",
     }, editorUid);
     await updateCustomTaskWithEvent(db, projectId, taskId, {
-      title: "他劇団の公演情報を集める", category_parent: "Web", dueDate: "2026-11-21",
+      title: "他劇団の公演情報を集める", category_parent: "制作", category_child: "DM・折込", dueDate: "2026-11-21",
       status: "in-progress", priority: "high", assigneeUid: editorUid, assigneeName: "Editor", note: "メモだけ更新",
     }, editorUid);
     const taskSnapshot = await getDocs(collection(db, "projects", projectId, "tasks"));
     strictEqual(taskSnapshot.docs[0].data().source, "custom");
     strictEqual(taskSnapshot.docs[0].data().priority, "high");
     strictEqual(taskSnapshot.docs[0].data().assigneeUid, editorUid);
+    strictEqual(toCustomProductionTask(projectId, { id: taskId, ...taskSnapshot.docs[0].data() }).section, "dm");
     await deleteCustomTaskWithEvent(db, projectId, taskId, editorUid);
     strictEqual((await getDocs(collection(db, "projects", projectId, "tasks"))).empty, true);
     const events = (await getDocs(collection(db, "projects", projectId, "taskEvents"))).docs.map((entry) => entry.data());

@@ -17,7 +17,7 @@ import {
 export type ProductionTaskSource = "standard" | "accountingCustom" | "customTask";
 export type ProductionTaskStatus = "not-started" | "in-progress" | "complete" | "on-hold";
 export type ProductionTaskPriority = "low" | "normal" | "high";
-export type ProductionSectionSlug = "venue" | "flyer" | "web" | "tickets" | "reception" | "accounting";
+export type ProductionSectionSlug = "venue" | "flyer" | "dm" | "web" | "tickets" | "reception" | "accounting";
 
 export type ProductionTaskView = {
   id: string;
@@ -41,7 +41,8 @@ export type ProductionTaskView = {
 const SECTION_LABELS: Record<ProductionSectionSlug, string> = {
   venue: "会場",
   flyer: "チラシ・ポスター",
-  web: "Web・SNS",
+  dm: "DM・折込",
+  web: "WEB／SNS",
   tickets: "チケット",
   reception: "当日受付",
   accounting: "会計",
@@ -270,7 +271,11 @@ function accountingTask(projectId: string, task: AccountingTask): ProductionTask
 }
 
 export function getCustomTaskSection(task: Task): ProductionSectionSlug | null {
-  const value = `${task.category_parent ?? ""} ${task.category_child ?? ""}`.trim().toLowerCase();
+  const categories = [task.category_parent, task.category_child]
+    .map((category) => (category ?? "").trim().toLowerCase().replaceAll(" ", ""));
+  const dmCategories = new Set(["dm・折込", "dm／折込", "dm/折込", "dm", "折込", "折り込み", "郵送", "持込", "持ち込み"]);
+  if (categories.some((category) => dmCategories.has(category))) return "dm";
+  const value = categories.join(" ");
   if (/会場|venue/.test(value)) return "venue";
   if (/チラシ|ポスター|flyer|poster/.test(value)) return "flyer";
   if (/web|sns|ウェブ|サイト/.test(value)) return "web";

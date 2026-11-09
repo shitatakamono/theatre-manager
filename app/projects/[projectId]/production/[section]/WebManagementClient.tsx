@@ -19,7 +19,7 @@ export function WebManagementClient({ project, management }: { project: ProjectP
   const assetLabels = { mainVisual: "メインビジュアル", flyerImage: "チラシ画像", castPhotos: "出演者写真", map: "地図", qr: "QR", promoVideo: "告知動画", sponsorLogos: "協賛ロゴ" } as const;
 
   return <main className={styles.page}>
-    <ProductionHeader projectId={project.id} title={title} sectionTitle="Web・SNS" eyebrow="PRODUCTION / WEB & SNS" />
+    <ProductionHeader projectId={project.id} title={title} sectionTitle="WEB／SNS" eyebrow="PRODUCTION / WEB & SNS" />
     <ReferencePanel items={[{ label: "公演名称", value: displayValue(basic?.performanceName) }, { label: "公演タイトル", value: title }, { label: "公式サイト", value: displayValue(contact?.website) }, { label: "公式SNS", value: [contact?.x, contact?.instagram].filter(Boolean).join(" / ") || "未設定" }]} />
     {editor.message && <p className={styles.successMessage}>{editor.message}</p>}<SectionNav links={links} />
     <div className={styles.content}>

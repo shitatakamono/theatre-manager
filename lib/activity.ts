@@ -97,7 +97,7 @@ const venueDefinitions: Record<VenueManagementSection, ActivityDefinition> = {
 
 const productionLabels: Record<ManagedProductionSection, string> = {
   flyer: "チラシ・ポスター",
-  web: "Web・SNS",
+  web: "WEB／SNS",
   tickets: "チケット",
   reception: "当日受付",
   accounting: "会計",

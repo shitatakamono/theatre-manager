@@ -39,6 +39,7 @@ import type {
 } from "./production-management";
 import type { ProjectMember, ProjectRole, UserProfile } from "./auth";
 import { removeUndefinedValues } from "./firestore-values";
+import { mergeBuiltInTaskCategories } from "./task-categories";
 import {
   getPerformanceActivityDefinition,
   getProductionActivityDefinition,
@@ -666,7 +667,7 @@ export function toCategoryMap(categories: Category[]) {
     map[parent] = children;
   });
 
-  return map;
+  return mergeBuiltInTaskCategories(map);
 }
 
 

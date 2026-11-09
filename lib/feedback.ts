@@ -57,7 +57,7 @@ export function getFeedbackPageLabel(path: string): string {
   if (/\/rehearsals\/?$/.test(path)) return "稽古";
   if (/\/production\/venue\/?$/.test(path)) return "会場";
   if (/\/production\/flyer\/?$/.test(path)) return "チラシ・ポスター";
-  if (/\/production\/web\/?$/.test(path)) return "Web・SNS";
+  if (/\/production\/web\/?$/.test(path)) return "WEB／SNS";
   if (/\/production\/tickets\/?$/.test(path)) return "チケット";
   if (/\/production\/reception\/?$/.test(path)) return "当日受付";
   if (/\/production\/accounting\/?$/.test(path)) return "会計";

@@ -833,7 +833,7 @@
   }
 
   .sectionMeta { align-items: flex-end; flex-direction: column; gap: 2px; }
-  .sectionMeta a { display: none; }
+  .sectionMeta a { font-size: 7px; }
   .taskRow { grid-template-columns: 150px minmax(0, 1fr); }
   .taskLabel { padding-left: 20px; }
   .taskRows > p { padding-left: 166px; }

@@ -19,7 +19,7 @@ type ProductionSectionPageProps = {
 const sectionNames: Record<string, string> = {
   venue: "会場",
   flyer: "チラシ・ポスター",
-  web: "Web・SNS",
+  web: "WEB／SNS",
   tickets: "チケット",
   reception: "当日受付",
   accounting: "会計",

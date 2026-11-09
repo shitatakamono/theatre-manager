@@ -68,7 +68,8 @@ const timelinePoints: { label?: string; offset: TimelineOffset }[] = [
 const roadmapSections: RoadmapSection[] = [
   { kind: "range", slug: "venue", label: "会場", start: { months: -6 }, end: {} },
   { kind: "range", slug: "flyer", label: "チラシ・ポスター", start: { months: -4 }, end: { months: -2 } },
-  { kind: "range", slug: "web", label: "Web・SNS", start: { months: -4 }, end: { weeks: 2 } },
+  { kind: "range", slug: "dm", label: "DM・折込", start: { months: -3 }, end: {} },
+  { kind: "range", slug: "web", label: "WEB／SNS", start: { months: -4 }, end: { weeks: 2 } },
   { kind: "range", slug: "tickets", label: "チケット", start: { months: -2 }, end: {} },
   { kind: "range", slug: "reception", label: "当日受付", start: { months: -1 }, end: {} },
   { kind: "range", slug: "accounting", label: "会計", start: { months: -6 }, end: { weeks: 2 } },
@@ -415,6 +416,7 @@ export default function ProjectPage({ params }: ProjectPageProps) {
                         <span aria-hidden="true">{expanded ? "▾" : "▸"}</span><strong>{section.label}</strong>
                       </button>
                       <div className={styles.sectionMeta}>
+                        {section.slug === "dm" && <Link href={`/projects/${projectId}/external-performances`}>折込管理</Link>}
                         {tasks.length > 0 && <small>{tasks.length}件</small>}
                         {sectionWarning !== "none" && <em data-warning={sectionWarning}>{TASK_WARNING_LABELS[sectionWarning]}</em>}
                       </div>
