@@ -21,6 +21,8 @@ describe("LINE Login settings UI", () => {
     assert.match(source, /setLineConnected\(false\)/);
     assert.match(source, /LINEとの連携を解除しました/);
     assert.match(source, /時間をおいてもう一度お試しください/);
+    assert.match(source, /last_login_method/);
+    assert.match(source, /LINE以外のログイン方法がないため解除できません/);
     assert.match(source, /lineConnected \? \(/);
     assert.match(source, /window\.location\.assign/);
     assert.doesNotMatch(source, /lineUserId/);

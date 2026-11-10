@@ -12,7 +12,7 @@ import {
   getLineLoginStateId,
   validateVerifiedLineIdToken,
 } from "../lib/line-login.ts";
-import { getLineLoginRedirectUri } from "../lib/app-url.ts";
+import { getLineAuthRedirectUri, getLineLoginRedirectUri } from "../lib/app-url.ts";
 
 describe("LINE Login primitives", () => {
   it("generates opaque state, nonce, verifier, and a deterministic hashed state ID", () => {
@@ -51,6 +51,7 @@ describe("LINE Login primitives", () => {
     try {
       process.env.NEXT_PUBLIC_APP_URL = "https://seisakuboard.example/untrusted-path";
       strictEqual(getLineLoginRedirectUri(), "https://seisakuboard.example/api/line/login/callback");
+      strictEqual(getLineAuthRedirectUri(), "https://seisakuboard.example/api/line/auth/callback");
       delete process.env.NEXT_PUBLIC_APP_URL;
       throws(() => getLineLoginRedirectUri(), /NEXT_PUBLIC_APP_URL/);
     } finally {

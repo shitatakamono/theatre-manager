@@ -24,6 +24,7 @@ type AuthContextValue = {
   loading: boolean;
   profile: UserProfile | null;
   login: () => Promise<LoginResult>;
+  loginWithLine: () => Promise<LoginResult>;
   logout: () => Promise<void>;
   membershipNotice: string;
   loginError: string;
@@ -103,10 +104,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  async function loginWithLine(): Promise<LoginResult> {
+    setError("");
+    try {
+      const response = await fetch("/api/line/auth/start", { method: "POST" });
+      const body = await response.json().catch(() => ({})) as { redirectUrl?: unknown };
+      if (!response.ok || typeof body.redirectUrl !== "string") {
+        throw new Error("line_auth_start_failed");
+      }
+      const redirect = new URL(body.redirectUrl);
+      if (redirect.origin !== "https://access.line.me") {
+        throw new Error("line_auth_redirect_invalid");
+      }
+      window.location.assign(redirect.toString());
+      return "redirect_started";
+    } catch {
+      setError("LINEログインを開始できませんでした");
+      return "failed";
+    }
+  }
+
   const value = useMemo<AuthContextValue>(() => ({
     loading,
     profile,
     login,
+    loginWithLine,
     logout: () => signOut(auth),
     membershipNotice,
     loginError: error,
@@ -119,7 +141,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   if (loading) return <div className={styles.loading}>認証状態を確認しています…</div>;
-  if (!profile) return <main className={styles.login}><section><p>SEISAKU BOARD</p><h1>SeisakuBoard</h1><h2>公演制作をチームで管理</h2><button onClick={() => void login()}>Googleでログイン</button>{error && <span role="alert">{error}</span>}</section></main>;
+  if (!profile) return <main className={styles.login}><section><p>SEISAKU BOARD</p><h1>SeisakuBoard</h1><h2>公演制作をチームで管理</h2><div className={styles.loginActions}><button onClick={() => void login()}>Googleでログイン</button><button className={styles.lineLoginButton} onClick={() => void loginWithLine()}>LINEでログイン</button></div><small>LINEログインは、個人設定でLINE連携済みの方が利用できます。</small>{error && <span role="alert">{error}</span>}</section></main>;
 
   return <AuthContext.Provider value={value}><div className={styles.userBar}><span>{profile.displayName || profile.email || "ログイン中"}</span><button onClick={() => void signOut(auth)}>ログアウト</button></div>{children}</AuthContext.Provider>;
 }

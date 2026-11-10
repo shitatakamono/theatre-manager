@@ -37,3 +37,12 @@ export function getLineLoginRedirectUri(): string {
   }
   return new URL("/api/line/login/callback", configuredOrigin).toString();
 }
+
+export function getLineAuthRedirectUri(): string {
+  const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  const configuredOrigin = configured ? normalizeOrigin(configured) : null;
+  if (!configuredOrigin) {
+    throw new Error("NEXT_PUBLIC_APP_URL is required for LINE authentication");
+  }
+  return new URL("/api/line/auth/callback", configuredOrigin).toString();
+}

@@ -198,6 +198,8 @@ export function createLineLoginStatusHandler(dependencies: {
 
 export function createLineLoginDisconnectHandler(dependencies: {
   verifyIdToken: (token: string) => Promise<{ uid: string }>;
+  getStatus: (uid: string) => Promise<{ connected: boolean }>;
+  hasAlternativeLogin: (uid: string) => Promise<boolean>;
   unlink: (uid: string) => Promise<{ outcome: "unlinked" | "already_unlinked" }>;
   logError?: (event: string) => void;
 }) {
@@ -213,6 +215,14 @@ export function createLineLoginDisconnectHandler(dependencies: {
     }
 
     try {
+      const status = await dependencies.getStatus(uid);
+      if (!status.connected) return json({ connected: false }, 200);
+      if (!await dependencies.hasAlternativeLogin(uid)) {
+        return json({
+          error: "LINE以外のログイン方法がないため解除できません",
+          code: "last_login_method",
+        }, 409);
+      }
       await dependencies.unlink(uid);
       return json({ connected: false }, 200);
     } catch (error) {

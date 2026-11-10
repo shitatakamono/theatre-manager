@@ -24,6 +24,8 @@ describe("Firebase Authentication login flows", () => {
 
     assert.match(source, /signInWithPopup/);
     assert.match(source, /signInWithRedirect/);
+    assert.match(source, /LINEでログイン/);
+    assert.match(source, /\/api\/line\/auth\/start/);
     assert.match(source, /getRedirectResult/);
     assert.match(source, /completeAuthenticatedUserBootstrap/);
     assert.match(source, /claimPendingUserLinkReservationsClient/);
@@ -40,5 +42,7 @@ describe("Firebase Authentication login flows", () => {
     assert.equal(isPublicAppPath("/s/other"), false);
     assert.equal(isPublicAppPath("/projects/project-a"), false);
     assert.equal(isPublicAppPath("/settings"), false);
+    assert.equal(isPublicAppPath("/line/auth/complete"), true);
+    assert.equal(isPublicAppPath("/line/auth/complete/extra"), false);
   });
 });

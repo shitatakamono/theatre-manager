@@ -4,7 +4,10 @@
 .login p { color: #66766f; font-size: 10px; font-weight: 900; letter-spacing: .18em; }
 .login h1 { margin-top: 8px; color: #173d31; font-size: 31px; font-weight: 900; }
 .login h2 { margin-top: 6px; color: #60716a; font-size: 14px; font-weight: 700; }
-.login button { min-height: 46px; margin-top: 26px; border-radius: 9px; background: #286c55; color: #fff; padding: 10px 20px; font-weight: 850; }
+.loginActions { display: grid; gap: 10px; margin-top: 26px; }
+.login button { min-height: 46px; border-radius: 9px; background: #286c55; color: #fff; padding: 10px 20px; font-weight: 850; }
+.login .lineLoginButton { background: #06c755; }
+.login small { display: block; margin-top: 12px; color: #66766f; font-size: 11px; line-height: 1.6; }
 .login span { display: block; margin-top: 12px; color: #b32626; font-size: 12px; }
 .userBar { min-height: 34px; display: flex; align-items: center; justify-content: flex-end; gap: 10px; background: #193e32; color: #fff; padding: 5px 18px; font-size: 11px; }
 .userBar button { border: 1px solid rgba(255,255,255,.45); border-radius: 6px; padding: 3px 8px; font-weight: 700; }

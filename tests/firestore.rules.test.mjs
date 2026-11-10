@@ -1743,6 +1743,8 @@ describe("server-only LINE integration state", () => {
     const db = firestoreFor(ownerUid);
     const refs = [
       doc(db, "lineLoginStates", "opaque-state-id"),
+      doc(db, "lineAuthStates", "opaque-state-id"),
+      doc(db, "lineAuthTickets", "opaque-ticket-id"),
       doc(db, "lineUserLinks", "opaque-line-user-id"),
       doc(db, "userIntegrations", ownerUid, "providers", "line"),
     ];

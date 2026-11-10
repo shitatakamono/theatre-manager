@@ -23,6 +23,7 @@ type LineStatusResponse = {
   connected?: boolean;
   deliveryStatus?: "reachable" | "unreachable" | "unknown" | null;
   error?: string;
+  code?: string;
 };
 
 type LineLoginStartResponse = {
@@ -211,12 +212,17 @@ function SettingsContent() {
       });
       const data = await readJson<LineStatusResponse>(response);
       if (!response.ok) {
+        if (data.code === "last_login_method") {
+          throw new Error("LINE以外のログイン方法がないため解除できません。先にGoogleでログインできる状態をご確認ください。");
+        }
         throw new Error(data.error || "LINE連携を解除できませんでした");
       }
       setLineConnected(false);
       setLineNotice("LINEとの連携を解除しました。");
-    } catch {
-      setLineError("LINE連携を解除できませんでした。時間をおいてもう一度お試しください。");
+    } catch (disconnectError) {
+      setLineError(disconnectError instanceof Error
+        ? disconnectError.message
+        : "LINE連携を解除できませんでした。時間をおいてもう一度お試しください。");
     } finally {
       setLineProcessing(false);
     }

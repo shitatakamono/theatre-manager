@@ -100,6 +100,8 @@ describe("LINE Login disconnect API", () => {
   function disconnectDependencies(overrides = {}) {
     return {
       verifyIdToken: async () => ({ uid: "firebase-uid" }),
+      getStatus: async () => ({ connected: true }),
+      hasAlternativeLogin: async () => true,
       unlink: async () => ({ outcome: "unlinked" }),
       logError: () => undefined,
       ...overrides,
@@ -132,9 +134,25 @@ describe("LINE Login disconnect API", () => {
 
   it("treats an already-unlinked account as success", async () => {
     const handler = createLineLoginDisconnectHandler(disconnectDependencies({
+      getStatus: async () => ({ connected: false }),
       unlink: async () => ({ outcome: "already_unlinked" }),
     }));
     strictEqual((await handler(authorizedRequest("https://app.example/api/line/login/disconnect"))).status, 200);
+  });
+
+  it("protects a linked account when LINE is its only login method", async () => {
+    let unlinked = false;
+    const handler = createLineLoginDisconnectHandler(disconnectDependencies({
+      hasAlternativeLogin: async () => false,
+      unlink: async () => { unlinked = true; return { outcome: "unlinked" }; },
+    }));
+    const response = await handler(authorizedRequest("https://app.example/api/line/login/disconnect"));
+    strictEqual(response.status, 409);
+    deepStrictEqual(await response.json(), {
+      error: "LINE以外のログイン方法がないため解除できません",
+      code: "last_login_method",
+    });
+    strictEqual(unlinked, false);
   });
 
   it("rejects inconsistent pairs without exposing internal details", async () => {
