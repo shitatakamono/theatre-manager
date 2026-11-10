@@ -8,6 +8,7 @@ import type { ProjectMember } from "@/lib/auth";
 import { addTask, deleteTask, getCategories, getProjectMembers, getProjectPerformanceData, getTasks, toggleTask, toCategoryMap, updateTask, type ProjectPerformanceRecord, type Task } from "@/lib/firestore";
 import { buildProductionTaskViews, canToggleProductionTask, type ProductionTaskView } from "@/lib/production-task-view";
 import { buildTaskCreateInput, filterTasks, formatTaskDueDate, getTaskAssignee, getTaskDeadlineWarning, getTaskDueDate, getTaskProgressStatus, getTokyoDateString, TASK_PRIORITY_LABELS, TASK_STATUS_LABELS, TASK_WARNING_LABELS, type TaskCreateInput, type TaskListFilter } from "@/lib/task-view";
+import { TASK_RELATED_VIEW_DEFINITIONS, type TaskRelatedView } from "@/lib/task-related-views";
 import { TaskDetailDrawer } from "../TaskDetailDrawer";
 import { useProjectAccess } from "../ProjectAccess";
 import styles from "./tasks.module.css";
@@ -20,6 +21,7 @@ const filters: { value: TaskListFilter; label: string }[] = [
 const emptyTaskInput: TaskCreateInput = {
   title: "", stage: "", category_parent: "", category_child: "", dueDate: "",
   status: "not-started", priority: "normal", assigneeUid: "", assigneeName: "", note: "",
+  relatedView: "",
 };
 
 function taskToInput(task: Task): TaskCreateInput {
@@ -30,6 +32,7 @@ function taskToInput(task: Task): TaskCreateInput {
     priority: task.priority === "low" || task.priority === "high" ? task.priority : "normal",
     assigneeUid: task.assigneeUid ?? "", assigneeName: task.assigneeName ?? task.assignee ?? task.responsible ?? "",
     note: task.note ?? "",
+    relatedView: task.relatedView ?? "",
   };
 }
 
@@ -110,12 +113,12 @@ export default function TasksPage({ params }: TasksPageProps) {
       if (editingTaskId) {
         await updateTask(projectId, editingTaskId, values, actor.uid);
         setCustomTasks((current) => current.map((item) => item.id === editingTaskId
-          ? { ...item, ...values, source: "custom", done: values.status === "complete", updatedByUid: actor.uid }
+          ? { ...item, ...values, relatedView: values.relatedView || undefined, source: "custom", done: values.status === "complete", updatedByUid: actor.uid }
           : item));
       } else {
         const id = await addTask(projectId, values, actor.uid);
         setCustomTasks((current) => [...current, {
-          id, ...values, source: "custom", done: values.status === "complete", createdByUid: actor.uid, updatedByUid: actor.uid,
+          id, ...values, relatedView: values.relatedView || undefined, source: "custom", done: values.status === "complete", createdByUid: actor.uid, updatedByUid: actor.uid,
         }]);
       }
       resetTaskForm();
@@ -150,6 +153,7 @@ export default function TasksPage({ params }: TasksPageProps) {
       <label><span>詳細カテゴリ</span><select disabled={!taskInput.category_parent} value={taskInput.category_child} onChange={(event) => setTaskInput((current) => ({ ...current, category_child: event.target.value }))}><option value="">未設定</option>{(categoryMap[taskInput.category_parent] ?? []).map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
       <label><span>担当者</span><select value={taskInput.assigneeUid} onChange={(event) => { const member = members.find(({ uid }) => uid === event.target.value); setTaskInput((current) => ({ ...current, assigneeUid: event.target.value, assigneeName: member?.displayName ?? member?.email ?? "" })); }}><option value="">未設定</option>{members.map((member) => <option key={member.uid} value={member.uid}>{member.displayName || member.email || "名前未設定"}</option>)}</select></label>
       <label><span>時期</span><select value={taskInput.stage} onChange={(event) => setTaskInput((current) => ({ ...current, stage: event.target.value }))}><option value="">未設定</option><option value="前期">前期</option><option value="中期">中期</option><option value="後期">後期</option><option value="当日">当日</option></select></label>
+      <label><span>関連画面</span><select value={taskInput.relatedView} onChange={(event) => setTaskInput((current) => ({ ...current, relatedView: event.target.value as TaskRelatedView | "" }))}><option value="">なし</option>{TASK_RELATED_VIEW_DEFINITIONS.map((definition) => <option key={definition.id} value={definition.id}>{definition.label}</option>)}</select></label>
       <label className={styles.taskNote}><span>メモ</span><textarea rows={3} value={taskInput.note} onChange={(event) => setTaskInput((current) => ({ ...current, note: event.target.value }))} /></label>
       <div className={styles.createActions}><button type="button" onClick={resetTaskForm}>キャンセル</button><button type="submit" disabled={creating}>{creating ? "保存中…" : editingTaskId ? "変更を保存" : "追加する"}</button></div>
     </form>}

@@ -1,4 +1,5 @@
 import type { ProductionTaskView } from "./production-task-view.ts";
+import { isTaskRelatedView, type TaskRelatedView } from "./task-related-views.ts";
 
 export type TaskProgressStatus = "not-started" | "in-progress" | "complete" | "on-hold";
 export type TaskDeadlineWarning = "none" | "within14Days" | "within7Days" | "overdue";
@@ -15,6 +16,7 @@ export type TaskCreateInput = {
   assigneeUid: string;
   assigneeName: string;
   note: string;
+  relatedView: TaskRelatedView | "";
 };
 
 export type TaskPriority = "low" | "normal" | "high";
@@ -47,6 +49,7 @@ export function buildTaskCreateInput(input: TaskCreateInput): TaskCreateInput | 
   if (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) return null;
   const status = Object.hasOwn(TASK_STATUS_LABELS, input.status) ? input.status : "not-started";
   const priority = Object.hasOwn(TASK_PRIORITY_LABELS, input.priority) ? input.priority : "normal";
+  if (input.relatedView && !isTaskRelatedView(input.relatedView)) return null;
   return {
     title,
     stage: input.stage.trim(),
@@ -58,6 +61,7 @@ export function buildTaskCreateInput(input: TaskCreateInput): TaskCreateInput | 
     assigneeUid: input.assigneeUid?.trim() ?? "",
     assigneeName: input.assigneeName?.trim() ?? "",
     note: input.note?.trim() ?? "",
+    relatedView: input.relatedView,
   };
 }
 

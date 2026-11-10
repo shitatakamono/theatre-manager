@@ -12,6 +12,7 @@ import {
   collection,
   collectionGroup,
   deleteDoc,
+  deleteField,
   doc,
   getDoc,
   getDocs,
@@ -55,6 +56,17 @@ function memberRef(db, uid, id = projectId) {
 
 function taskRef(db, id = "task-a", targetProjectId = projectId) {
   return doc(db, "projects", targetProjectId, "tasks", id);
+}
+
+function customTaskData(uid, overrides = {}) {
+  return {
+    title: "追加タスク", stage: "", category_parent: "制作", category_child: "",
+    dueDate: "", status: "not-started", priority: "normal", assigneeUid: "",
+    assigneeName: "", note: "", source: "custom", done: false,
+    createdAt: serverTimestamp(), createdByUid: uid,
+    updatedAt: serverTimestamp(), updatedByUid: uid,
+    ...overrides,
+  };
 }
 
 function rehearsalRef(db, id = "rehearsal-a", targetProjectId = projectId) {
@@ -320,7 +332,9 @@ async function seedProject() {
     ]) {
       await setDoc(memberRef(db, uid), { uid, role, email: `${uid}@example.test` });
     }
-    await setDoc(taskRef(db), { title: "Seed task", done: false });
+    await setDoc(taskRef(db), {
+      ...customTaskData(ownerUid), createdAt: new Date(), updatedAt: new Date(),
+    });
   });
 }
 
@@ -400,7 +414,9 @@ describe("editor role", () => {
     await assertSucceeds(getDoc(projectRef(db)));
     await assertSucceeds(updateDoc(projectRef(db), { title: "Edited" }));
     await assertSucceeds(updateDoc(projectRef(db), { "production.venue.note": "Edited", "revisions.venue": 1 }));
-    await assertSucceeds(updateDoc(taskRef(db), { done: true }));
+    await assertSucceeds(updateDoc(taskRef(db), {
+      done: true, status: "complete", updatedAt: serverTimestamp(), updatedByUid: editorUid,
+    }));
   });
 
   it("cannot change membership, delete the project, or self-escalate", async () => {
@@ -457,7 +473,9 @@ describe("owner role", () => {
     await assertSucceeds(getDoc(projectRef(db)));
     await assertSucceeds(updateDoc(projectRef(db), { title: "Owner edit" }));
     await assertSucceeds(updateDoc(projectRef(db), { "production.venue.note": "Owner edit", "revisions.venue": 1 }));
-    await assertSucceeds(updateDoc(taskRef(db), { done: true }));
+    await assertSucceeds(updateDoc(taskRef(db), {
+      done: true, status: "complete", updatedAt: serverTimestamp(), updatedByUid: ownerUid,
+    }));
   });
 
   it("adds a member, updates its role, and removes it with consistent batches", async () => {
@@ -1294,6 +1312,65 @@ describe("activity logs", () => {
 
   it("denies actorUid impersonation", async () => {
     await assertFails(setDoc(activityRef(firestoreFor(editorUid)), activityData(ownerUid)));
+  });
+});
+
+describe("custom task related views", () => {
+  it("allows owners and editors to save only defined internal view ids", async () => {
+    await assertSucceeds(setDoc(taskRef(firestoreFor(ownerUid), "owner-related"), customTaskData(ownerUid, {
+      relatedView: "external-performances",
+    })));
+    await assertSucceeds(setDoc(taskRef(firestoreFor(editorUid), "editor-related"), customTaskData(editorUid, {
+      relatedView: "production-flyer",
+    })));
+    await assertFails(setDoc(taskRef(firestoreFor(viewerUid), "viewer-related"), customTaskData(viewerUid, {
+      relatedView: "rehearsals",
+    })));
+    for (const [id, relatedView] of [
+      ["external-url", "https://example.com"],
+      ["javascript-url", "javascript:alert(1)"],
+      ["project-path", `/projects/another-project/rehearsals`],
+      ["unknown-view", "unknown"],
+    ]) {
+      await assertFails(setDoc(taskRef(firestoreFor(ownerUid), id), customTaskData(ownerUid, { relatedView })));
+    }
+    await assertFails(setDoc(taskRef(firestoreFor(ownerUid), "extra-field"), customTaskData(ownerUid, {
+      arbitraryPath: "/projects/another-project",
+    })));
+  });
+
+  it("updates and removes relatedView while keeping legacy fields compatible", async () => {
+    const db = firestoreFor(ownerUid);
+    const ref = taskRef(db, "editable-related");
+    await assertSucceeds(setDoc(ref, customTaskData(ownerUid, { relatedView: "production-dm" })));
+    await assertSucceeds(updateDoc(ref, {
+      relatedView: "production-assets", updatedAt: serverTimestamp(), updatedByUid: ownerUid,
+    }));
+    await assertSucceeds(updateDoc(ref, {
+      relatedView: deleteField(), updatedAt: serverTimestamp(), updatedByUid: ownerUid,
+    }));
+    strictEqual((await getDoc(ref)).data()?.relatedView, undefined);
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(taskRef(context.firestore(), "legacy-related"), {
+        title: "旧タスク", stage: "", category_parent: "制作", category_child: "広報",
+        done: false, deadline: "2026-11-20", responsible: "旧担当", legacyMarker: "keep",
+      });
+    });
+    const legacyRef = taskRef(db, "legacy-related");
+    await assertSucceeds(updateDoc(legacyRef, {
+      done: true, status: "complete", updatedAt: serverTimestamp(), updatedByUid: ownerUid,
+    }));
+    await assertSucceeds(updateDoc(legacyRef, {
+      stage: "", category_parent: "制作", category_child: "広報", dueDate: "",
+      status: "complete", priority: "normal", assigneeUid: "", assigneeName: "",
+      note: "", source: "custom", done: true, relatedView: "people",
+      updatedAt: serverTimestamp(), updatedByUid: ownerUid,
+    }));
+    const legacy = (await getDoc(legacyRef)).data();
+    strictEqual(legacy?.legacyMarker, "keep");
+    strictEqual(legacy?.deadline, "2026-11-20");
+    strictEqual(legacy?.relatedView, "people");
   });
 });
 

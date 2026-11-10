@@ -45,6 +45,10 @@ export function TaskDetailDrawer({ task, canEdit, saving = false, onClose, onTog
         {task.stage && <div><dt>時期</dt><dd>{task.stage}</dd></div>}
         {task.note && <div><dt>備考</dt><dd>{task.note}</dd></div>}
       </dl>
+      {task.source === "customTask" && task.relatedViewHref && task.relatedViewLabel && <div className={styles.actions}>
+        <p>関連画面</p>
+        <Link href={task.relatedViewHref}>{task.relatedViewLabel}を開く</Link>
+      </div>}
       {task.source !== "customTask" ? <div className={styles.actions}>
         <p>{canEdit ? "この仕事は制作セクションで編集します。" : "制作セクションで詳細を確認できます。"}</p>
         <Link href={task.editTarget}>{canEdit ? "制作セクションで編集" : "制作セクションを見る"}</Link>

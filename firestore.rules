@@ -56,6 +56,83 @@ service cloud.firestore {
       return value in ['not_started', 'in_progress', 'completed', 'on_hold'];
     }
 
+    function validTaskRelatedView(data) {
+      return !data.keys().hasAny(['relatedView'])
+        || data.relatedView in [
+          'project-info', 'rehearsals', 'people', 'attendance', 'members',
+          'production-venue', 'production-flyer', 'production-dm',
+          'production-web', 'production-tickets', 'production-reception',
+          'production-accounting', 'external-performances', 'production-assets'
+        ];
+    }
+
+    function validCustomTaskWritableData(data) {
+      return data.keys().hasAll([
+          'title', 'stage', 'category_parent', 'category_child', 'dueDate',
+          'status', 'priority', 'assigneeUid', 'assigneeName', 'note',
+          'source', 'done', 'updatedAt', 'updatedByUid'
+        ])
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 200
+        && data.stage is string && data.stage.size() <= 100
+        && data.category_parent is string && data.category_parent.size() <= 100
+        && data.category_child is string && data.category_child.size() <= 100
+        && data.dueDate is string
+        && (data.dueDate == ''
+          || data.dueDate.matches('^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'))
+        && data.status in ['not-started', 'in-progress', 'complete', 'on-hold']
+        && data.priority in ['low', 'normal', 'high']
+        && data.assigneeUid is string && data.assigneeUid.size() <= 128
+        && data.assigneeName is string && data.assigneeName.size() <= 200
+        && data.note is string && data.note.size() <= 2000
+        && data.source == 'custom'
+        && data.done is bool
+        && data.done == (data.status == 'complete')
+        && data.updatedAt == request.time
+        && data.updatedByUid == request.auth.uid
+        && validTaskRelatedView(data);
+    }
+
+    function validCustomTaskCreate() {
+      return request.resource.data.keys().hasOnly([
+          'title', 'stage', 'category_parent', 'category_child', 'dueDate',
+          'status', 'priority', 'assigneeUid', 'assigneeName', 'note',
+          'relatedView', 'source', 'done', 'createdAt', 'createdByUid',
+          'updatedAt', 'updatedByUid'
+        ])
+        && validCustomTaskWritableData(request.resource.data)
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.createdByUid == request.auth.uid;
+    }
+
+    function validCustomTaskUpdate() {
+      let data = request.resource.data;
+      return data.diff(resource.data).affectedKeys().hasOnly([
+          'title', 'stage', 'category_parent', 'category_child', 'dueDate',
+          'status', 'priority', 'assigneeUid', 'assigneeName', 'note',
+          'relatedView', 'source', 'done', 'updatedAt', 'updatedByUid'
+        ])
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 200
+        && (!data.keys().hasAny(['stage']) || data.stage is string)
+        && (!data.keys().hasAny(['category_parent']) || data.category_parent is string)
+        && (!data.keys().hasAny(['category_child']) || data.category_child is string)
+        && (!data.keys().hasAny(['dueDate'])
+          || (data.dueDate is string
+            && (data.dueDate == ''
+              || data.dueDate.matches('^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'))))
+        && (!data.keys().hasAny(['status'])
+          || data.status in ['not-started', 'in-progress', 'complete', 'on-hold'])
+        && (!data.keys().hasAny(['priority']) || data.priority in ['low', 'normal', 'high'])
+        && (!data.keys().hasAny(['assigneeUid']) || data.assigneeUid is string)
+        && (!data.keys().hasAny(['assigneeName']) || data.assigneeName is string)
+        && (!data.keys().hasAny(['note']) || (data.note is string && data.note.size() <= 2000))
+        && (!data.keys().hasAny(['source']) || data.source == 'custom')
+        && (!data.keys().hasAny(['done']) || data.done is bool)
+        && (!(data.keys().hasAll(['status', 'done'])) || data.done == (data.status == 'complete'))
+        && data.updatedAt == request.time
+        && data.updatedByUid == request.auth.uid
+        && validTaskRelatedView(data);
+    }
+
     function validTaskEvent() {
       let eventType = request.resource.data.eventType;
       let beforeStatus = request.resource.data.beforeStatus;
@@ -927,7 +1004,9 @@ service cloud.firestore {
 
       match /tasks/{taskId} {
         allow read: if isMember(projectId);
-        allow create, update, delete: if canEdit(projectId);
+        allow create: if canEdit(projectId) && validCustomTaskCreate();
+        allow update: if canEdit(projectId) && validCustomTaskUpdate();
+        allow delete: if canEdit(projectId);
       }
 
       match /externalPerformances/{externalPerformanceId} {

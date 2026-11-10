@@ -1,5 +1,6 @@
 import {
   collection,
+  deleteField,
   doc,
   runTransaction,
   serverTimestamp,
@@ -17,6 +18,7 @@ import {
 } from "./production-task-view.ts";
 import type { ProjectPerformanceData } from "./performance.ts";
 import type { ProductionManagement } from "./venue-management.ts";
+import { isTaskRelatedView, type TaskRelatedView } from "./task-related-views.ts";
 
 export const TASK_EVENT_SOURCES = ["standard", "accountingCustom", "customTask"] as const satisfies readonly ProductionTaskSource[];
 export const TASK_EVENT_TYPES = ["taskCreated", "taskUpdated", "taskDeleted", "statusChanged", "taskCompleted", "taskReopened"] as const;
@@ -55,9 +57,14 @@ export type CustomTaskCreateData = {
   assigneeUid?: string;
   assigneeName?: string;
   note?: string;
+  relatedView?: TaskRelatedView | "" | null;
 };
 
-function normalizeCustomTaskData(data: CustomTaskCreateData): Required<CustomTaskCreateData> {
+type NormalizedCustomTaskData = Omit<Required<CustomTaskCreateData>, "relatedView"> & {
+  relatedView?: TaskRelatedView | null;
+};
+
+function normalizeCustomTaskData(data: CustomTaskCreateData): NormalizedCustomTaskData {
   const title = data.title.trim();
   if (!title || title.length > 200) throw new Error("タスク名を正しく入力してください");
   const dueDate = data.dueDate?.trim() ?? "";
@@ -70,6 +77,7 @@ function normalizeCustomTaskData(data: CustomTaskCreateData): Required<CustomTas
   if (!["low", "normal", "high"].includes(priority)) throw new Error("優先度が不正です");
   const note = data.note?.trim() ?? "";
   if (note.length > 2000) throw new Error("メモは2000文字以内で入力してください");
+  if (data.relatedView && !isTaskRelatedView(data.relatedView)) throw new Error("関連画面が不正です");
   return {
     title,
     stage: data.stage?.trim() ?? "",
@@ -81,6 +89,7 @@ function normalizeCustomTaskData(data: CustomTaskCreateData): Required<CustomTas
     assigneeUid: data.assigneeUid?.trim() ?? "",
     assigneeName: data.assigneeName?.trim() ?? "",
     note,
+    ...(Object.hasOwn(data, "relatedView") ? { relatedView: data.relatedView || null } : {}),
   };
 }
 
@@ -278,9 +287,11 @@ export async function createCustomTaskWithEvent(
   const taskRef = doc(collection(projectRef, "tasks"));
   const eventRef = doc(collection(projectRef, "taskEvents"));
   const values = normalizeCustomTaskData(data);
+  const { relatedView, ...taskValues } = values;
   const status = values.status;
   const task = {
-    ...values,
+    ...taskValues,
+    ...(relatedView ? { relatedView } : {}),
     status,
     source: "custom" as const,
     done: status === "complete",
@@ -326,15 +337,22 @@ export async function updateCustomTaskWithEvent(
     }
     const before = { id: taskSnapshot.id, ...(taskSnapshot.data() as Omit<CustomTaskLike, "id">) } as CustomTaskLike;
     const status = values.status;
+    const hasRelatedView = Object.hasOwn(values, "relatedView");
+    const { relatedView, ...taskValues } = values;
     const updates = {
-      ...values,
+      ...taskValues,
+      ...(hasRelatedView ? { relatedView: relatedView ?? deleteField() } : {}),
       status,
       source: "custom" as const,
       done: status === "complete",
       updatedAt: serverTimestamp(),
       updatedByUid: userUid,
     };
-    const after = { ...before, ...updates } as CustomTaskLike;
+    const after = { ...before, ...taskValues, status, source: "custom" as const, done: status === "complete" } as CustomTaskLike;
+    if (hasRelatedView) {
+      if (relatedView) after.relatedView = relatedView;
+      else delete after.relatedView;
+    }
     const performanceDateSnapshot = getPerformanceDateSnapshot(project.data());
     const event = buildCustomTaskTransitionEvent({ projectId, before, after, userUid, performanceDateSnapshot })
       ?? buildCustomTaskLifecycleEvent({ projectId, task: after, eventType: "taskUpdated", userUid, performanceDateSnapshot });
@@ -393,7 +411,10 @@ export async function toggleCustomTaskWithEvent(
     if (!project.exists()) throw new Error("公演が見つかりません");
     if (!taskSnapshot.exists()) throw new Error("タスクが見つかりません");
     const before = { id: taskSnapshot.id, ...(taskSnapshot.data() as Omit<CustomTaskLike, "id">) } as CustomTaskLike;
-    const after = { ...before, done, status: done ? "complete" : "not-started" };
+    const nextStatus: ProductionTaskStatus = done ? "complete" : "not-started";
+    const after = { ...before, done, status: nextStatus };
+    const normalized = normalizeCustomTaskData({ ...before, status: after.status });
+    const { relatedView, ...taskValues } = normalized;
     const taskEvent = buildCustomTaskTransitionEvent({
       projectId,
       before,
@@ -401,7 +422,15 @@ export async function toggleCustomTaskWithEvent(
       userUid,
       performanceDateSnapshot: getPerformanceDateSnapshot(project.data()),
     });
-    transaction.update(taskRef, { done, status: done ? "complete" : "not-started", updatedAt: serverTimestamp(), updatedByUid: userUid });
+    transaction.update(taskRef, {
+      ...taskValues,
+      ...(relatedView ? { relatedView } : {}),
+      source: "custom",
+      done,
+      status: after.status,
+      updatedAt: serverTimestamp(),
+      updatedByUid: userUid,
+    });
     if (taskEvent) transaction.set(eventRef, buildTaskEventPayload(taskEvent, serverTimestamp()));
   });
 }

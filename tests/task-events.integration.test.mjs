@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { rejects, strictEqual } from "node:assert/strict";
 import { after, before, beforeEach, describe, it } from "node:test";
 import { initializeTestEnvironment } from "@firebase/rules-unit-testing";
-import { collection, doc, getDocs, setDoc } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, setDoc } from "firebase/firestore";
 import { getProductionActivityDefinition } from "../lib/activity.ts";
 import { runProjectRevisionTransaction } from "../lib/project-revisions.ts";
 import {
@@ -101,6 +101,49 @@ describe("task event writes", () => {
     strictEqual(events.some((event) => event.eventType === "statusChanged"), true);
     strictEqual(events.some((event) => event.eventType === "taskUpdated"), true);
     strictEqual(events.some((event) => event.eventType === "taskDeleted"), true);
+  });
+
+  it("creates, changes, preserves, and explicitly clears a related view", async () => {
+    const db = firestoreFor(ownerUid);
+    const taskId = await createCustomTaskWithEvent(db, projectId, {
+      title: "折込先を確認", relatedView: "external-performances",
+    }, ownerUid);
+    const ref = doc(db, "projects", projectId, "tasks", taskId);
+    strictEqual((await getDoc(ref)).data()?.relatedView, "external-performances");
+
+    await updateCustomTaskWithEvent(db, projectId, taskId, {
+      title: "折込先を再確認", note: "関連画面は維持する",
+    }, ownerUid);
+    strictEqual((await getDoc(ref)).data()?.relatedView, "external-performances");
+
+    await updateCustomTaskWithEvent(db, projectId, taskId, {
+      title: "DMを確認", relatedView: "production-dm",
+    }, ownerUid);
+    strictEqual((await getDoc(ref)).data()?.relatedView, "production-dm");
+
+    await updateCustomTaskWithEvent(db, projectId, taskId, {
+      title: "リンクなし", relatedView: "",
+    }, ownerUid);
+    strictEqual((await getDoc(ref)).data()?.relatedView, undefined);
+    const events = await getDocs(collection(db, "projects", projectId, "taskEvents"));
+    strictEqual(events.docs.filter((entry) => entry.data().eventType === "taskUpdated").length, 3);
+  });
+
+  it("updates a legacy task without removing its untouched legacy fields", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "projects", projectId, "tasks", "legacy-task"), {
+        title: "旧タスク", stage: "前期", category_parent: "制作", category_child: "広報",
+        done: false, deadline: "2026-11-01", responsible: "旧担当", legacyMarker: "keep",
+      });
+    });
+    const db = firestoreFor(editorUid);
+    await updateCustomTaskWithEvent(db, projectId, "legacy-task", {
+      title: "旧タスク更新", category_parent: "制作", relatedView: "production-assets",
+    }, editorUid);
+    const data = (await getDoc(doc(db, "projects", projectId, "tasks", "legacy-task"))).data();
+    strictEqual(data?.legacyMarker, "keep");
+    strictEqual(data?.deadline, "2026-11-01");
+    strictEqual(data?.relatedView, "production-assets");
   });
 
   it("rejects viewer writes and refuses to delete a non-custom task document", async () => {

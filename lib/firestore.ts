@@ -77,6 +77,7 @@ import {
   withVenueSection,
   type CustomTaskCreateData,
 } from "./task-events";
+import type { TaskRelatedView } from "./task-related-views";
 
 /* ================================
    公演（projects）
@@ -130,6 +131,7 @@ export type Task = {
   source?: "custom";
   priority?: "low" | "normal" | "high";
   note?: string;
+  relatedView?: TaskRelatedView;
   createdByUid?: string;
   updatedByUid?: string;
 };

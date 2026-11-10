@@ -1,5 +1,11 @@
 import type { Task, ProjectPerformanceRecord } from "./firestore.ts";
 import {
+  getTaskRelatedViewHref,
+  getTaskRelatedViewLabel,
+  isTaskRelatedView,
+  type TaskRelatedView,
+} from "./task-related-views.ts";
+import {
   STANDARD_ACCOUNTING_TASKS,
   normalizeAccounting,
   normalizeFlyer,
@@ -36,6 +42,9 @@ export type ProductionTaskView = {
   editTarget: string;
   customTaskId: string | null;
   stage?: string;
+  relatedView?: TaskRelatedView | null;
+  relatedViewLabel?: string | null;
+  relatedViewHref?: string | null;
 };
 
 const SECTION_LABELS: Record<ProductionSectionSlug, string> = {
@@ -296,6 +305,7 @@ function customTaskStatus(task: Task): ProductionTaskStatus {
 
 export function toCustomProductionTask(projectId: string, task: Task): ProductionTaskView {
   const section = getCustomTaskSection(task);
+  const relatedView = isTaskRelatedView(task.relatedView) ? task.relatedView : null;
   return {
     id: `custom:${task.id}`,
     source: "customTask",
@@ -313,6 +323,9 @@ export function toCustomProductionTask(projectId: string, task: Task): Productio
     editTarget: `/projects/${projectId}/tasks`,
     customTaskId: task.id,
     stage: task.stage,
+    relatedView,
+    relatedViewLabel: getTaskRelatedViewLabel(relatedView),
+    relatedViewHref: getTaskRelatedViewHref(projectId, relatedView),
   };
 }
 

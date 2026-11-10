@@ -111,6 +111,7 @@ describe("production task adapter", () => {
       id: "c1", title: "公演情報を集める", stage: "前期", category_parent: "Web", category_child: "調査",
       done: false, status: "in-progress", dueDate: "2026-11-20", priority: "high",
       assigneeUid: "u1", assigneeName: "田中", note: "候補をまとめる", source: "custom",
+      relatedView: "external-performances",
     });
     strictEqual(custom.status, "in-progress");
     strictEqual(custom.dueDate, "2026-11-20");
@@ -118,6 +119,15 @@ describe("production task adapter", () => {
     strictEqual(custom.assigneeUid, "u1");
     strictEqual(custom.assignee, "田中");
     strictEqual(custom.note, "候補をまとめる");
+    strictEqual(custom.relatedView, "external-performances");
+    strictEqual(custom.relatedViewLabel, "折込管理");
+    strictEqual(custom.relatedViewHref, "/projects/p1/external-performances");
+    const invalid = toCustomProductionTask("p1", {
+      id: "bad", title: "不正値", stage: "", category_parent: "", category_child: "", done: false,
+      relatedView: "https://example.com",
+    });
+    strictEqual(invalid.relatedView, null);
+    strictEqual(invalid.relatedViewHref, null);
   });
 
   it("uses filtered task totals for each section", () => {
@@ -160,10 +170,15 @@ describe("task view helpers", () => {
     deepStrictEqual(buildTaskCreateInput({
       title: "  入稿  ", stage: " 前期 ", category_parent: " 広報 ", category_child: " チラシ ",
       dueDate: "2026-11-20", status: "in-progress", priority: "high", assigneeUid: " u1 ", assigneeName: " 田中 ", note: " 確認 ",
+      relatedView: "production-flyer",
     }), {
       title: "入稿", stage: "前期", category_parent: "広報", category_child: "チラシ", dueDate: "2026-11-20",
-      status: "in-progress", priority: "high", assigneeUid: "u1", assigneeName: "田中", note: "確認",
+      status: "in-progress", priority: "high", assigneeUid: "u1", assigneeName: "田中", note: "確認", relatedView: "production-flyer",
     });
+    strictEqual(buildTaskCreateInput({
+      title: "不正", stage: "", category_parent: "", category_child: "", dueDate: "", status: "not-started",
+      priority: "normal", assigneeUid: "", assigneeName: "", note: "", relatedView: "https://example.com",
+    }), null);
     strictEqual(buildTaskCreateInput({ ...{ title: "  ", stage: "", category_parent: "", category_child: "" }, dueDate: "", status: "not-started", priority: "normal", assigneeUid: "", assigneeName: "", note: "" }), null);
   });
 
@@ -234,7 +249,11 @@ describe("additional task UI", () => {
     strictEqual(page.includes("window.confirm"), true);
     strictEqual(page.includes("if (!window.confirm"), true);
     strictEqual(page.includes("placeholder=\"例：制作\""), true);
+    strictEqual(page.includes("関連画面"), true);
+    strictEqual(page.includes("TASK_RELATED_VIEW_DEFINITIONS.map"), true);
     strictEqual(drawer.includes("このタスクを削除"), true);
     strictEqual(drawer.includes("task.source !== \"customTask\""), true);
+    strictEqual(drawer.includes("task.relatedViewHref"), true);
+    strictEqual(drawer.includes("task.relatedViewLabel"), true);
   });
 });
