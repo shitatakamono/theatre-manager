@@ -25,7 +25,7 @@ import {
   styles,
   useProductionEditor,
 } from "./ProductionCommon";
-import { FlyerVariantsPanel } from "./FlyerVariantsPanel";
+import { FlyersPanel } from "./FlyersPanel";
 
 type Block = keyof FlyerManagement & string;
 const labels: Record<Block, string> = {
@@ -38,7 +38,6 @@ const labels: Record<Block, string> = {
 const links = [
   { id: "specifications", label: labels.specifications },
   { id: "flyer", label: labels.flyer },
-  { id: "flyer-variants", label: "チラシパターン" },
   { id: "poster", label: labels.poster },
   { id: "information", label: labels.information },
   { id: "distribution", label: labels.distribution },
@@ -72,8 +71,7 @@ export function FlyerManagementClient({ project, management }: { project: Projec
             { label: "ポスター", value: editor.data.specifications?.posterUsesFlyerFront === false ? "独自デザイン" : "チラシ表面デザインを使用" },
           ]} />
         </ManagementSection>
-        {renderPrintSection("flyer", "チラシ")}
-        <FlyerVariantsPanel projectId={project.id} legacyFlyer={editor.data.flyer} />
+        <FlyersPanel projectId={project.id} legacyFlyer={editor.data.flyer} onEditLegacy={() => editor.open("flyer")} />
         {renderPrintSection("poster", "ポスター")}
         <ManagementSection id="information" title={labels.information} block="information" onEdit={editor.open}>
           <CheckList items={[
@@ -139,6 +137,7 @@ export function FlyerManagementClient({ project, management }: { project: Projec
   function renderPrintEditor(block: "flyer" | "poster", value: PrintItemManagement) {
     const label = block === "flyer" ? "チラシ" : "ポスター";
     return <div className={styles.formGrid}>
+      {block === "flyer" && <Field label="チラシ名" value={value.name ?? ""} onChange={(next) => patch(block, { name: next })} />}
       <CheckboxField label={`${label}を使用する`} checked={value.enabled ?? false} onChange={(checked) => patch(block, { enabled: checked })} />
       <Field label="サイズ" value={value.size ?? ""} onChange={(next) => patch(block, { size: next })} />
       <label className={styles.field}><span>片面・両面</span><select value={value.sides ?? ""} onChange={(event) => patch(block, { sides: event.target.value as PrintItemManagement["sides"] })}><option value="">未設定</option><option value="single">片面</option><option value="double">両面</option></select></label>

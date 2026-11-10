@@ -74,6 +74,20 @@ function externalPerformanceData(uid, overrides = {}) {
   };
 }
 
+function flyerRef(db, id = "flyer-a", targetProjectId = projectId) {
+  return doc(db, "projects", targetProjectId, "flyers", id);
+}
+
+function flyerData(uid, overrides = {}) {
+  return {
+    name: "本番チラシ", enabled: true, size: "A4", sides: "double", quantity: 500,
+    printer: "印刷会社", submissionPlannedDate: "2026-11-01", submissionDate: "2026-11-02",
+    deliveryPlannedDate: "2026-11-08", deliveryDate: "2026-11-09", printCost: 10000, order: 10,
+    revision: 0, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), createdByUid: uid, updatedByUid: uid,
+    ...overrides,
+  };
+}
+
 function rehearsalData(uid, overrides = {}) {
   return {
     startAt: new Date("2026-11-15T04:00:00Z"),
@@ -634,6 +648,54 @@ describe("external performances", () => {
         externalPerformanceData(ownerUid, { insertion: { ...insertion, quantity } }),
       ));
     }
+  });
+});
+
+describe("multiple flyers", () => {
+  it("allows owners and editors to write and viewers to read only", async () => {
+    for (const uid of [ownerUid, editorUid]) {
+      const db = firestoreFor(uid);
+      const ref = flyerRef(db, `flyer-${uid}`);
+      await assertSucceeds(setDoc(ref, flyerData(uid)));
+      await assertSucceeds(updateDoc(ref, { name: `更新-${uid}`, revision: 1, updatedAt: serverTimestamp(), updatedByUid: uid }));
+      await assertSucceeds(deleteDoc(ref));
+    }
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(flyerRef(context.firestore()), { ...flyerData(ownerUid), createdAt: new Date(), updatedAt: new Date() });
+    });
+    const viewerDb = firestoreFor(viewerUid);
+    await assertSucceeds(getDoc(flyerRef(viewerDb)));
+    await assertSucceeds(getDocs(collection(viewerDb, "projects", projectId, "flyers")));
+    await assertFails(setDoc(flyerRef(viewerDb, "viewer-create"), flyerData(viewerUid)));
+    await assertFails(updateDoc(flyerRef(viewerDb), { name: "変更不可" }));
+    await assertFails(deleteDoc(flyerRef(viewerDb)));
+    await assertFails(getDoc(flyerRef(firestoreFor(outsiderUid))));
+  });
+
+  it("enforces allowlist, numeric limits, dates, metadata, and exact revisions", async () => {
+    const db = firestoreFor(ownerUid);
+    await assertSucceeds(setDoc(flyerRef(db, "minimal"), {
+      name: "最小チラシ", enabled: false, revision: 0,
+      createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+      createdByUid: ownerUid, updatedByUid: ownerUid,
+    }));
+    for (const [id, overrides] of [
+      ["empty-name", { name: "" }],
+      ["extra-field", { secret: "no" }],
+      ["bad-quantity-zero", { quantity: 0 }],
+      ["bad-quantity-decimal", { quantity: 1.5 }],
+      ["bad-cost", { printCost: -1 }],
+      ["bad-order", { order: 0 }],
+      ["bad-date", { submissionDate: "2026/11/01" }],
+      ["bad-revision", { revision: 1 }],
+      ["spoofed-user", { createdByUid: editorUid }],
+    ]) {
+      await assertFails(setDoc(flyerRef(db, id), flyerData(ownerUid, overrides)));
+    }
+    const ref = flyerRef(db, "revision-check");
+    await assertSucceeds(setDoc(ref, flyerData(ownerUid)));
+    await assertFails(updateDoc(ref, { name: "飛び越し", revision: 2, updatedAt: serverTimestamp(), updatedByUid: ownerUid }));
+    await assertFails(updateDoc(ref, { createdByUid: editorUid, revision: 1, updatedAt: serverTimestamp(), updatedByUid: ownerUid }));
   });
 });
 

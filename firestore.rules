@@ -319,6 +319,75 @@ service cloud.firestore {
         && request.resource.data.updatedAt == request.time;
     }
 
+    function validFlyerDateField(key) {
+      return !request.resource.data.keys().hasAny([key])
+        || (request.resource.data[key] is string
+          && request.resource.data[key].matches('^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'));
+    }
+
+    function validFlyerData() {
+      return request.resource.data.keys().hasOnly([
+          'name', 'enabled', 'size', 'sides', 'quantity', 'printer',
+          'submissionPlannedDate', 'submissionDate',
+          'deliveryPlannedDate', 'deliveryDate', 'printCost', 'order',
+          'revision', 'createdAt', 'updatedAt', 'createdByUid', 'updatedByUid'
+        ])
+        && request.resource.data.keys().hasAll([
+          'name', 'enabled', 'revision', 'createdAt', 'updatedAt',
+          'createdByUid', 'updatedByUid'
+        ])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 100
+        && request.resource.data.enabled is bool
+        && (!request.resource.data.keys().hasAny(['size'])
+          || (request.resource.data.size is string && request.resource.data.size.size() <= 100))
+        && (!request.resource.data.keys().hasAny(['sides'])
+          || request.resource.data.sides in ['single', 'double', ''])
+        && (!request.resource.data.keys().hasAny(['quantity'])
+          || (request.resource.data.quantity is int
+            && request.resource.data.quantity > 0
+            && request.resource.data.quantity <= 1000000))
+        && (!request.resource.data.keys().hasAny(['printer'])
+          || (request.resource.data.printer is string && request.resource.data.printer.size() <= 200))
+        && validFlyerDateField('submissionPlannedDate')
+        && validFlyerDateField('submissionDate')
+        && validFlyerDateField('deliveryPlannedDate')
+        && validFlyerDateField('deliveryDate')
+        && (!request.resource.data.keys().hasAny(['printCost'])
+          || (request.resource.data.printCost is int
+            && request.resource.data.printCost >= 0
+            && request.resource.data.printCost <= 1000000000))
+        && (!request.resource.data.keys().hasAny(['order'])
+          || (request.resource.data.order is int
+            && request.resource.data.order > 0
+            && request.resource.data.order <= 1000000))
+        && request.resource.data.revision is int
+        && request.resource.data.revision >= 0
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt is timestamp
+        && request.resource.data.createdByUid is string
+        && request.resource.data.updatedByUid is string;
+    }
+
+    function validFlyerCreate() {
+      return validFlyerData()
+        && request.resource.data.revision == 0
+        && request.resource.data.createdByUid == request.auth.uid
+        && request.resource.data.updatedByUid == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function validFlyerUpdate() {
+      return validFlyerData()
+        && request.resource.data.revision == resource.data.revision + 1
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.createdByUid == resource.data.createdByUid
+        && request.resource.data.updatedByUid == request.auth.uid
+        && request.resource.data.updatedAt == request.time;
+    }
+
     function validProductionAssetData() {
       return request.resource.data.keys().hasOnly([
           'name', 'type', 'url', 'note', 'revision', 'createdAt', 'updatedAt',
@@ -872,6 +941,13 @@ service cloud.firestore {
         allow read: if isMember(projectId);
         allow create: if canEdit(projectId) && validFlyerVariantCreate();
         allow update: if canEdit(projectId) && validFlyerVariantUpdate();
+        allow delete: if canEdit(projectId);
+      }
+
+      match /flyers/{flyerId} {
+        allow read: if isMember(projectId);
+        allow create: if canEdit(projectId) && validFlyerCreate();
+        allow update: if canEdit(projectId) && validFlyerUpdate();
         allow delete: if canEdit(projectId);
       }
 

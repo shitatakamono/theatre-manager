@@ -324,6 +324,45 @@
   opacity: .5;
 }
 
+.flyerItem {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  border-top: 1px solid #dce4e0;
+  padding: 16px 0;
+}
+
+.flyerItem:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.flyerMain {
+  min-width: 0;
+  flex: 1;
+}
+
+.flyerMain .detailList {
+  margin-top: 10px;
+}
+
+.flyerUsage {
+  display: inline-flex;
+  margin-top: 7px;
+  border-radius: 999px;
+  background: #ecefed;
+  color: #65716c;
+  padding: 4px 8px;
+  font-size: 9px;
+  font-weight: 850;
+}
+
+.flyerUsage[data-enabled="true"] {
+  background: #dcf1e8;
+  color: #176046;
+}
+
 .referenceDetails {
   border-left: 3px solid #b9d0c7;
   background: #f2f7f5;
@@ -954,6 +993,16 @@
     align-items: stretch;
     flex-direction: column;
     gap: 9px;
+  }
+
+  .flyerItem {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .flyerMain,
+  .flyerItem .variantActions {
+    width: 100%;
   }
 
   .variantActions {

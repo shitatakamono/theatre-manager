@@ -1,4 +1,5 @@
 export type PrintItemManagement = {
+  name?: string;
   enabled?: boolean;
   size?: string;
   sides?: "single" | "double" | "";
