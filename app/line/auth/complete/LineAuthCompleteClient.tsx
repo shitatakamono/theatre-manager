@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { signInWithCustomToken } from "firebase/auth";
 
 import { auth } from "@/lib/firebase";
+import { takeProjectInviteReturnPath } from "@/lib/project-invite-link-client";
 
 import styles from "./line-auth-complete.module.css";
 
@@ -12,11 +13,15 @@ type Status = "processing" | "unlinked" | "error";
 
 export function LineAuthCompleteClient() {
   const started = useRef(false);
+  const returnPath = useRef<string | null>(null);
+  const [visibleReturnPath, setVisibleReturnPath] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>("processing");
 
   useEffect(() => {
     if (started.current) return;
     started.current = true;
+    returnPath.current = takeProjectInviteReturnPath();
+    void Promise.resolve().then(() => setVisibleReturnPath(returnPath.current));
     const query = new URLSearchParams(window.location.search);
     const fragment = new URLSearchParams(window.location.hash.slice(1));
     const result = query.get("result");
@@ -44,7 +49,7 @@ export function LineAuthCompleteClient() {
           throw new Error("exchange_failed");
         }
         await signInWithCustomToken(auth, body.customToken);
-        window.location.replace("/projects");
+        window.location.replace(returnPath.current ?? "/projects");
       } catch {
         setStatus("error");
       }
@@ -66,7 +71,7 @@ export function LineAuthCompleteClient() {
         {status === "error" && (
           <p role="alert">LINEログインを完了できませんでした。もう一度お試しください。</p>
         )}
-        {status !== "processing" && <Link href="/projects">ログイン画面へ戻る</Link>}
+        {status !== "processing" && <Link href={visibleReturnPath ?? "/projects"}>{visibleReturnPath ? "招待ページへ戻る" : "ログイン画面へ戻る"}</Link>}
       </section>
     </main>
   );

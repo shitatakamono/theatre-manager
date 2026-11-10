@@ -12,7 +12,8 @@ describe("LINE authentication completion page", () => {
     assert.match(source, /history\.replaceState\(null, "", "\/line\/auth\/complete"\)/);
     assert.match(source, /\/api\/line\/auth\/exchange/);
     assert.match(source, /signInWithCustomToken\(auth, body\.customToken\)/);
-    assert.match(source, /location\.replace\("\/projects"\)/);
+    assert.match(source, /takeProjectInviteReturnPath/);
+    assert.match(source, /location\.replace\(returnPath\.current \?\? "\/projects"\)/);
     assert.match(source, /このLINEアカウントはまだSeisakuBoardに連携されていません/);
     assert.doesNotMatch(source, /localStorage|sessionStorage|console\./);
   });

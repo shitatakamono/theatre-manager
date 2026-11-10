@@ -25,6 +25,24 @@
 .roleControl select, .inviteForm input, .inviteForm select { width: 100%; min-height: 38px; border: 1px solid #cbd6d1; border-radius: 6px; background: #fff; padding: 7px 9px; font-size: 12px; }
 .removeButton { color: #9b3d3d; padding: 8px; font-size: 10px; font-weight: 800; }
 .inviteSection { margin-top: 4px; }
+.inviteLinkSection { margin-top: 4px; padding: 24px 0; border-bottom: 1px solid #dbe2df; }
+.primaryInviteLinkButton { min-height: 40px; border-radius: 7px; background: #24684f; color: #fff; padding: 9px 16px; font-size: 11px; font-weight: 850; }
+.createdInviteLink { display: grid; justify-items: start; gap: 8px; margin-top: 14px; border: 1px solid #b8d7cb; border-radius: 8px; background: #f1faf6; padding: 14px; }
+.createdInviteLink strong { font-size: 12px; }
+.createdInviteLink button { min-height: 36px; border-radius: 6px; background: #24684f; color: #fff; padding: 7px 14px; font-size: 11px; font-weight: 800; }
+.createdInviteLink small { color: #53635d; font-size: 10px; }
+.inviteLinkMessage, .inviteLinkError { margin-top: 10px; font-size: 11px; font-weight: 700; }
+.inviteLinkMessage { color: #24684f; }
+.inviteLinkError { color: #9b3535; }
+.inviteLinkListTitle { margin-top: 22px; font-size: 12px; }
+.inviteLinkTableWrap { margin-top: 8px; overflow-x: auto; }
+.inviteLinkTable { width: 100%; border-collapse: collapse; font-size: 11px; }
+.inviteLinkTable th, .inviteLinkTable td { border-top: 1px solid #e2e8e5; padding: 9px 7px; text-align: left; vertical-align: middle; }
+.inviteLinkTable th { color: #53635d; font-size: 9px; }
+.inviteLinkTable td button { border: 1px solid #dfb8b8; border-radius: 6px; color: #923a3a; padding: 6px 9px; font-size: 10px; font-weight: 800; }
+.inviteLinkTable [data-status="pending"] { color: #24684f; font-weight: 800; }
+.inviteLinkTable [data-status="claimed"] { color: #43534d; font-weight: 800; }
+.inviteLinkTable [data-status="revoked"], .inviteLinkTable [data-status="expired"] { color: #7b8581; }
 .inviteForm { display: grid; grid-template-columns: minmax(0, 1fr) 130px auto; align-items: end; gap: 12px; }
 .inviteForm label { display: grid; gap: 5px; }
 .inviteForm label span { color: #53635d; font-size: 10px; font-weight: 800; }
@@ -53,4 +71,10 @@
   .inviteForm > button { width: 100%; }
   .inviteList li { align-items: stretch; flex-direction: column; }
   .inviteActions button { flex: 1; }
+  .primaryInviteLinkButton { width: 100%; }
+  .inviteLinkTable thead { display: none; }
+  .inviteLinkTable, .inviteLinkTable tbody, .inviteLinkTable tr, .inviteLinkTable td { display: block; width: 100%; }
+  .inviteLinkTable tr { border-top: 1px solid #dbe2df; padding: 8px 0; }
+  .inviteLinkTable td { display: grid; grid-template-columns: 90px 1fr; border: 0; padding: 4px 2px; }
+  .inviteLinkTable td::before { content: attr(data-label); color: #6d7a75; font-size: 9px; font-weight: 800; }
 }

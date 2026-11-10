@@ -31,6 +31,7 @@ import {
 } from "@/lib/user-link-reservation-client";
 import { getUserLinkReservationView } from "@/lib/user-link-reservation-view";
 import type { UserLinkReservation } from "@/lib/user-link-reservations";
+import { createProjectInviteLink } from "@/lib/project-invite-link-client";
 import { useProjectAccess } from "../ProjectAccess";
 import styles from "./people.module.css";
 
@@ -47,7 +48,7 @@ export function PeopleManagementClient({
   initialPeople: ProjectPerson[];
   members: ProjectMember[];
 }) {
-  const { canEdit, actor } = useProjectAccess();
+  const { canEdit, canManageMembers, actor } = useProjectAccess();
   const [people, setPeople] = useState(initialPeople);
   const [editing, setEditing] = useState<ProjectPerson | null | undefined>(undefined);
   const [draft, setDraft] = useState<ManagedPersonInput>(EMPTY_MANAGED_PERSON_INPUT);
@@ -61,6 +62,9 @@ export function PeopleManagementClient({
   const [reservationEditing, setReservationEditing] = useState(false);
   const [reservationError, setReservationError] = useState("");
   const [reservationLoadError, setReservationLoadError] = useState("");
+  const [personInviteBusy, setPersonInviteBusy] = useState(false);
+  const [personInviteUrl, setPersonInviteUrl] = useState("");
+  const [personInviteError, setPersonInviteError] = useState("");
   const [showInactive, setShowInactive] = useState(false);
   const [sortOrder, setSortOrder] = useState<PeopleManagementListSort>("cast_first");
   const memberByUid = useMemo(() => new Map(members.map((member) => [member.uid, member])), [members]);
@@ -129,6 +133,26 @@ export function PeopleManagementClient({
     setReservationError("");
     setReservationEmail(pendingReservationByPersonId.get(person.id)?.email ?? "");
     setReservationEditing(false);
+    setPersonInviteUrl("");
+    setPersonInviteError("");
+  }
+
+  async function createPersonInvite() {
+    if (!canManageMembers || !editing || personInviteBusy) return;
+    setPersonInviteBusy(true); setPersonInviteError(""); setPersonInviteUrl("");
+    try {
+      const result = await createProjectInviteLink(project.id, editing.id);
+      setPersonInviteUrl(result.url);
+      setNotice("この関係者専用の招待リンクを作成しました");
+    } catch (caught) {
+      setPersonInviteError(caught instanceof Error ? caught.message : "招待リンクを作成できませんでした");
+    } finally { setPersonInviteBusy(false); }
+  }
+
+  async function copyPersonInvite() {
+    if (!personInviteUrl) return;
+    try { await navigator.clipboard.writeText(personInviteUrl); setNotice("招待URLをコピーしました"); }
+    catch { setPersonInviteError("URLをコピーできませんでした"); }
   }
 
   function closeEditor() {
@@ -391,6 +415,13 @@ export function PeopleManagementClient({
               </div>
             </>}
             {reservationError && <p className={styles.error} role="alert">{reservationError}</p>}
+          </section>}
+          {editing && canManageMembers && !draft.linkedUserUid && <section className={styles.personInviteSection} aria-label="関係者指定招待リンク">
+            <strong>LINE等で送る招待リンク</strong>
+            <p>この関係者専用のURLです。ログイン後、閲覧者として公演へ参加し、関係者情報と自動で連携します。</p>
+            <button type="button" disabled={personInviteBusy || saving} onClick={() => void createPersonInvite()}>{personInviteBusy ? "作成中…" : "招待リンクを作成"}</button>
+            {personInviteUrl && <div className={styles.personInviteCreated} role="status"><button type="button" onClick={() => void copyPersonInvite()}>URLをコピー</button><small>このURLは再表示できません。</small></div>}
+            {personInviteError && <p className={styles.reservationConflict} role="alert">{personInviteError}</p>}
           </section>}
           <label><span>公開備考</span><textarea rows={5} maxLength={2000} value={draft.publicNote} onChange={(event) => setDraft((current) => ({ ...current, publicNote: event.target.value }))} /></label>
           {error && <p className={styles.error} role="alert">{error}</p>}

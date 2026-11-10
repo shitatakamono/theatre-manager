@@ -1755,6 +1755,16 @@ describe("server-only LINE integration state", () => {
   });
 });
 
+describe("server-only project invite links", () => {
+  it("denies public and authenticated client reads and writes", async () => {
+    for (const db of [firestoreFor(), firestoreFor(ownerUid)]) {
+      const ref = doc(db, "projectInviteLinks", "opaque-token-hash");
+      await assertFails(getDoc(ref));
+      await assertFails(setDoc(ref, { projectId, role: "viewer", status: "pending" }));
+    }
+  });
+});
+
 describe("server-only rehearsal share state", () => {
   it("denies public and authenticated client access to share credentials", async () => {
     for (const db of [firestoreFor(), firestoreFor(ownerUid)]) {

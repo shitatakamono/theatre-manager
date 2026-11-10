@@ -13,6 +13,7 @@ import {
 import { useProjectAccess } from "../ProjectAccess";
 import { getSystemUserStatus, SYSTEM_ROLE_LABELS } from "@/lib/management-view";
 import styles from "./members.module.css";
+import { ProjectInviteLinksPanel } from "./ProjectInviteLinksPanel";
 
 const roleLabels = SYSTEM_ROLE_LABELS;
 
@@ -145,6 +146,7 @@ export default function MembersPage({ params }: { params: Promise<{ projectId: s
     })}</ul></section>}
 
     {canManageMembers && !legacyAccess ? <>
+      <ProjectInviteLinksPanel projectId={projectId} />
       <section className={styles.inviteSection}>
         <div className={styles.sectionHeading}><h2>システム利用者を招待</h2><span>招待先のGoogleアカウントでログインすると自動参加します。</span></div>
         <form className={styles.inviteForm} onSubmit={(event) => void invite(event)}>

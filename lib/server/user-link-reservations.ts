@@ -18,7 +18,7 @@ const RESERVATIONS = "userLinkReservations";
 const RESERVATION_LOCKS = "userLinkReservationLocks";
 const MAX_CLAIM_RESERVATIONS = 50;
 
-type ReservationActor = { uid: string; name: string };
+export type ReservationActor = { uid: string; name: string };
 
 function requiredId(value: string, label: string): string {
   const normalized = value.trim();
@@ -265,7 +265,8 @@ function writeFormalLink(
   linkedUserUid: string,
   actor: ReservationActor,
   now: Timestamp,
-  activityRef: FirebaseFirestore.DocumentReference
+  activityRef: FirebaseFirestore.DocumentReference,
+  activityActorUid = actor.uid
 ) {
   transaction.update(snapshots.person.ref, {
     linkedUserUid,
@@ -287,7 +288,11 @@ function writeFormalLink(
   transaction.set(projectRef.collection("participantLinkedUsers").doc(linkedUserUid), {
     participantId: personId,
   });
-  transaction.set(activityRef, activityPayload(actor, ["システム利用者連携"], now));
+  transaction.set(activityRef, activityPayload(
+    { ...actor, uid: activityActorUid },
+    ["システム利用者連携"],
+    now
+  ));
 }
 
 async function readFormalLinkSnapshots(
@@ -303,6 +308,42 @@ async function readFormalLinkSnapshots(
     transaction.get(projectRef.collection("people").where("linkedUserUid", "==", linkedUserUid)),
   ]);
   return { person, participant, reverse, linkedPeople };
+}
+
+export async function linkProjectPersonToUserInTransaction(input: {
+  transaction: FirebaseFirestore.Transaction;
+  projectRef: FirebaseFirestore.DocumentReference;
+  person: FirebaseFirestore.DocumentSnapshot;
+  personId: string;
+  linkedUserUid: string;
+  actor: ReservationActor;
+  now: Timestamp;
+  activityRef: FirebaseFirestore.DocumentReference;
+  redactActivityActorUid?: boolean;
+}): Promise<"linked" | "already_linked"> {
+  const snapshots = await readFormalLinkSnapshots(
+    input.transaction,
+    input.projectRef,
+    input.person,
+    input.personId,
+    input.linkedUserUid
+  );
+  const state = inspectFormalLink(snapshots, input.personId, input.linkedUserUid, "claim");
+  if (state === "available") {
+    writeFormalLink(
+      input.transaction,
+      input.projectRef,
+      snapshots,
+      input.personId,
+      input.linkedUserUid,
+      input.actor,
+      input.now,
+      input.activityRef,
+      input.redactActivityActorUid ? "" : input.actor.uid
+    );
+    return "linked";
+  }
+  return "already_linked";
 }
 
 function reservationActor(

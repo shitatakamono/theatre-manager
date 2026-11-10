@@ -44,5 +44,7 @@ describe("Firebase Authentication login flows", () => {
     assert.equal(isPublicAppPath("/settings"), false);
     assert.equal(isPublicAppPath("/line/auth/complete"), true);
     assert.equal(isPublicAppPath("/line/auth/complete/extra"), false);
+    assert.equal(isPublicAppPath("/invite"), true);
+    assert.equal(isPublicAppPath("/invite/extra"), false);
   });
 });
