@@ -297,6 +297,7 @@ export function PerformanceInfoClient({
   const [activeEditor, setActiveEditor] = useState<PerformanceSection | null>(
     null
   );
+  const [staffEditorRoleIds, setStaffEditorRoleIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [savedMessage, setSavedMessage] = useState("");
@@ -330,6 +331,25 @@ export function PerformanceInfoClient({
     [data.cast]
   );
   const staff = useMemo(() => sortStaffRoles(data.staff ?? []), [data.staff]);
+  const staffEditorRoles = useMemo(() => {
+    const roles = draft.staff ?? [];
+    const indexedRoles = roles.map((role, roleIndex) => ({ role, roleIndex }));
+    const rolesById = new Map(indexedRoles.map((entry) => [entry.role.id, entry]));
+    const orderedEntries: typeof indexedRoles = [];
+    const displayedRoleIds = new Set<string>();
+
+    staffEditorRoleIds.forEach((roleId) => {
+      const entry = rolesById.get(roleId);
+      if (!entry) return;
+      orderedEntries.push(entry);
+      displayedRoleIds.add(roleId);
+    });
+
+    return [
+      ...orderedEntries,
+      ...indexedRoles.filter(({ role }) => !displayedRoleIds.has(role.id)),
+    ];
+  }, [draft.staff, staffEditorRoleIds]);
   const contact = data.contact as ContactInfo;
   const credits = data.credits ?? [];
   const displayTitle = basic.title || project.legacyTitle || "公演タイトル未設定";
@@ -340,6 +360,10 @@ export function PerformanceInfoClient({
 
     if (section === "staff" && !configuredSections.has("staff")) {
       nextDraft.staff = createStandardStaffTemplate();
+    }
+
+    if (section === "staff") {
+      setStaffEditorRoleIds(sortStaffRoles(nextDraft.staff ?? []).map(({ id }) => id));
     }
 
     setDraft(nextDraft);
@@ -821,7 +845,7 @@ export function PerformanceInfoClient({
       case "staff":
         return (
           <div className={styles.repeater}>
-            {(draft.staff ?? []).map((role, roleIndex) => (
+            {staffEditorRoles.map(({ role, roleIndex }) => (
               <div className={styles.repeaterItem} key={role.id}>
                 <div className={`${styles.repeaterHeader} ${styles.staffRoleHeader}`}>
                   <Field label="役職" value={role.role} onChange={(value) => updateStaffRole(roleIndex, { role: value })} />

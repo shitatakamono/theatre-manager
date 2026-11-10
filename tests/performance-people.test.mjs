@@ -1,4 +1,4 @@
-import { deepStrictEqual, match, strictEqual, throws } from "node:assert/strict";
+import { deepStrictEqual, doesNotMatch, match, strictEqual, throws } from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { describe, it } from "node:test";
 import {
@@ -82,6 +82,9 @@ describe("performance people linking", () => {
     match(source, /disabled=\{saving \|\| memberIndex === 0\}/);
     match(source, /label="表示順" type="number" min=\{1\} step=\{1\} value=\{role\.order \?\? ""\}/);
     match(source, /sortStaffRoles\(data\.staff \?\? \[\]\)/);
+    match(source, /setStaffEditorRoleIds\(sortStaffRoles\(nextDraft\.staff \?\? \[\]\)\.map\(\(\{ id \}\) => id\)\)/);
+    match(source, /staffEditorRoles\.map\(\(\{ role, roleIndex \}\) =>/);
+    doesNotMatch(source, /nextDraft\.staff\s*=\s*sortStaffRoles/);
     match(source, /\{canEdit && <button className=\{styles\.editButton\}/);
   });
 
