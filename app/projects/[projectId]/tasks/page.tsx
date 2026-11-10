@@ -11,6 +11,8 @@ import { buildTaskCreateInput, filterTasks, formatTaskDueDate, getTaskAssignee, 
 import { TASK_RELATED_VIEW_DEFINITIONS, type TaskRelatedView } from "@/lib/task-related-views";
 import { TaskDetailDrawer } from "../TaskDetailDrawer";
 import { useProjectAccess } from "../ProjectAccess";
+import { getProjectFlyers } from "@/lib/flyer-store";
+import type { Flyer } from "@/lib/flyers";
 import styles from "./tasks.module.css";
 
 type TasksPageProps = { params: Promise<{ projectId: string }> };
@@ -43,6 +45,7 @@ export default function TasksPage({ params }: TasksPageProps) {
   const { canEdit, actor } = useProjectAccess();
   const [project, setProject] = useState<ProjectPerformanceRecord | null>(null);
   const [customTasks, setCustomTasks] = useState<Task[]>([]);
+  const [flyers, setFlyers] = useState<Flyer[]>([]);
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [filter, setFilter] = useState<TaskListFilter>("all");
   const [selectedTask, setSelectedTask] = useState<ProductionTaskView | null>(null);
@@ -58,15 +61,15 @@ export default function TasksPage({ params }: TasksPageProps) {
 
   useEffect(() => {
     let active = true;
-    void Promise.all([getProjectPerformanceData(projectId), getTasks(projectId), getCategories(), getProjectMembers(projectId)]).then(([projectRecord, items, categories, projectMembers]) => {
-      if (active) { setProject(projectRecord); setCustomTasks(items); setCategoryMap(toCategoryMap(categories)); setMembers(projectMembers); }
+    void Promise.all([getProjectPerformanceData(projectId), getTasks(projectId), getCategories(), getProjectMembers(projectId), getProjectFlyers(projectId).catch(() => [])]).then(([projectRecord, items, categories, projectMembers, flyerRecords]) => {
+      if (active) { setProject(projectRecord); setCustomTasks(items); setCategoryMap(toCategoryMap(categories)); setMembers(projectMembers); setFlyers(flyerRecords); }
     })
       .catch(() => { if (active) setError("タスクを取得できませんでした。"); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [projectId]);
 
-  const tasks = useMemo(() => project ? buildProductionTaskViews(project, customTasks) : [], [customTasks, project]);
+  const tasks = useMemo(() => project ? buildProductionTaskViews(project, customTasks, flyers) : [], [customTasks, flyers, project]);
   const filtered = useMemo(() => filterTasks(tasks, filter, profile, today), [filter, profile, tasks, today]);
 
   async function handleToggleComplete(task: ProductionTaskView) {
@@ -82,7 +85,7 @@ export default function TasksPage({ params }: TasksPageProps) {
   }
 
   function handleOpenTask(task: ProductionTaskView) {
-    if (task.source === "customTask") setSelectedTask(task);
+    if (task.source === "customTask" || task.flyerRecordId) setSelectedTask(task);
     else router.push(task.editTarget);
   }
 

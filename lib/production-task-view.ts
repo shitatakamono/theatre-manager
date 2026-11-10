@@ -1,5 +1,11 @@
 import type { Task, ProjectPerformanceRecord } from "./firestore.ts";
 import {
+  buildLegacyFlyer,
+  LEGACY_FLYER_ID,
+  type Flyer,
+  type FlyerInput,
+} from "./flyers.ts";
+import {
   getTaskRelatedViewHref,
   getTaskRelatedViewLabel,
   isTaskRelatedView,
@@ -24,6 +30,8 @@ export type ProductionTaskSource = "standard" | "accountingCustom" | "customTask
 export type ProductionTaskStatus = "not-started" | "in-progress" | "complete" | "on-hold";
 export type ProductionTaskPriority = "low" | "normal" | "high";
 export type ProductionSectionSlug = "venue" | "flyer" | "dm" | "web" | "tickets" | "reception" | "accounting";
+export type FlyerTaskKind = "submission" | "delivery";
+export type ProductionTaskGroupType = "common" | "flyer" | "poster";
 
 export type ProductionTaskView = {
   id: string;
@@ -45,6 +53,10 @@ export type ProductionTaskView = {
   relatedView?: TaskRelatedView | null;
   relatedViewLabel?: string | null;
   relatedViewHref?: string | null;
+  groupType?: ProductionTaskGroupType;
+  flyerRecordId?: string;
+  flyerName?: string;
+  flyerTaskKind?: FlyerTaskKind;
 };
 
 const SECTION_LABELS: Record<ProductionSectionSlug, string> = {
@@ -143,42 +155,78 @@ function buildVenueTasks(project: ProjectPerformanceRecord): ProductionTaskView[
   return tasks;
 }
 
-function buildFlyerTasks(project: ProjectPerformanceRecord): ProductionTaskView[] {
+export function getFlyerRecordTaskId(flyerId: string, kind: FlyerTaskKind): string {
+  return flyerId === LEGACY_FLYER_ID
+    ? `standard:flyer:flyer:${kind}`
+    : `standard:flyer:record:${flyerId}:${kind}`;
+}
+
+function buildFlyerRecordTasks(
+  projectId: string,
+  flyer: FlyerInput & { id: string },
+  designer: string | null
+): ProductionTaskView[] {
+  if (!flyer.enabled) return [];
+  return ([
+    ["submission", "入稿", flyer.submissionDate, flyer.submissionPlannedDate],
+    ["delivery", "納品", flyer.deliveryDate, flyer.deliveryPlannedDate],
+  ] as const).map(([kind, label, completedDate, plannedDate]) => ({
+    ...standardTask(projectId, "flyer", "record", `${flyer.name} ${label}`, {
+      status: completedDate ? "complete" : "not-started",
+      dueDate: validDate(plannedDate),
+      assignee: kind === "submission" ? designer : null,
+      detailLabel: flyer.name,
+    }),
+    id: getFlyerRecordTaskId(flyer.id, kind),
+    groupType: "flyer" as const,
+    flyerRecordId: flyer.id,
+    flyerName: flyer.name,
+    flyerTaskKind: kind,
+  }));
+}
+
+function buildFlyerTasks(project: ProjectPerformanceRecord, projectFlyers: readonly Flyer[]): ProductionTaskView[] {
   const flyer = normalizeFlyer(project.production?.flyer);
   const tasks: ProductionTaskView[] = [];
-  for (const [key, label] of [["flyer", "チラシ"], ["poster", "ポスター"]] as const) {
-    const item = flyer[key];
-    if (item?.enabled) {
-      tasks.push(
-        standardTask(project.id, "flyer", `${key}:submission`, `${label} 入稿`, {
-          status: item.submissionDate ? "complete" : "not-started",
-          dueDate: validDate(item.submissionPlannedDate),
-          assignee: text(flyer.specifications?.designer),
-          detailLabel: label,
-        }),
-        standardTask(project.id, "flyer", `${key}:delivery`, `${label} 納品`, {
-          status: item.deliveryDate ? "complete" : "not-started",
-          dueDate: validDate(item.deliveryPlannedDate),
-          detailLabel: label,
-        })
-      );
-    }
-  }
   for (const [key, label] of [
     ["informationFinalized", "公演情報確定"],
     ["sponsorInfoReady", "協賛・後援等掲載情報確認"],
     ["logoMaterialsReady", "ロゴ素材確認"],
     ["proofread", "校正"],
   ] as const) {
-    tasks.push(standardTask(project.id, "flyer", `information:${key}`, label, {
+    tasks.push({ ...standardTask(project.id, "flyer", `information:${key}`, label, {
       status: booleanStatus(flyer.information?.[key]),
       detailLabel: "掲載情報確認",
-    }));
+    }), groupType: "common" });
   }
-  tasks.push(standardTask(project.id, "flyer", "distribution", "配布開始日", {
+  tasks.push({ ...standardTask(project.id, "flyer", "distribution", "配布開始日", {
     dueDate: validDate(flyer.distribution?.distributionStartDate),
     note: text(flyer.distribution?.note),
-  }));
+  }), groupType: "common" });
+
+  const designer = text(flyer.specifications?.designer);
+  const legacyFlyer = buildLegacyFlyer(flyer.flyer);
+  tasks.push(...buildFlyerRecordTasks(project.id, legacyFlyer, designer));
+  for (const record of projectFlyers) {
+    if (record.id !== LEGACY_FLYER_ID) tasks.push(...buildFlyerRecordTasks(project.id, record, designer));
+  }
+
+  const poster = flyer.poster;
+  if (poster?.enabled) {
+    tasks.push(
+      { ...standardTask(project.id, "flyer", "poster:submission", "ポスター 入稿", {
+        status: poster.submissionDate ? "complete" : "not-started",
+        dueDate: validDate(poster.submissionPlannedDate),
+        assignee: designer,
+        detailLabel: "ポスター",
+      }), groupType: "poster", flyerTaskKind: "submission" },
+      { ...standardTask(project.id, "flyer", "poster:delivery", "ポスター 納品", {
+        status: poster.deliveryDate ? "complete" : "not-started",
+        dueDate: validDate(poster.deliveryPlannedDate),
+        detailLabel: "ポスター",
+      }), groupType: "poster", flyerTaskKind: "delivery" }
+    );
+  }
   return tasks;
 }
 
@@ -329,10 +377,14 @@ export function toCustomProductionTask(projectId: string, task: Task): Productio
   };
 }
 
-export function buildProductionTaskViews(project: ProjectPerformanceRecord, customTasks: readonly Task[]): ProductionTaskView[] {
+export function buildProductionTaskViews(
+  project: ProjectPerformanceRecord,
+  customTasks: readonly Task[],
+  projectFlyers: readonly Flyer[] = []
+): ProductionTaskView[] {
   return [
     ...buildVenueTasks(project),
-    ...buildFlyerTasks(project),
+    ...buildFlyerTasks(project, projectFlyers),
     ...buildWebTasks(project),
     ...buildTicketTasks(project),
     ...buildReceptionTasks(project),

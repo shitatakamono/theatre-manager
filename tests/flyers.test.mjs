@@ -70,14 +70,16 @@ describe("multiple flyers", () => {
     strictEqual(source.includes("renderPrintSection(\"poster\""), true);
   });
 
-  it("keeps new flyers out of existing production progress and standard task builders", async () => {
+  it("keeps production percentage unchanged while allowing task views to consume supplied flyers", async () => {
     const [progress, taskView] = await Promise.all([
       readFile(new URL("../lib/production-progress.ts", import.meta.url), "utf8"),
       readFile(new URL("../lib/production-task-view.ts", import.meta.url), "utf8"),
     ]);
     strictEqual(progress.includes("getProjectFlyers"), false);
     strictEqual(taskView.includes("getProjectFlyers"), false);
-    strictEqual(taskView.includes("flyer.flyer"), false);
+    strictEqual(taskView.includes("projectFlyers"), true);
+    strictEqual(taskView.includes("getFlyerRecordTaskId"), true);
+    strictEqual(taskView.includes("buildLegacyFlyer"), true);
     strictEqual(taskView.includes("const flyer = normalizeFlyer"), true);
   });
 });

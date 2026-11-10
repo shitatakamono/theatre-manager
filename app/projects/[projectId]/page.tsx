@@ -10,6 +10,8 @@ import { getProjectPeopleWithFallback, type ProjectPerson } from "@/lib/people";
 import { buildDashboardAttendanceSummary } from "@/lib/project-dashboard";
 import { hasEnteredPerformanceInformation } from "@/lib/project-navigation";
 import { getProjectRehearsals, timestampToTokyoInput, type Rehearsal } from "@/lib/rehearsals";
+import { getProjectFlyers } from "@/lib/flyer-store";
+import type { Flyer } from "@/lib/flyers";
 import type { ActivityLog } from "@/lib/activity";
 import { useAuth } from "@/app/AuthProvider";
 import styles from "./project-roadmap.module.css";
@@ -28,6 +30,7 @@ type DashboardData = {
   attendance: AttendanceRecord[];
   activity: ActivityLog[];
   tasks: Task[];
+  flyers: Flyer[];
 };
 
 type RoadmapRange = {
@@ -48,6 +51,37 @@ type RoadmapMilestone = {
 type RoadmapSection = RoadmapRange | RoadmapMilestone;
 
 type TimelineOffset = { months?: number; weeks?: number };
+
+type FlyerRoadmapTaskGroup = {
+  id: string;
+  label: string;
+  kind: "common" | "flyer" | "poster" | "other";
+  tasks: ProductionTaskView[];
+};
+
+function groupFlyerRoadmapTasks(tasks: readonly ProductionTaskView[]): FlyerRoadmapTaskGroup[] {
+  const common = tasks.filter((task) => task.groupType === "common");
+  const poster = tasks.filter((task) => task.groupType === "poster");
+  const other = tasks.filter((task) => !task.groupType);
+  const flyerGroups = new Map<string, FlyerRoadmapTaskGroup>();
+  for (const task of tasks) {
+    if (task.groupType !== "flyer" || !task.flyerRecordId) continue;
+    const group = flyerGroups.get(task.flyerRecordId) ?? {
+      id: `flyer:${task.flyerRecordId}`,
+      label: task.flyerName || "チラシ",
+      kind: "flyer" as const,
+      tasks: [],
+    };
+    group.tasks.push(task);
+    flyerGroups.set(task.flyerRecordId, group);
+  }
+  return [
+    ...(common.length ? [{ id: "common", label: "共通タスク", kind: "common" as const, tasks: common }] : []),
+    ...flyerGroups.values(),
+    ...(poster.length ? [{ id: "poster", label: "ポスター", kind: "poster" as const, tasks: poster }] : []),
+    ...(other.length ? [{ id: "other", label: "その他", kind: "other" as const, tasks: other }] : []),
+  ];
+}
 
 const timelinePoints: { label?: string; offset: TimelineOffset }[] = [
   { label: "6か月前", offset: { months: -6 } },
@@ -204,10 +238,11 @@ export default function ProjectPage({ params }: ProjectPageProps) {
       getProjectAttendanceRecords(projectId),
       getProjectActivityLogs(projectId),
       getTasks(projectId),
-    ]).then(([rehearsals, participants, attendance, activity, tasks]) => {
-      if (active) setDashboard({ upcomingRehearsals: rehearsals.upcoming, participants, attendance, activity, tasks });
+      getProjectFlyers(projectId).catch(() => []),
+    ]).then(([rehearsals, participants, attendance, activity, tasks, flyers]) => {
+      if (active) setDashboard({ upcomingRehearsals: rehearsals.upcoming, participants, attendance, activity, tasks, flyers });
     }).catch(() => {
-      if (active) setDashboard({ upcomingRehearsals: [], participants: [], attendance: [], activity: [], tasks: [] });
+      if (active) setDashboard({ upcomingRehearsals: [], participants: [], attendance: [], activity: [], tasks: [], flyers: [] });
     });
     return () => { active = false; };
   }, [projectId]);
@@ -285,7 +320,7 @@ export default function ProjectPage({ params }: ProjectPageProps) {
   const nextRehearsal = formatNextRehearsal(dashboard?.upcomingRehearsals[0]);
   const latestActivity = dashboard?.activity[0];
   const taskToday = getTokyoDateString();
-  const productionTasks = buildProductionTaskViews(project, dashboard?.tasks ?? []);
+  const productionTasks = buildProductionTaskViews(project, dashboard?.tasks ?? [], dashboard?.flyers ?? []);
   const sectionTasks = Object.fromEntries(roadmapSections.map((section) => [
     section.slug,
     sortTasksByDeadline(productionTasks.filter((task) => getTaskSection(task) === section.slug)),
@@ -314,8 +349,30 @@ export default function ProjectPage({ params }: ProjectPageProps) {
   }
 
   function handleTaskOpen(task: ProductionTaskView) {
-    if (task.source === "customTask") setSelectedTask(task);
+    if (task.source === "customTask" || task.flyerRecordId) setSelectedTask(task);
     else router.push(task.editTarget);
+  }
+
+  function renderTaskButtons(tasks: readonly ProductionTaskView[]) {
+    return tasks.map((task) => {
+      const warning = getTaskDeadlineWarning(task, taskToday);
+      const dueDate = getTaskDueDate(task);
+      const status = getTaskProgressStatus(task);
+      const duePosition = firstDate && dueDate ? getTimelinePosition(firstDate, parseDate(dueDate) ?? firstDate) : null;
+      return <button type="button" className={styles.taskRow} key={task.id} onClick={() => handleTaskOpen(task)}>
+        <span className={styles.taskLabel}><strong>{task.title || "名称未設定のタスク"}</strong><small>{dueDate || "期限未設定"}・{getTaskAssignee(task)}・{TASK_STATUS_LABELS[status]}</small>{warning !== "none" && <em data-warning={warning}>{TASK_WARNING_LABELS[warning]}</em>}</span>
+        <span className={styles.taskTimeline}>{duePosition !== null && <i style={{ "--task-position": `${duePosition}%` } as CSSProperties} />}{marks.map((mark) => <span className={styles.gridLine} key={`${task.id}-${mark.position}`} style={{ "--mark-position": `${mark.position}%` } as CSSProperties} />)}{todayPosition !== null && <span className={styles.todayLine} />}</span>
+      </button>;
+    });
+  }
+
+  function renderExpandedTasks(section: RoadmapSection, tasks: readonly ProductionTaskView[]) {
+    if (tasks.length === 0) return <div className={styles.taskRows}><p>このセクションのタスクはありません。</p></div>;
+    if (section.slug !== "flyer") return <div className={styles.taskRows}>{renderTaskButtons(tasks)}</div>;
+    return <div className={styles.flyerTaskGroups}>{groupFlyerRoadmapTasks(tasks).map((group) => <section className={styles.flyerTaskGroup} data-kind={group.kind} key={group.id}>
+      <h3><span>{group.kind === "flyer" ? "個別チラシ" : "区分"}</span>{group.label}</h3>
+      <div className={styles.taskRows}>{renderTaskButtons(group.tasks)}</div>
+    </section>)}</div>;
   }
 
   return (
@@ -433,16 +490,7 @@ export default function ProjectPage({ params }: ProjectPageProps) {
                       {todayPosition !== null && <span className={styles.todayLine} />}
                     </div>
                   </div>
-                  {expanded && <div className={styles.taskRows}>{tasks.length === 0 ? <p>このセクションのタスクはありません。</p> : tasks.map((task) => {
-                    const warning = getTaskDeadlineWarning(task, taskToday);
-                    const dueDate = getTaskDueDate(task);
-                    const status = getTaskProgressStatus(task);
-                    const duePosition = firstDate && dueDate ? getTimelinePosition(firstDate, parseDate(dueDate) ?? firstDate) : null;
-                    return <button type="button" className={styles.taskRow} key={task.id} onClick={() => handleTaskOpen(task)}>
-                      <span className={styles.taskLabel}><strong>{task.title || "名称未設定のタスク"}</strong><small>{dueDate || "期限未設定"}・{getTaskAssignee(task)}・{TASK_STATUS_LABELS[status]}</small>{warning !== "none" && <em data-warning={warning}>{TASK_WARNING_LABELS[warning]}</em>}</span>
-                      <span className={styles.taskTimeline}>{duePosition !== null && <i style={{ "--task-position": `${duePosition}%` } as CSSProperties} />}{marks.map((mark) => <span className={styles.gridLine} key={`${task.id}-${mark.position}`} style={{ "--mark-position": `${mark.position}%` } as CSSProperties} />)}{todayPosition !== null && <span className={styles.todayLine} />}</span>
-                    </button>;
-                  })}</div>}
+                  {expanded && renderExpandedTasks(section, tasks)}
                 </div>;
               })}
             </div>

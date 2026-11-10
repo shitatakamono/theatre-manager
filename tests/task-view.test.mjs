@@ -14,6 +14,7 @@ import {
 import {
   buildProductionTaskViews,
   canToggleProductionTask,
+  getFlyerRecordTaskId,
   toCustomProductionTask,
 } from "../lib/production-task-view.ts";
 import { STANDARD_ACCOUNTING_TASKS } from "../lib/production-management.ts";
@@ -40,6 +41,16 @@ const project = (production = {}) => ({
   id: "p1",
   data: { performances: [{ id: "show-1", date: "2026-11-15", startTime: "13:00" }] },
   production,
+});
+
+const flyer = (id, values = {}) => ({
+  id,
+  name: id,
+  enabled: true,
+  revision: 0,
+  createdByUid: "owner",
+  updatedByUid: "owner",
+  ...values,
 });
 
 describe("production task adapter", () => {
@@ -156,6 +167,81 @@ describe("production task adapter", () => {
     strictEqual(getTaskDeadlineWarning(page, "2026-10-27"), "none");
   });
 
+  it("keeps legacy flyer task IDs without duplicates and excludes a disabled legacy flyer", () => {
+    const enabled = buildProductionTaskViews(project({ flyer: {
+      flyer: { name: "既存チラシ", enabled: true, submissionDate: "2026-10-01" },
+    } }), []);
+    strictEqual(getFlyerRecordTaskId("legacy-production-flyer", "submission"), "standard:flyer:flyer:submission");
+    deepStrictEqual(enabled.filter((task) => task.flyerRecordId === "legacy-production-flyer").map((task) => task.id), [
+      "standard:flyer:flyer:submission",
+      "standard:flyer:flyer:delivery",
+    ]);
+    strictEqual(enabled.filter((task) => task.id === "standard:flyer:flyer:submission").length, 1);
+    strictEqual(enabled.find((task) => task.id === "standard:flyer:flyer:submission")?.title, "既存チラシ 入稿");
+    strictEqual(enabled.find((task) => task.id === "standard:flyer:flyer:submission")?.status, "complete");
+
+    const disabled = buildProductionTaskViews(project({ flyer: { flyer: { enabled: false } } }), []);
+    strictEqual(disabled.some((task) => task.flyerRecordId === "legacy-production-flyer"), false);
+  });
+
+  it("derives stable standard tasks from each enabled flyer and ignores disabled or deleted records", () => {
+    const records = [
+      flyer("recruit", { name: "公募用チラシ", submissionPlannedDate: "2026-10-10", submissionDate: "2026-10-09" }),
+      flyer("main", { name: "本番チラシ", deliveryPlannedDate: "2027-01-20", deliveryDate: "2027-01-19" }),
+      flyer("unused", { name: "使用しないチラシ", enabled: false, submissionPlannedDate: "2026-09-01" }),
+    ];
+    const tasks = buildProductionTaskViews(project({ flyer: { flyer: { enabled: false } } }), [], records);
+    const recordTasks = tasks.filter((task) => task.flyerRecordId && task.flyerRecordId !== "legacy-production-flyer");
+    strictEqual(recordTasks.length, 4);
+    strictEqual(new Set(recordTasks.map((task) => task.id)).size, 4);
+    strictEqual(recordTasks.every((task) => task.source === "standard" && task.section === "flyer"), true);
+    strictEqual(recordTasks.every((task) => task.editTarget === "/projects/p1/production/flyer"), true);
+    strictEqual(tasks.some((task) => task.id.includes("unused")), false);
+    deepStrictEqual(recordTasks.map(({ id }) => id), [
+      "standard:flyer:record:recruit:submission",
+      "standard:flyer:record:recruit:delivery",
+      "standard:flyer:record:main:submission",
+      "standard:flyer:record:main:delivery",
+    ]);
+    const recruitSubmission = tasks.find((task) => task.id === "standard:flyer:record:recruit:submission");
+    strictEqual(recruitSubmission?.title, "公募用チラシ 入稿");
+    strictEqual(recruitSubmission?.status, "complete");
+    strictEqual(recruitSubmission?.dueDate, "2026-10-10");
+    strictEqual(tasks.find((task) => task.id === "standard:flyer:record:recruit:delivery")?.status, "not-started");
+    strictEqual(tasks.find((task) => task.id === "standard:flyer:record:main:delivery")?.status, "complete");
+
+    const afterDelete = buildProductionTaskViews(project({ flyer: { flyer: { enabled: false } } }), [], records.slice(1));
+    strictEqual(afterDelete.some((task) => task.id.includes("recruit")), false);
+  });
+
+  it("keeps common, poster, and custom work alongside legacy and new flyer tasks", () => {
+    const tasks = buildProductionTaskViews(project({ flyer: {
+      flyer: { enabled: true },
+      poster: { enabled: true, submissionDate: "2026-10-02" },
+      information: { informationFinalized: true },
+    } }), [{ id: "extra", title: "配布先確認", stage: "", category_parent: "制作", category_child: "チラシ", done: false }], [
+      flyer("main", { name: "本番チラシ" }),
+      flyer("second", { name: "別チラシ" }),
+    ]);
+    strictEqual(tasks.filter((task) => task.groupType === "flyer").length, 6);
+    strictEqual(tasks.filter((task) => task.groupType === "common").length, 5);
+    strictEqual(tasks.filter((task) => task.groupType === "poster").length, 2);
+    strictEqual(tasks.find((task) => task.id === "standard:flyer:poster:submission")?.status, "complete");
+    strictEqual(tasks.find((task) => task.id === "standard:flyer:information:informationFinalized")?.status, "complete");
+    strictEqual(tasks.find((task) => task.id === "custom:extra")?.source, "customTask");
+    strictEqual(new Set(tasks.map((task) => task.id)).size, tasks.length);
+  });
+
+  it("reuses deadline sorting and overdue warnings for generated flyer tasks", () => {
+    const tasks = buildProductionTaskViews(project({ flyer: { flyer: { enabled: false } } }), [], [
+      flyer("no-date", { name: "予定日なし" }),
+      flyer("late", { name: "期限超過", submissionPlannedDate: "2026-10-01" }),
+    ]).filter((task) => task.groupType === "flyer");
+    strictEqual(sortTasksByDeadline(tasks)[0]?.id, "standard:flyer:record:late:submission");
+    strictEqual(getTaskDeadlineWarning(tasks.find((task) => task.id === "standard:flyer:record:late:submission"), "2026-10-02"), "overdue");
+    strictEqual(tasks.filter((task) => task.flyerRecordId === "no-date").length, 2);
+  });
+
   it("keeps standard work read-only here and permits custom completion only to editors", () => {
     const standard = viewTask("standard");
     const custom = toCustomProductionTask("p1", { id: "c1", title: "追加", stage: "", category_parent: "会場", category_child: "", done: false });
@@ -255,5 +341,21 @@ describe("additional task UI", () => {
     strictEqual(drawer.includes("task.source !== \"customTask\""), true);
     strictEqual(drawer.includes("task.relatedViewHref"), true);
     strictEqual(drawer.includes("task.relatedViewLabel"), true);
+  });
+
+  it("loads the same flyer records on the project roadmap and task list and groups roadmap rows", async () => {
+    const [roadmap, taskList, styles] = await Promise.all([
+      readFile(new URL("../app/projects/[projectId]/page.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../app/projects/[projectId]/tasks/page.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../app/projects/[projectId]/project-roadmap.module.css", import.meta.url), "utf8"),
+    ]);
+    for (const source of [roadmap, taskList]) {
+      strictEqual(source.includes("getProjectFlyers(projectId).catch(() => [])"), true);
+      strictEqual(source.includes("buildProductionTaskViews(project,"), true);
+      strictEqual(source.includes("task.flyerRecordId"), true);
+    }
+    strictEqual(roadmap.includes("groupFlyerRoadmapTasks"), true);
+    strictEqual(roadmap.includes("個別チラシ"), true);
+    strictEqual(styles.includes(".flyerTaskGroups"), true);
   });
 });
