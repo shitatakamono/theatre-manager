@@ -1,5 +1,7 @@
 import type { PrintItemManagement } from "./production-management.ts";
 
+export const LEGACY_FLYER_ID = "legacy-production-flyer" as const;
+
 export type FlyerSides = "single" | "double" | "";
 
 export type FlyerInput = {
@@ -27,7 +29,7 @@ export type Flyer = FlyerInput & {
 };
 
 export type LegacyFlyer = FlyerInput & {
-  id: "legacy-production-flyer";
+  id: typeof LEGACY_FLYER_ID;
   legacy: true;
 };
 
@@ -118,7 +120,7 @@ export function flyerToInput(flyer: Flyer): FlyerInput {
 
 export function buildLegacyFlyer(flyer?: PrintItemManagement): LegacyFlyer {
   return {
-    id: "legacy-production-flyer",
+    id: LEGACY_FLYER_ID,
     legacy: true,
     name: flyer?.name?.trim() || "チラシ",
     enabled: flyer?.enabled ?? false,

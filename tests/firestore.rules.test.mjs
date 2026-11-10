@@ -100,6 +100,18 @@ function flyerData(uid, overrides = {}) {
   };
 }
 
+function productionAssetRef(db, id = "asset-a", targetProjectId = projectId) {
+  return doc(db, "projects", targetProjectId, "assets", id);
+}
+
+function productionAssetData(uid, overrides = {}) {
+  return {
+    name: "メインビジュアル", type: "flyer", url: "", note: "", revision: 0,
+    createdAt: serverTimestamp(), updatedAt: serverTimestamp(), createdByUid: uid, updatedByUid: uid,
+    ...overrides,
+  };
+}
+
 function rehearsalData(uid, overrides = {}) {
   return {
     startAt: new Date("2026-11-15T04:00:00Z"),
@@ -714,6 +726,37 @@ describe("multiple flyers", () => {
     await assertSucceeds(setDoc(ref, flyerData(ownerUid)));
     await assertFails(updateDoc(ref, { name: "飛び越し", revision: 2, updatedAt: serverTimestamp(), updatedByUid: ownerUid }));
     await assertFails(updateDoc(ref, { createdByUid: editorUid, revision: 1, updatedAt: serverTimestamp(), updatedByUid: ownerUid }));
+  });
+});
+
+describe("production asset flyer relations", () => {
+  it("keeps flyerIds optional and accepts lists up to 50 entries", async () => {
+    const db = firestoreFor(ownerUid);
+    await assertSucceeds(setDoc(productionAssetRef(db, "without-relations"), productionAssetData(ownerUid)));
+    await assertSucceeds(setDoc(productionAssetRef(db, "with-relations"), productionAssetData(ownerUid, {
+      flyerIds: ["legacy-production-flyer", "flyer-a"],
+    })));
+    await assertSucceeds(setDoc(productionAssetRef(db, "max-relations"), productionAssetData(ownerUid, {
+      flyerIds: Array.from({ length: 50 }, (_, index) => `flyer-${index}`),
+    })));
+    await assertFails(setDoc(productionAssetRef(db, "too-many-relations"), productionAssetData(ownerUid, {
+      flyerIds: Array.from({ length: 51 }, (_, index) => `flyer-${index}`),
+    })));
+    await assertFails(setDoc(productionAssetRef(db, "not-a-list"), productionAssetData(ownerUid, {
+      flyerIds: "flyer-a",
+    })));
+  });
+
+  it("allows owner and editor writes, viewer reads, and rejects viewer writes", async () => {
+    const ownerDb = firestoreFor(ownerUid);
+    const editorDb = firestoreFor(editorUid);
+    const viewerDb = firestoreFor(viewerUid);
+    await assertSucceeds(setDoc(productionAssetRef(ownerDb, "owner-asset"), productionAssetData(ownerUid, { flyerIds: ["flyer-a"] })));
+    await assertSucceeds(setDoc(productionAssetRef(editorDb, "editor-asset"), productionAssetData(editorUid, { flyerIds: ["flyer-a"] })));
+    await assertSucceeds(getDoc(productionAssetRef(viewerDb, "owner-asset")));
+    await assertFails(updateDoc(productionAssetRef(viewerDb, "owner-asset"), {
+      flyerIds: [], revision: 1, updatedAt: serverTimestamp(), updatedByUid: viewerUid,
+    }));
   });
 });
 

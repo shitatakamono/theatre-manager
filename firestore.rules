@@ -467,7 +467,7 @@ service cloud.firestore {
 
     function validProductionAssetData() {
       return request.resource.data.keys().hasOnly([
-          'name', 'type', 'url', 'note', 'revision', 'createdAt', 'updatedAt',
+          'name', 'type', 'url', 'note', 'flyerIds', 'revision', 'createdAt', 'updatedAt',
           'createdByUid', 'updatedByUid'
         ])
         && request.resource.data.keys().hasAll([
@@ -483,6 +483,9 @@ service cloud.firestore {
         && (request.resource.data.url == '' || request.resource.data.url.matches('^https?://.+$'))
         && request.resource.data.note is string
         && request.resource.data.note.size() <= 2000
+        && (!request.resource.data.keys().hasAny(['flyerIds'])
+          || (request.resource.data.flyerIds is list
+            && request.resource.data.flyerIds.size() <= 50))
         && request.resource.data.revision is int
         && request.resource.data.revision >= 0
         && request.resource.data.createdByUid is string

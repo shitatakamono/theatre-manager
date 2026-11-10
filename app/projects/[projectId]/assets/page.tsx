@@ -2,13 +2,17 @@
 
 import { use, useEffect, useState, type FormEvent } from "react";
 import { db } from "@/lib/firebase";
+import { getProjectPerformanceData } from "@/lib/firestore";
+import { getProjectFlyers } from "@/lib/flyer-store";
+import { buildLegacyFlyer, type Flyer, type LegacyFlyer } from "@/lib/flyers";
 import {
   createProjectProductionAsset, deleteProjectProductionAsset,
   getProjectProductionAssets, updateProjectProductionAsset,
 } from "@/lib/production-asset-store";
 import {
   EMPTY_PRODUCTION_ASSET_INPUT, PRODUCTION_ASSET_TYPE_OPTIONS,
-  getProductionAssetTypeLabel, productionAssetToInput,
+  formatProductionAssetFlyerNames, getProductionAssetTypeLabel, productionAssetToInput,
+  resolveProductionAssetFlyerNames,
   type ProductionAsset, type ProductionAssetInput, type ProductionAssetType,
 } from "@/lib/production-assets";
 import { isConflictError } from "@/lib/project-revisions";
@@ -16,6 +20,7 @@ import { useProjectAccess } from "../ProjectAccess";
 import styles from "./production-assets.module.css";
 
 type Props = { params: Promise<{ projectId: string }> };
+type DisplayFlyer = Flyer | LegacyFlyer;
 
 function formatUpdatedAt(value: unknown): string {
   if (!value || typeof value !== "object" || !("toDate" in value) || typeof value.toDate !== "function") return "―";
@@ -26,6 +31,7 @@ export default function ProductionAssetsPage({ params }: Props) {
   const { projectId } = use(params);
   const { canEdit, actor } = useProjectAccess();
   const [items, setItems] = useState<ProductionAsset[]>([]);
+  const [flyers, setFlyers] = useState<DisplayFlyer[]>([]);
   const [editing, setEditing] = useState<ProductionAsset | null>(null);
   const [draft, setDraft] = useState<ProductionAssetInput>(EMPTY_PRODUCTION_ASSET_INPUT);
   const [open, setOpen] = useState(false);
@@ -35,8 +41,16 @@ export default function ProductionAssetsPage({ params }: Props) {
 
   useEffect(() => {
     let active = true;
-    void getProjectProductionAssets(projectId)
-      .then((records) => { if (active) setItems(records); })
+    void Promise.all([
+      getProjectProductionAssets(projectId),
+      getProjectFlyers(projectId),
+      getProjectPerformanceData(projectId),
+    ])
+      .then(([records, flyerRecords, project]) => {
+        if (!active) return;
+        setItems(records);
+        setFlyers(project ? [buildLegacyFlyer(project.production?.flyer?.flyer), ...flyerRecords] : flyerRecords);
+      })
       .catch(() => { if (active) setError("制作素材を取得できませんでした。"); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -52,6 +66,21 @@ export default function ProductionAssetsPage({ params }: Props) {
     setEditing(item); setDraft(productionAssetToInput(item)); setError(""); setOpen(true);
   }
   function close() { if (!saving) { setOpen(false); setEditing(null); setError(""); } }
+
+  function setFlyerSelected(flyerId: string, selected: boolean) {
+    setDraft((current) => {
+      const availableIds = new Set(flyers.map((flyer) => flyer.id));
+      const next = new Set((current.flyerIds ?? []).filter((id) => availableIds.has(id)));
+      if (selected) next.add(flyerId);
+      else next.delete(flyerId);
+      const flyerIds = [...next].sort();
+      return { ...current, flyerIds: flyerIds.length > 0 ? flyerIds : undefined };
+    });
+  }
+
+  function relatedFlyerLabel(item: ProductionAsset): string {
+    return formatProductionAssetFlyerNames(resolveProductionAssetFlyerNames(item.flyerIds, flyers));
+  }
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -87,12 +116,12 @@ export default function ProductionAssetsPage({ params }: Props) {
     </header>
     {error && !open && <p className={styles.error} role="alert">{error}</p>}
     {loading ? <p className={styles.empty}>読み込み中…</p> : items.length === 0 ? <p className={styles.empty}>登録されている制作素材はありません。</p> : <>
-      <div className={styles.tableWrap}><table><thead><tr><th>素材名</th><th>種別</th><th>保存場所</th><th>更新日時</th>{canEdit && <th>操作</th>}</tr></thead><tbody>{items.map((item) => <tr key={item.id}>
+      <div className={styles.tableWrap}><table><thead><tr><th>素材名</th><th>種別</th><th>関連チラシ</th><th>保存場所</th><th>更新日時</th>{canEdit && <th>操作</th>}</tr></thead><tbody>{items.map((item) => <tr key={item.id}>
         <td><strong>{item.name}</strong>{item.note && <span>{item.note}</span>}</td><td>{getProductionAssetTypeLabel(item.type)}</td>
-        <td>{item.url ? <a href={item.url} target="_blank" rel="noopener noreferrer">開く ↗</a> : <em>未登録</em>}</td><td>{formatUpdatedAt(item.updatedAt)}</td>
+        <td>{relatedFlyerLabel(item) || <em>なし</em>}</td><td>{item.url ? <a href={item.url} target="_blank" rel="noopener noreferrer">開く ↗</a> : <em>未登録</em>}</td><td>{formatUpdatedAt(item.updatedAt)}</td>
         {canEdit && <td><button type="button" onClick={() => openEdit(item)}>編集</button></td>}
       </tr>)}</tbody></table></div>
-      <div className={styles.cards}>{items.map((item) => <article key={item.id}><header><div><small>{getProductionAssetTypeLabel(item.type)}</small><h2>{item.name}</h2></div>{item.url ? <a href={item.url} target="_blank" rel="noopener noreferrer">開く ↗</a> : <em>未登録</em>}</header>{item.note && <p>{item.note}</p>}<footer><span>更新：{formatUpdatedAt(item.updatedAt)}</span>{canEdit && <button type="button" onClick={() => openEdit(item)}>編集</button>}</footer></article>)}</div>
+      <div className={styles.cards}>{items.map((item) => <article key={item.id}><header><div><small>{getProductionAssetTypeLabel(item.type)}</small><h2>{item.name}</h2></div>{item.url ? <a href={item.url} target="_blank" rel="noopener noreferrer">開く ↗</a> : <em>未登録</em>}</header>{relatedFlyerLabel(item) && <p className={styles.relatedFlyers}>関連：{relatedFlyerLabel(item)}</p>}{item.note && <p>{item.note}</p>}<footer><span>更新：{formatUpdatedAt(item.updatedAt)}</span>{canEdit && <button type="button" onClick={() => openEdit(item)}>編集</button>}</footer></article>)}</div>
     </>}
     {open && canEdit && <div className={styles.overlay} role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) close(); }}>
       <form className={styles.editor} onSubmit={save} role="dialog" aria-modal="true" aria-labelledby="asset-editor-title">
@@ -101,6 +130,7 @@ export default function ProductionAssetsPage({ params }: Props) {
           <label><span>素材名 *</span><input value={draft.name} maxLength={200} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} /></label>
           <label><span>種別</span><select value={draft.type} onChange={(event) => setDraft((current) => ({ ...current, type: event.target.value as ProductionAssetType }))}>{PRODUCTION_ASSET_TYPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
           <label className={styles.wide}><span>保存場所URL（任意）</span><input type="url" placeholder="https://..." value={draft.url} onChange={(event) => setDraft((current) => ({ ...current, url: event.target.value }))} /></label>
+          <fieldset className={`${styles.wide} ${styles.flyerChoices}`}><legend>関連チラシ</legend>{flyers.length === 0 ? <p>関連付けできるチラシはありません。</p> : flyers.map((flyer) => <label key={flyer.id}><input type="checkbox" checked={(draft.flyerIds ?? []).includes(flyer.id)} onChange={(event) => setFlyerSelected(flyer.id, event.target.checked)} /><span>{flyer.name}{!flyer.enabled ? "（使用しない）" : ""}</span></label>)}</fieldset>
           <label className={styles.wide}><span>メモ</span><textarea rows={5} maxLength={2000} value={draft.note} onChange={(event) => setDraft((current) => ({ ...current, note: event.target.value }))} /></label>
         </div>
         <footer><div>{editing && <button className={styles.deleteButton} type="button" disabled={saving} onClick={() => void remove()}>素材情報を削除</button>}</div><div>{error && <p role="alert">{error}</p>}<button type="button" disabled={saving} onClick={close}>キャンセル</button><button className={styles.saveButton} type="submit" disabled={saving}>{saving ? "保存中…" : "保存"}</button></div></footer>

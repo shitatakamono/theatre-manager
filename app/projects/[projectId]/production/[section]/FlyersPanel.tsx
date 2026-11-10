@@ -8,6 +8,7 @@ import {
   createProjectFlyer,
   deleteProjectFlyer,
   getProjectFlyers,
+  isFlyerReferencedByProductionAssetError,
   updateProjectFlyer,
 } from "@/lib/flyer-store";
 import {
@@ -158,9 +159,11 @@ export function FlyersPanel({
       await reload();
       setMessage("チラシを削除しました。");
     } catch (caught) {
-      setError(isConflictError(caught)
-        ? "別の画面で更新されました。最新情報を確認してください。"
-        : "チラシを削除できませんでした。");
+      setError(isFlyerReferencedByProductionAssetError(caught)
+        ? caught.message
+        : isConflictError(caught)
+          ? "別の画面で更新されました。最新情報を確認してください。"
+          : "チラシを削除できませんでした。");
     } finally {
       setSaving(false);
     }

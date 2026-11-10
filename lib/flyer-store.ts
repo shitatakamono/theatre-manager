@@ -1,5 +1,5 @@
 import {
-  collection, deleteField, doc, getDocs, runTransaction, serverTimestamp,
+  collection, deleteField, doc, getDocs, limit, query, runTransaction, serverTimestamp, where,
   type Firestore,
 } from "firebase/firestore";
 import { getActivityActorName, type ActivityActor } from "./activity.ts";
@@ -16,6 +16,19 @@ import {
 import { ConflictError, normalizeRevision } from "./project-revisions.ts";
 
 type WriteContext = { actor: ActivityActor; expectedRevision: number };
+
+export class FlyerReferencedByProductionAssetError extends Error {
+  readonly code = "flyer_referenced_by_asset";
+
+  constructor() {
+    super("このチラシは制作素材から参照されています。関連する制作素材の設定を解除してから削除してください。");
+    this.name = "FlyerReferencedByProductionAssetError";
+  }
+}
+
+export function isFlyerReferencedByProductionAssetError(value: unknown): value is FlyerReferencedByProductionAssetError {
+  return value instanceof FlyerReferencedByProductionAssetError;
+}
 
 async function resolveFirestore(firestore?: Firestore): Promise<Firestore> {
   if (firestore) return firestore;
@@ -194,6 +207,12 @@ export async function deleteProjectFlyer(
   const projectRef = doc(firestore, "projects", projectId);
   const flyerRef = doc(projectRef, "flyers", flyerId);
   const logRef = doc(collection(projectRef, "activityLogs"));
+  const references = await getDocs(query(
+    collection(projectRef, "assets"),
+    where("flyerIds", "array-contains", flyerId),
+    limit(1),
+  ));
+  if (!references.empty) throw new FlyerReferencedByProductionAssetError();
   await runTransaction(firestore, async (transaction) => {
     const snapshot = await transaction.get(flyerRef);
     if (!snapshot.exists()) throw new Error("チラシが見つかりません");
