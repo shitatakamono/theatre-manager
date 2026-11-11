@@ -1757,6 +1757,16 @@ describe("server-only LINE integration state", () => {
   });
 });
 
+describe("server-only LINE notification deliveries", () => {
+  it("denies anonymous and authenticated client reads and writes", async () => {
+    for (const db of [firestoreFor(), firestoreFor(ownerUid)]) {
+      const ref = doc(db, "lineNotificationDeliveries", "opaque-delivery-id");
+      await assertFails(getDoc(ref));
+      await assertFails(setDoc(ref, { status: "pending" }));
+    }
+  });
+});
+
 describe("server-only project invite links", () => {
   it("denies public and authenticated client reads and writes", async () => {
     for (const db of [firestoreFor(), firestoreFor(ownerUid)]) {

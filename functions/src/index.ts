@@ -35,6 +35,10 @@ import {
 import {
   runGoogleCalendarProjectSyncJob,
 } from "../../lib/server/google-calendar-sync-worker";
+import {
+  retryDueLineRehearsalReminders,
+  runTomorrowLineRehearsalReminders,
+} from "../../lib/server/line-rehearsal-reminder";
 
 if (getApps().length === 0) initializeApp();
 
@@ -52,6 +56,7 @@ const googleCalendarWorkerSecrets = [
   defineSecret("GOOGLE_CALENDAR_CLIENT_SECRET"),
   defineSecret("GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY"),
 ];
+const lineChannelAccessToken = defineSecret("LINE_CHANNEL_ACCESS_TOKEN");
 
 function timestampMillis(value: unknown): number | null {
   return value instanceof Timestamp ? value.toMillis() : null;
@@ -261,5 +266,48 @@ export const retryGoogleCalendarSyncJobs = onSchedule(
         errorCodes: result.errorCodes,
       });
     }
+  }
+);
+
+export const sendTomorrowRehearsalLineReminders = onSchedule(
+  {
+    schedule: "0 12 * * *",
+    timeZone: "Asia/Tokyo",
+    timeoutSeconds: 540,
+    memory: "256MiB",
+    secrets: [lineChannelAccessToken],
+  },
+  async () => {
+    const result = await runTomorrowLineRehearsalReminders();
+    logger.info("line_rehearsal_reminder_completed", {
+      projectCount: result.targetProjectCount,
+      rehearsalCount: result.rehearsalCount,
+      participantCount: result.participantCount,
+      linkedCount: result.linkedCount,
+      unlinkedCount: result.unlinkedCount,
+      recipientCount: result.recipientCount,
+      sentCount: result.sentCount,
+      skippedCount: result.skippedCount,
+      failedCount: result.failedCount,
+    });
+  }
+);
+
+export const retryRehearsalLineReminders = onSchedule(
+  {
+    schedule: "every 10 minutes",
+    timeZone: "Asia/Tokyo",
+    timeoutSeconds: 540,
+    memory: "256MiB",
+    secrets: [lineChannelAccessToken],
+  },
+  async () => {
+    const results = await retryDueLineRehearsalReminders();
+    logger.info("line_rehearsal_reminder_retry_completed", {
+      batchCount: results.length,
+      sentCount: results.reduce((sum, result) => sum + result.sentCount, 0),
+      skippedCount: results.reduce((sum, result) => sum + result.skippedCount, 0),
+      failedCount: results.reduce((sum, result) => sum + result.failedCount, 0),
+    });
   }
 );

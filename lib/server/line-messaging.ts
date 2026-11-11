@@ -30,6 +30,7 @@ async function lineRequest(input: {
   endpoint: string;
   accessToken: string | undefined;
   body?: unknown;
+  retryKey?: string;
   fetchImpl?: typeof fetch;
 }): Promise<Response> {
   if (!input.accessToken) {
@@ -43,6 +44,7 @@ async function lineRequest(input: {
       headers: {
         Authorization: `Bearer ${input.accessToken}`,
         ...(input.body === undefined ? {} : { "Content-Type": "application/json" }),
+        ...(input.retryKey ? { "X-Line-Retry-Key": input.retryKey } : {}),
       },
       ...(input.body === undefined ? {} : { body: JSON.stringify(input.body) }),
       signal: AbortSignal.timeout(10_000),
@@ -52,6 +54,7 @@ async function lineRequest(input: {
   }
 
   if (response.ok) return response;
+  if (response.status === 409 && input.retryKey) return response;
   if (response.status === 401 || response.status === 403) {
     throw new LineMessagingError("line_authentication_failed", 502, response.status);
   }
@@ -68,11 +71,13 @@ export async function sendLinePushTextMessage(input: {
   lineUserId: string;
   text: string;
   accessToken: string | undefined;
+  retryKey?: string;
   fetchImpl?: typeof fetch;
 }): Promise<void> {
   await lineRequest({
     endpoint: LINE_PUSH_MESSAGE_ENDPOINT,
     accessToken: input.accessToken,
+    retryKey: input.retryKey,
     fetchImpl: input.fetchImpl,
     body: {
       to: input.lineUserId,

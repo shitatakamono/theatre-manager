@@ -27,6 +27,7 @@ describe("LINE push message helper", () => {
       lineUserId,
       text: messageText,
       accessToken: "access-token-for-test",
+      retryKey: "123e4567-e89b-12d3-a456-426614174000",
       fetchImpl: async (url, init) => {
         requests.push({ url, init });
         return new Response(null, { status: 200 });
@@ -34,9 +35,20 @@ describe("LINE push message helper", () => {
     });
     strictEqual(requests[0].url, LINE_PUSH_MESSAGE_ENDPOINT);
     strictEqual(requests[0].init.headers.Authorization, "Bearer access-token-for-test");
+    strictEqual(requests[0].init.headers["X-Line-Retry-Key"], "123e4567-e89b-12d3-a456-426614174000");
     deepStrictEqual(JSON.parse(requests[0].init.body), {
       to: lineUserId,
       messages: [{ type: "text", text: messageText }],
+    });
+  });
+
+  it("treats a retry-key conflict as an already accepted send", async () => {
+    await sendLinePushTextMessage({
+      lineUserId,
+      text: messageText,
+      accessToken: "access-token-for-test",
+      retryKey: "123e4567-e89b-12d3-a456-426614174000",
+      fetchImpl: async () => new Response(null, { status: 409 }),
     });
   });
 
