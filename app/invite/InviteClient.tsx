@@ -90,7 +90,7 @@ export function InviteClient() {
 
   async function startLineLogin() {
     if (token) storeProjectInviteForAuthentication(token);
-    await loginWithLine(token);
+    await loginWithLine(token, true);
   }
 
   if (loading) return <main className={styles.page}><section className={styles.card}><p role="status">招待情報を確認しています…</p></section></main>;

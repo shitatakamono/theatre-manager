@@ -24,7 +24,7 @@ type AuthContextValue = {
   loading: boolean;
   profile: UserProfile | null;
   login: () => Promise<LoginResult>;
-  loginWithLine: (inviteToken?: string) => Promise<LoginResult>;
+  loginWithLine: (inviteToken?: string, requireInvite?: boolean) => Promise<LoginResult>;
   logout: () => Promise<void>;
   membershipNotice: string;
   loginError: string;
@@ -104,17 +104,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  async function loginWithLine(inviteToken?: string): Promise<LoginResult> {
+  async function loginWithLine(inviteToken?: string, requireInvite = false): Promise<LoginResult> {
     setError("");
     try {
       const response = await fetch("/api/line/auth/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(inviteToken ? { inviteToken } : {}),
+        body: JSON.stringify({
+          startMode: requireInvite ? "invite" : "normal",
+          ...(inviteToken ? { inviteToken } : {}),
+        }),
       });
-      const body = await response.json().catch(() => ({})) as { redirectUrl?: unknown };
+      const body = await response.json().catch(() => ({})) as { redirectUrl?: unknown; error?: unknown };
       if (!response.ok || typeof body.redirectUrl !== "string") {
-        throw new Error("line_auth_start_failed");
+        throw new Error(typeof body.error === "string" ? body.error : "line_auth_start_failed");
       }
       const redirect = new URL(body.redirectUrl);
       if (redirect.origin !== "https://access.line.me") {
@@ -122,8 +125,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       window.location.assign(redirect.toString());
       return "redirect_started";
-    } catch {
-      setError("LINEログインを開始できませんでした");
+    } catch (caught) {
+      const message = caught instanceof Error && caught.message.startsWith("招待情報を確認できませんでした")
+        ? caught.message
+        : "LINEログインを開始できませんでした";
+      setError(message);
       return "failed";
     }
   }

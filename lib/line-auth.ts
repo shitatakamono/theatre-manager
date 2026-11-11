@@ -32,6 +32,10 @@ export function generateLineAuthState(): string {
   return generateOpaqueValue();
 }
 
+export function generateLineAuthFlowId(): string {
+  return randomBytes(12).toString("base64url");
+}
+
 export function generateLineAuthTicket(): string {
   return generateOpaqueValue();
 }

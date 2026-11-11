@@ -15,6 +15,10 @@ describe("LINE authentication completion page", () => {
     assert.match(source, /takeProjectInviteReturnPath/);
     assert.match(source, /location\.replace\(returnPath\.current \?\? "\/projects"\)/);
     assert.match(source, /このLINEアカウントはまだSeisakuBoardに連携されていません/);
+    assert.match(source, /この招待の有効期限が切れています/);
+    assert.match(source, /この招待は無効になっています/);
+    assert.match(source, /この招待はすでに使用されています/);
+    assert.match(source, /招待情報を確認できませんでした/);
     assert.doesNotMatch(source, /localStorage|console\./);
     assert.match(source, /sessionStorage\.removeItem\(PROJECT_INVITE_SESSION_KEY\)/);
   });

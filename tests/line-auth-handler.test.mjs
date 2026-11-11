@@ -14,7 +14,7 @@ const lineUserId = `U${"a".repeat(32)}`;
 
 function callbackDependencies(overrides = {}) {
   return {
-    readState: async () => ({ status: "pending", nonce: "nonce-a", codeVerifier: verifier }),
+    readState: async () => ({ status: "pending", nonce: "nonce-a", codeVerifier: verifier, inviteId: null, flowId: "flow-a" }),
     failState: async () => undefined,
     exchangeCode: async () => ({ accessToken: "access-a", idToken: "id-a" }),
     verifyIdToken: async () => ({ lineUserId }),
@@ -26,6 +26,7 @@ function callbackDependencies(overrides = {}) {
       redirectUri: "https://app.example/api/line/auth/callback",
     }),
     logError: () => undefined,
+    logDiagnostic: () => undefined,
     ...overrides,
   };
 }
@@ -33,8 +34,9 @@ function callbackDependencies(overrides = {}) {
 describe("LINE authentication start", () => {
   it("creates an unauthenticated OIDC/PKCE request using the separate callback", async () => {
     const handler = createLineAuthStartHandler({
-      createState: async () => ({ state, nonce: "nonce-a", codeVerifier: verifier }),
+      createState: async (_token, flowId) => ({ state, nonce: "nonce-a", codeVerifier: verifier, flowId }),
       getConfig: () => ({ channelId: "channel-a", redirectUri: "https://app.example/api/line/auth/callback" }),
+      logDiagnostic: () => undefined,
     });
     const response = await handler();
     const body = await response.json();
@@ -44,6 +46,67 @@ describe("LINE authentication start", () => {
     strictEqual(redirect.searchParams.get("nonce"), "nonce-a");
     strictEqual(redirect.searchParams.get("code_challenge_method"), "S256");
     strictEqual(redirect.searchParams.get("redirect_uri"), "https://app.example/api/line/auth/callback");
+  });
+
+  it("binds an explicit invite token before returning the LINE authorization URL", async () => {
+    const inviteToken = "i".repeat(43);
+    let received;
+    const diagnostics = [];
+    const handler = createLineAuthStartHandler({
+      createState: async (token, flowId) => {
+        received = { token, flowId };
+        return {
+          state,
+          nonce: "nonce-a",
+          codeVerifier: verifier,
+          flowId,
+          inviteValidated: true,
+          inviteBoundToState: true,
+        };
+      },
+      getConfig: () => ({ channelId: "channel-a", redirectUri: "https://app.example/api/line/auth/callback" }),
+      logDiagnostic: (entry) => diagnostics.push(entry),
+    });
+    const response = await handler(new Request("https://app.example/api/line/auth/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ startMode: "invite", inviteToken }),
+    }));
+    strictEqual(response.status, 200);
+    strictEqual(received.token, inviteToken);
+    strictEqual(typeof received.flowId, "string");
+    strictEqual(diagnostics.at(-1).inviteBoundToState, true);
+    strictEqual(JSON.stringify(diagnostics).includes(inviteToken), false);
+  });
+
+  it("does not redirect when an invite start is missing or not bound to state", async () => {
+    for (const body of [
+      { startMode: "invite" },
+      { startMode: "invite", inviteToken: "i".repeat(43) },
+    ]) {
+      const handler = createLineAuthStartHandler({
+        createState: async (_token, flowId) => ({
+          state,
+          nonce: "nonce-a",
+          codeVerifier: verifier,
+          flowId,
+          inviteValidated: true,
+          inviteBoundToState: false,
+        }),
+        getConfig: () => ({ channelId: "channel-a", redirectUri: "https://app.example/api/line/auth/callback" }),
+        logError: () => undefined,
+        logDiagnostic: () => undefined,
+      });
+      const response = await handler(new Request("https://app.example/api/line/auth/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }));
+      strictEqual(response.status, 500);
+      const responseBody = await response.json();
+      strictEqual("redirectUrl" in responseBody, false);
+      strictEqual(responseBody.error.includes("招待情報を確認できませんでした"), true);
+    }
   });
 });
 
@@ -84,6 +147,34 @@ describe("LINE authentication callback", () => {
     strictEqual(location.searchParams.get("result"), "signup");
     strictEqual(location.searchParams.has("signup"), false);
     strictEqual(new URLSearchParams(location.hash.slice(1)).get("signup"), signupToken);
+  });
+
+  it("keeps invite failures separate from the normal unlinked result", async () => {
+    for (const [outcome, result] of [
+      ["invite_expired", "invite_expired"],
+      ["invite_revoked", "invite_revoked"],
+      ["invite_used", "invite_used"],
+      ["invite_unavailable", "invite_unavailable"],
+    ]) {
+      const handler = createLineAuthCallbackHandler(callbackDependencies({
+        readState: async () => ({ status: "pending", nonce: "nonce-a", codeVerifier: verifier, inviteId: "invite-a", flowId: "flow-a" }),
+        completeState: async () => ({ outcome }),
+      }));
+      const response = await handler(new Request(`https://app.example/api/line/auth/callback?code=x&state=${state}`));
+      strictEqual(new URL(response.headers.get("location")).searchParams.get("result"), result);
+    }
+  });
+
+  it("continues the same state after the LINE friend option", async () => {
+    const calls = [];
+    const handler = createLineAuthCallbackHandler(callbackDependencies({
+      completeState: async (input) => { calls.push(input.state); return { outcome: "signup_required", signupToken: "g".repeat(43) }; },
+    }));
+    const response = await handler(new Request(
+      `https://app.example/api/line/auth/callback?code=x&state=${state}&friendship_status_changed=true`
+    ));
+    strictEqual(calls[0], state);
+    strictEqual(new URL(response.headers.get("location")).searchParams.get("result"), "signup");
   });
 
   it("rejects missing, replayed, cancelled, and invalid-token callbacks safely", async () => {

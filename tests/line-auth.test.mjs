@@ -5,6 +5,7 @@ import {
   LINE_AUTH_STATE_TTL_MS,
   LINE_AUTH_TICKET_TTL_MS,
   LineAuthError,
+  generateLineAuthFlowId,
   generateLineAuthState,
   generateLineAuthTicket,
   getLineAuthStateId,
@@ -14,8 +15,10 @@ import {
 describe("LINE authentication primitives", () => {
   it("creates distinct cryptographically opaque state and ticket values", () => {
     const state = generateLineAuthState();
+    const flowId = generateLineAuthFlowId();
     const ticket = generateLineAuthTicket();
     strictEqual(state.length, 43);
+    strictEqual(flowId.length, 16);
     strictEqual(ticket.length, 43);
     notStrictEqual(state, ticket);
     notStrictEqual(getLineAuthStateId(state), state);

@@ -10,7 +10,15 @@ import { PROJECT_INVITE_SESSION_KEY } from "@/lib/project-invite-link-client";
 
 import styles from "./line-auth-complete.module.css";
 
-type Status = "processing" | "signup" | "unlinked" | "error";
+type Status =
+  | "processing"
+  | "signup"
+  | "unlinked"
+  | "invite_expired"
+  | "invite_revoked"
+  | "invite_used"
+  | "invite_unavailable"
+  | "error";
 type SignupPreview = { projectName: string; displayName: string | null };
 
 export function LineAuthCompleteClient() {
@@ -39,6 +47,15 @@ export function LineAuthCompleteClient() {
       await Promise.resolve();
       if (result === "unlinked") {
         setStatus("unlinked");
+        return;
+      }
+      if (
+        result === "invite_expired"
+        || result === "invite_revoked"
+        || result === "invite_used"
+        || result === "invite_unavailable"
+      ) {
+        setStatus(result);
         return;
       }
       if (result === "signup" && signup) {
@@ -131,6 +148,18 @@ export function LineAuthCompleteClient() {
             このLINEアカウントはまだSeisakuBoardに連携されていません。<br />
             既にSeisakuBoardを利用している方は、Googleでログイン後、個人設定からLINEを連携してください。
           </p>
+        )}
+        {status === "invite_expired" && (
+          <p role="alert">この招待の有効期限が切れています。招待した方に新しいリンクを発行してもらってください。</p>
+        )}
+        {status === "invite_revoked" && (
+          <p role="alert">この招待は無効になっています。招待した方に新しいリンクを発行してもらってください。</p>
+        )}
+        {status === "invite_used" && (
+          <p role="alert">この招待はすでに使用されています。</p>
+        )}
+        {status === "invite_unavailable" && (
+          <p role="alert">招待情報を確認できませんでした。招待した方に新しいリンクを発行してもらってください。</p>
         )}
         {status === "signup" && signupPreview && (
           <div className={styles.signup}>
