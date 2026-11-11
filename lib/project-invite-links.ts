@@ -14,6 +14,19 @@ export type ProjectInviteLinkSummary = {
   claimedAt: string | null;
 };
 
+export type PersonInviteState = "using" | "invited" | "not_invited";
+
+export function getPersonInviteState(input: {
+  personId: string;
+  linkedUserUid: string | null;
+  invites: readonly ProjectInviteLinkSummary[];
+}): PersonInviteState {
+  if (input.linkedUserUid) return "using";
+  return input.invites.some((invite) => (
+    invite.personId === input.personId && invite.status === "pending"
+  )) ? "invited" : "not_invited";
+}
+
 export function isValidProjectInviteLinkToken(value: string): boolean {
   return /^[A-Za-z0-9_-]{43}$/.test(value);
 }

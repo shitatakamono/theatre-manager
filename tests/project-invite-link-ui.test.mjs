@@ -4,12 +4,20 @@ import { describe, it } from "node:test";
 const root = new URL("../", import.meta.url); async function source(path) { return readFile(new URL(path, root), "utf8"); }
 
 describe("project invite link UI", () => {
-  it("shows one-time general invite controls and management status", async () => {
-    const value = await source("app/projects/[projectId]/members/ProjectInviteLinksPanel.tsx");
-    for (const text of ["LINE等で送る招待リンク", "閲覧者（Viewer）", "7日間", "URLをコピー", "このURLは再表示できません", "無効化"]) match(value, new RegExp(text));
+  it("uses people management as the primary invitation entry", async () => {
+    const value = await source("app/projects/[projectId]/people/PeopleManagementClient.tsx");
+    for (const text of ["新しい人を招待", "SeisakuBoard利用中", "招待済み", "未招待", "招待する", "新しい招待リンクを発行", "招待を取り消す", "リンクをコピー", "7日間有効"]) match(value, new RegExp(text));
+    match(value, /canManageMembers/);
+    match(value, /createProjectPerson/);
+    match(value, /createProjectInviteLink\(project\.id, personId\)/);
+    match(value, /createProjectInviteLink\(project\.id, person\.id\)/);
+    match(value, /revokeProjectInviteLink/);
   });
-  it("offers person-specific links only through the owner capability", async () => {
-    const value = await source("app/projects/[projectId]/people/PeopleManagementClient.tsx"); match(value, /canManageMembers/); match(value, /createProjectInviteLink\(project\.id, editing\.id\)/); match(value, /関係者情報と自動で連携/);
+  it("keeps system users focused on accounts and roles rather than invitation creation", async () => {
+    const value = await source("app/projects/[projectId]/members/page.tsx");
+    match(value, /アカウントと権限を確認/);
+    match(value, /関係者管理から対象者を選んでください/);
+    doesNotMatch(value, /ProjectInviteLinksPanel|createProjectMemberInvite|システム利用者を招待|招待リンクを作成/);
   });
   it("keeps raw invite tokens in sessionStorage, removes the fragment, and exposes no editor role", async () => {
     const page = await source("app/invite/InviteClient.tsx"); match(page, /sessionStorage/); match(page, /history\.replaceState/); match(page, /Googleでログイン/); match(page, /LINEでログイン/); match(page, /loginWithLine\(token, true\)/); doesNotMatch(page, /localStorage/);

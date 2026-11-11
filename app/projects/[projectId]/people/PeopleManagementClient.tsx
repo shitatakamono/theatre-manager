@@ -31,7 +31,15 @@ import {
 } from "@/lib/user-link-reservation-client";
 import { getUserLinkReservationView } from "@/lib/user-link-reservation-view";
 import type { UserLinkReservation } from "@/lib/user-link-reservations";
-import { createProjectInviteLink } from "@/lib/project-invite-link-client";
+import {
+  createProjectInviteLink,
+  listProjectInviteLinks,
+  revokeProjectInviteLink,
+} from "@/lib/project-invite-link-client";
+import {
+  getPersonInviteState,
+  type ProjectInviteLinkSummary,
+} from "@/lib/project-invite-links";
 import { useProjectAccess } from "../ProjectAccess";
 import styles from "./people.module.css";
 
@@ -62,9 +70,14 @@ export function PeopleManagementClient({
   const [reservationEditing, setReservationEditing] = useState(false);
   const [reservationError, setReservationError] = useState("");
   const [reservationLoadError, setReservationLoadError] = useState("");
-  const [personInviteBusy, setPersonInviteBusy] = useState(false);
-  const [personInviteUrl, setPersonInviteUrl] = useState("");
-  const [personInviteError, setPersonInviteError] = useState("");
+  const [inviteLinks, setInviteLinks] = useState<ProjectInviteLinkSummary[]>([]);
+  const [inviteLinksLoading, setInviteLinksLoading] = useState(canManageMembers);
+  const [inviteBusyPersonId, setInviteBusyPersonId] = useState("");
+  const [createdInvite, setCreatedInvite] = useState<{ personName: string; url: string } | null>(null);
+  const [inviteError, setInviteError] = useState("");
+  const [newInviteOpen, setNewInviteOpen] = useState(false);
+  const [newInviteName, setNewInviteName] = useState("");
+  const [newInvitePersonId, setNewInvitePersonId] = useState("");
   const [showInactive, setShowInactive] = useState(false);
   const [sortOrder, setSortOrder] = useState<PeopleManagementListSort>("cast_first");
   const memberByUid = useMemo(() => new Map(members.map((member) => [member.uid, member])), [members]);
@@ -111,6 +124,20 @@ export function PeopleManagementClient({
     return () => { active = false; };
   }, [canEdit, project.id]);
 
+  useEffect(() => {
+    if (!canManageMembers) return;
+    let active = true;
+    void listProjectInviteLinks(project.id)
+      .then((items) => { if (active) setInviteLinks(items); })
+      .catch((loadError) => {
+        if (active) setInviteError(loadError instanceof Error
+          ? loadError.message
+          : "招待状況を読み込めませんでした");
+      })
+      .finally(() => { if (active) setInviteLinksLoading(false); });
+    return () => { active = false; };
+  }, [canManageMembers, project.id]);
+
   function openCreate() {
     if (!canEdit) return;
     setEditing(null);
@@ -133,26 +160,87 @@ export function PeopleManagementClient({
     setReservationError("");
     setReservationEmail(pendingReservationByPersonId.get(person.id)?.email ?? "");
     setReservationEditing(false);
-    setPersonInviteUrl("");
-    setPersonInviteError("");
   }
 
-  async function createPersonInvite() {
-    if (!canManageMembers || !editing || personInviteBusy) return;
-    setPersonInviteBusy(true); setPersonInviteError(""); setPersonInviteUrl("");
+  async function issuePersonInvite(person: ProjectPerson, inviteToRevoke?: ProjectInviteLinkSummary) {
+    if (!canManageMembers || inviteBusyPersonId) return;
+    if (inviteToRevoke && !window.confirm(
+      "新しい招待リンクを発行すると、現在の招待リンクは使えなくなります。\n新しいリンクを改めて本人へ案内してください。"
+    )) return;
+    setInviteBusyPersonId(person.id);
+    setInviteError("");
+    setCreatedInvite(null);
     try {
-      const result = await createProjectInviteLink(project.id, editing.id);
-      setPersonInviteUrl(result.url);
-      setNotice("この関係者専用の招待リンクを作成しました");
+      if (inviteToRevoke) {
+        await revokeProjectInviteLink(project.id, inviteToRevoke.id);
+      }
+      const result = await createProjectInviteLink(project.id, person.id);
+      setInviteLinks((current) => [
+        result.invite,
+        ...current.map((item) => item.id === inviteToRevoke?.id
+          ? { ...item, status: "revoked" as const }
+          : item),
+      ]);
+      setCreatedInvite({ personName: person.displayName, url: result.url });
+      setNotice(`${person.displayName}さん用の招待リンクを作成しました`);
     } catch (caught) {
-      setPersonInviteError(caught instanceof Error ? caught.message : "招待リンクを作成できませんでした");
-    } finally { setPersonInviteBusy(false); }
+      setInviteError(caught instanceof Error ? caught.message : "招待リンクを作成できませんでした");
+      if (inviteToRevoke) {
+        void listProjectInviteLinks(project.id).then(setInviteLinks).catch(() => undefined);
+      }
+    } finally { setInviteBusyPersonId(""); }
   }
 
-  async function copyPersonInvite() {
-    if (!personInviteUrl) return;
-    try { await navigator.clipboard.writeText(personInviteUrl); setNotice("招待URLをコピーしました"); }
-    catch { setPersonInviteError("URLをコピーできませんでした"); }
+  async function copyCreatedInvite() {
+    if (!createdInvite) return;
+    try { await navigator.clipboard.writeText(createdInvite.url); setNotice(`${createdInvite.personName}さん用の招待URLをコピーしました`); }
+    catch { setInviteError("URLをコピーできませんでした"); }
+  }
+
+  async function cancelPersonInvite(invite: ProjectInviteLinkSummary, personName: string) {
+    if (!canManageMembers || inviteBusyPersonId || !window.confirm(`${personName}さんへの招待を取り消しますか？`)) return;
+    setInviteBusyPersonId(invite.personId ?? "invite");
+    setInviteError("");
+    try {
+      await revokeProjectInviteLink(project.id, invite.id);
+      setInviteLinks((current) => current.map((item) => item.id === invite.id
+        ? { ...item, status: "revoked" as const }
+        : item));
+      setCreatedInvite(null);
+      setNotice(`${personName}さんへの招待を取り消しました`);
+    } catch (caught) {
+      setInviteError(caught instanceof Error ? caught.message : "招待を取り消せませんでした");
+    } finally { setInviteBusyPersonId(""); }
+  }
+
+  async function createNewPersonAndInvite(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!canManageMembers || inviteBusyPersonId || !newInviteName.trim()) return;
+    setInviteBusyPersonId("new");
+    setInviteError("");
+    setCreatedInvite(null);
+    const personName = newInviteName.trim();
+    try {
+      let personId = newInvitePersonId;
+      if (!personId) {
+        personId = await createProjectPerson(project.id, {
+          ...EMPTY_MANAGED_PERSON_INPUT,
+          displayName: personName,
+        }, actor);
+        setNewInvitePersonId(personId);
+        setPeople(await getProjectPeopleWithFallback(project.id));
+      }
+      const result = await createProjectInviteLink(project.id, personId);
+      setInviteLinks((current) => [result.invite, ...current]);
+      setCreatedInvite({ personName, url: result.url });
+      setNewInviteName("");
+      setNewInvitePersonId("");
+      setNewInviteOpen(false);
+      setNotice(`${personName}さんを関係者に追加し、招待リンクを作成しました`);
+    } catch (caught) {
+      setPeople(await getProjectPeopleWithFallback(project.id).catch(() => people));
+      setInviteError(caught instanceof Error ? caught.message : "新しい人を招待できませんでした");
+    } finally { setInviteBusyPersonId(""); }
   }
 
   function closeEditor() {
@@ -284,11 +372,20 @@ export function PeopleManagementClient({
 
   return <main className={styles.page}>
     <header className={styles.header}>
-      <div><Link href={`/projects/${project.id}`}>← 公演トップ</Link><p>PEOPLE</p><h1>関係者管理</h1><span>公演に関わる実在の人と、出欠・システム利用者との連携を管理します。</span></div>
-      {canEdit && <button type="button" onClick={openCreate}>その他の関係者を追加</button>}
+      <div><Link href={`/projects/${project.id}`}>← 公演トップ</Link><p>PEOPLE</p><h1>関係者管理</h1><span>公演に関わる人を登録し、SeisakuBoardへの招待と利用状況を管理します。</span></div>
+      <div className={styles.headerActions}>
+        {canManageMembers && <button type="button" onClick={() => { setNewInviteOpen(true); setNewInviteName(""); setNewInvitePersonId(""); setInviteError(""); }}>新しい人を招待</button>}
+        {canEdit && <button type="button" data-secondary onClick={openCreate}>その他の関係者を追加</button>}
+      </div>
     </header>
     {notice && <p className={styles.success} role="status">{notice}</p>}
     {reservationLoadError && <p className={styles.error} role="alert">{reservationLoadError}</p>}
+    {inviteError && <p className={styles.errorNotice} role="alert">{inviteError}</p>}
+    {createdInvite && <section className={styles.createdInvite} aria-label="作成した招待リンク">
+      <div><strong>{createdInvite.personName}さん用の招待リンク</strong><span>このリンクは7日間有効です。安全な方法で本人へ送ってください。</span></div>
+      <button type="button" onClick={() => void copyCreatedInvite()}>リンクをコピー</button>
+      <small>安全のため、このリンクは画面を閉じると再表示できません。</small>
+    </section>}
     <div className={styles.listControls}>
       <label className={styles.sortControl}>
         <span>並び順</span>
@@ -306,20 +403,29 @@ export function PeopleManagementClient({
     {people.length === 0 ? <p className={styles.empty}>関係者はまだ登録されていません。通常は公演情報のキャスト・スタッフから登録できます。</p> : (
       <div className={styles.tableWrap}>
         <table className={styles.table}>
-          <thead><tr><th>本名（管理用）</th><th>出欠</th><th>参加する稽古</th><th>システム利用者との連携</th><th>キャスト</th><th>スタッフ</th><th>操作</th></tr></thead>
+          <thead><tr><th>本名（管理用）</th><th>出欠</th><th>参加する稽古</th><th>利用状態</th><th>キャスト</th><th>スタッフ</th><th>操作</th></tr></thead>
           <tbody>{visiblePeople.map((person) => {
             const association = getPersonAssociations(person.id, person.displayName, cast, staff);
             const member = person.linkedUserUid ? memberByUid.get(person.linkedUserUid) : undefined;
             const pendingReservation = pendingReservationByPersonId.get(person.id);
+            const inviteState = getPersonInviteState({ personId: person.id, linkedUserUid: person.linkedUserUid, invites: inviteLinks });
+            const pendingInvite = inviteLinks.find((invite) => invite.personId === person.id && invite.status === "pending");
             return <tr key={person.id}>
               <td data-label="本名（管理用）"><strong>{person.displayName}</strong>{!person.active && <span className={styles.inactiveBadge}>終了済み</span>}</td>
               <td data-label="出欠">{person.attendanceTarget ? "対象" : "対象外"}</td>
               <td data-label="参加する稽古">{formatRehearsalParticipationTypes(person.rehearsalParticipationTypes)}</td>
-              <td data-label="システム利用者との連携">{person.linkedUserUid
-                ? `連携済：${member ? memberLabel(member) : person.linkedUserUid}`
-                : canEdit && pendingReservation
-                  ? `${pendingReservation.conflictPersonName ? "登録待ち（競合）" : "登録待ち"}：${pendingReservation.email}`
-                  : "未連携"}</td>
+              <td data-label="利用状態"><div className={styles.inviteStatusCell}>
+                <span data-state={inviteState}>{inviteState === "using"
+                  ? `SeisakuBoard利用中${member ? `：${memberLabel(member)}` : ""}`
+                  : !canManageMembers ? "未連携"
+                    : inviteState === "invited" ? "招待済み" : inviteLinksLoading ? "確認中…" : "未招待"}</span>
+                {!person.linkedUserUid && canEdit && pendingReservation && <small>{pendingReservation.conflictPersonName ? "Googleアカウント登録待ち（競合）" : "Googleアカウント登録待ち"}</small>}
+                {canManageMembers && person.active && inviteState === "not_invited" && !inviteLinksLoading && <button type="button" disabled={Boolean(inviteBusyPersonId)} onClick={() => void issuePersonInvite(person)}>{inviteBusyPersonId === person.id ? "作成中…" : "招待する"}</button>}
+                {canManageMembers && inviteState === "invited" && pendingInvite && <div className={styles.inviteRowActions}>
+                  <button type="button" disabled={Boolean(inviteBusyPersonId)} onClick={() => void issuePersonInvite(person, pendingInvite)}>新しい招待リンクを発行</button>
+                  <button type="button" data-danger disabled={Boolean(inviteBusyPersonId)} onClick={() => void cancelPersonInvite(pendingInvite, person.displayName)}>招待を取り消す</button>
+                </div>}
+              </div></td>
               <td data-label="キャスト">{association.castLabels.join(" / ") || "—"}</td>
               <td data-label="スタッフ">{association.staffRoles.join(" / ") || "—"}</td>
               <td data-label="操作">{canEdit ? <button className={styles.editButton} type="button" onClick={() => openEdit(person)}>編集</button> : "—"}</td>
@@ -416,19 +522,23 @@ export function PeopleManagementClient({
             </>}
             {reservationError && <p className={styles.error} role="alert">{reservationError}</p>}
           </section>}
-          {editing && canManageMembers && !draft.linkedUserUid && <section className={styles.personInviteSection} aria-label="関係者指定招待リンク">
-            <strong>LINE等で送る招待リンク</strong>
-            <p>この関係者専用のURLです。ログイン後、閲覧者として公演へ参加し、関係者情報と自動で連携します。</p>
-            <button type="button" disabled={personInviteBusy || saving} onClick={() => void createPersonInvite()}>{personInviteBusy ? "作成中…" : "招待リンクを作成"}</button>
-            {personInviteUrl && <div className={styles.personInviteCreated} role="status"><button type="button" onClick={() => void copyPersonInvite()}>URLをコピー</button><small>このURLは再表示できません。</small></div>}
-            {personInviteError && <p className={styles.reservationConflict} role="alert">{personInviteError}</p>}
-          </section>}
           <label><span>公開備考</span><textarea rows={5} maxLength={2000} value={draft.publicNote} onChange={(event) => setDraft((current) => ({ ...current, publicNote: event.target.value }))} /></label>
           {error && <p className={styles.error} role="alert">{error}</p>}
           {editing && <button className={editing.active ? styles.endButton : styles.resumeButton} type="button" onClick={() => void toggleEnded()} disabled={saving || reservationBusy}>
             {editing.active ? "終了済みにする" : "終了済みを解除"}
           </button>}
           <footer><button type="button" onClick={closeEditor} disabled={saving || reservationBusy}>キャンセル</button><button type="submit" disabled={saving || reservationBusy}>{saving ? "保存中…" : "保存"}</button></footer>
+        </form>
+      </section>
+    </div>}
+    {newInviteOpen && <div className={styles.overlay} role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target && !inviteBusyPersonId) { setNewInviteOpen(false); setNewInvitePersonId(""); } }}>
+      <section className={styles.newInviteDialog} role="dialog" aria-modal="true" aria-labelledby="new-person-invite-title">
+        <header><div><p>INVITE</p><h2 id="new-person-invite-title">新しい人を招待</h2></div><button type="button" aria-label="閉じる" onClick={() => { setNewInviteOpen(false); setNewInvitePersonId(""); }}>×</button></header>
+        <form onSubmit={(event) => void createNewPersonAndInvite(event)}>
+          <p>氏名を登録して、その人専用の招待リンクを作成します。参加する稽古などは後から編集できます。</p>
+          <label><span>氏名 *</span><input required maxLength={100} autoFocus value={newInviteName} onChange={(event) => setNewInviteName(event.target.value)} /></label>
+          {newInvitePersonId && <p className={styles.newInviteRetry}>関係者の登録は完了しています。招待リンクの作成をもう一度お試しください。</p>}
+          <footer><button type="button" disabled={Boolean(inviteBusyPersonId)} onClick={() => { setNewInviteOpen(false); setNewInvitePersonId(""); }}>キャンセル</button><button type="submit" disabled={Boolean(inviteBusyPersonId) || !newInviteName.trim()}>{inviteBusyPersonId === "new" ? "作成中…" : newInvitePersonId ? "招待リンクを作成" : "関係者を登録して招待"}</button></footer>
         </form>
       </section>
     </div>}

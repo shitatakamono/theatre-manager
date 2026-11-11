@@ -1,9 +1,16 @@
 import { deepStrictEqual, notStrictEqual, strictEqual, throws } from "node:assert/strict";
 import { describe, it } from "node:test";
-import { PROJECT_INVITE_LINK_TTL_MS, buildProjectInviteLinkUrl, getProjectInviteLinkDisplayStatus, getProjectInviteLinkExpiry, isValidProjectInviteLinkToken } from "../lib/project-invite-links.ts";
+import { PROJECT_INVITE_LINK_TTL_MS, buildProjectInviteLinkUrl, getPersonInviteState, getProjectInviteLinkDisplayStatus, getProjectInviteLinkExpiry, isValidProjectInviteLinkToken } from "../lib/project-invite-links.ts";
 import { generateProjectInviteLinkToken, hashProjectInviteLinkToken } from "../lib/server/project-invite-link-token.ts";
 
 describe("project invite link primitives", () => {
+  it("derives visible person invite state from formal links and valid pending invites", () => {
+    const pending = { id: "invite-a", status: "pending", role: "viewer", personId: "person-a", personName: "A", createdAt: null, expiresAt: new Date(Date.now() + 1000).toISOString(), claimedAt: null };
+    strictEqual(getPersonInviteState({ personId: "person-a", linkedUserUid: "uid-a", invites: [pending] }), "using");
+    strictEqual(getPersonInviteState({ personId: "person-a", linkedUserUid: null, invites: [pending] }), "invited");
+    strictEqual(getPersonInviteState({ personId: "person-a", linkedUserUid: null, invites: [{ ...pending, status: "expired" }] }), "not_invited");
+    strictEqual(getPersonInviteState({ personId: "person-a", linkedUserUid: null, invites: [{ ...pending, personId: "person-b" }] }), "not_invited");
+  });
   it("generates distinct 32-byte base64url tokens and stable SHA-256 ids", () => {
     const first = generateProjectInviteLinkToken(); const second = generateProjectInviteLinkToken();
     strictEqual(first.length, 43); strictEqual(isValidProjectInviteLinkToken(first), true); notStrictEqual(first, second);
