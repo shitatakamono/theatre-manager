@@ -28,6 +28,8 @@ export type VerifiedLineIdToken = {
   exp: number;
   iat: number;
   nonce: string;
+  name?: string;
+  picture?: string;
 };
 
 export class LineLoginError extends Error {
@@ -117,5 +119,17 @@ export function validateVerifiedLineIdToken(input: {
   if (!Number.isFinite(exp) || exp <= now) throw new LineLoginError("expired_id_token");
   if (!Number.isFinite(iat) || iat > now + 60) throw new LineLoginError("invalid_id_token_issued_at");
 
-  return { iss, sub, aud, exp, iat, nonce };
+  const name = typeof claims.name === "string" && claims.name.trim()
+    ? claims.name.trim().slice(0, 128)
+    : undefined;
+  let picture: string | undefined;
+  if (typeof claims.picture === "string") {
+    try {
+      const url = new URL(claims.picture);
+      if (url.protocol === "https:") picture = url.toString();
+    } catch {
+      // Ignore an invalid optional profile image.
+    }
+  }
+  return { iss, sub, aud, exp, iat, nonce, ...(name ? { name } : {}), ...(picture ? { picture } : {}) };
 }

@@ -1745,6 +1745,8 @@ describe("server-only LINE integration state", () => {
       doc(db, "lineLoginStates", "opaque-state-id"),
       doc(db, "lineAuthStates", "opaque-state-id"),
       doc(db, "lineAuthTickets", "opaque-ticket-id"),
+      doc(db, "lineSignupAttempts", "opaque-signup-id"),
+      doc(db, "lineSignupLocks", "opaque-line-id"),
       doc(db, "lineUserLinks", "opaque-line-user-id"),
       doc(db, "userIntegrations", ownerUid, "providers", "line"),
     ];

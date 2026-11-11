@@ -15,7 +15,8 @@ describe("LINE authentication completion page", () => {
     assert.match(source, /takeProjectInviteReturnPath/);
     assert.match(source, /location\.replace\(returnPath\.current \?\? "\/projects"\)/);
     assert.match(source, /このLINEアカウントはまだSeisakuBoardに連携されていません/);
-    assert.doesNotMatch(source, /localStorage|sessionStorage|console\./);
+    assert.doesNotMatch(source, /localStorage|console\./);
+    assert.match(source, /sessionStorage\.removeItem\(PROJECT_INVITE_SESSION_KEY\)/);
   });
 
   it("marks the completion route noindex and no-referrer", async () => {

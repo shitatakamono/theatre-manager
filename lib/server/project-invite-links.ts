@@ -17,6 +17,28 @@ import { linkProjectPersonToUserInTransaction } from "./user-link-reservations.t
 const COLLECTION = "projectInviteLinks";
 const CREATE_ATTEMPTS = 3;
 
+export async function requirePendingProjectInviteToken(rawToken: string): Promise<{ inviteId: string }> {
+  let inviteId: string;
+  try {
+    inviteId = hashProjectInviteLinkToken(rawToken);
+  } catch {
+    throw new ProjectInviteLinkError("invite_not_found", 404, "招待リンクが見つかりません");
+  }
+  const snapshot = await adminDb.collection(COLLECTION).doc(inviteId).get();
+  const data = snapshot.data();
+  if (!snapshot.exists || data?.role !== "viewer" || data?.status !== "pending") {
+    throw new ProjectInviteLinkError("invite_unavailable", 409, "この招待リンクは利用できません");
+  }
+  if (!(data.expiresAt instanceof Timestamp) || data.expiresAt.toMillis() <= Date.now()) {
+    throw new ProjectInviteLinkError("invite_expired", 410, "この招待リンクの有効期限が切れています");
+  }
+  const projectId = typeof data.projectId === "string" ? data.projectId : "";
+  if (!projectId || !(await adminDb.collection("projects").doc(projectId).get()).exists) {
+    throw new ProjectInviteLinkError("project_not_found", 404, "招待された公演が見つかりません");
+  }
+  return { inviteId };
+}
+
 export class ProjectInviteLinkError extends Error {
   readonly code: string;
   readonly status: number;

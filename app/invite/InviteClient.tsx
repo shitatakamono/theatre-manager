@@ -90,7 +90,7 @@ export function InviteClient() {
 
   async function startLineLogin() {
     if (token) storeProjectInviteForAuthentication(token);
-    await loginWithLine();
+    await loginWithLine(token);
   }
 
   if (loading) return <main className={styles.page}><section className={styles.card}><p role="status">招待情報を確認しています…</p></section></main>;
@@ -104,7 +104,7 @@ export function InviteClient() {
       <p>SeisakuBoardへログインして招待を受けてください。</p>
       <button type="button" onClick={() => void login()}>Googleでログイン</button>
       <button type="button" data-line onClick={() => void startLineLogin()}>LINEでログイン</button>
-      <small>LINEログインは、すでに個人設定でLINE連携済みの方が利用できます。</small>
+      <small>初めて利用する方も、有効な招待からLINEだけで登録できます。</small>
     </div>}
     {preview?.status === "pending" && profile && <div className={styles.actions}><p>{profile.displayName || profile.email || "ログイン中のアカウント"}で参加します。</p><button type="button" disabled={claiming} onClick={() => void claim()}>{claiming ? "参加処理中…" : "この公演に参加"}</button></div>}
     <Link href="/projects">SeisakuBoardへ戻る</Link>

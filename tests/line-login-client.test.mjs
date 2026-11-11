@@ -51,11 +51,15 @@ describe("LINE Login API client", () => {
           exp: 2_000,
           iat: 900,
           nonce: "nonce-a",
+          name: " LINE 利用者 ",
+          picture: "https://example.test/profile.png",
         });
       },
     });
     strictEqual(endpoint, LINE_LOGIN_VERIFY_ENDPOINT);
     strictEqual(result.lineUserId, lineUserId);
+    strictEqual(result.displayName, "LINE 利用者");
+    strictEqual(result.photoURL, "https://example.test/profile.png");
   });
 
   it("reads friendship status and safely rejects malformed/non-2xx responses", async () => {

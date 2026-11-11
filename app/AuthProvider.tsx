@@ -24,7 +24,7 @@ type AuthContextValue = {
   loading: boolean;
   profile: UserProfile | null;
   login: () => Promise<LoginResult>;
-  loginWithLine: () => Promise<LoginResult>;
+  loginWithLine: (inviteToken?: string) => Promise<LoginResult>;
   logout: () => Promise<void>;
   membershipNotice: string;
   loginError: string;
@@ -104,10 +104,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  async function loginWithLine(): Promise<LoginResult> {
+  async function loginWithLine(inviteToken?: string): Promise<LoginResult> {
     setError("");
     try {
-      const response = await fetch("/api/line/auth/start", { method: "POST" });
+      const response = await fetch("/api/line/auth/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(inviteToken ? { inviteToken } : {}),
+      });
       const body = await response.json().catch(() => ({})) as { redirectUrl?: unknown };
       if (!response.ok || typeof body.redirectUrl !== "string") {
         throw new Error("line_auth_start_failed");

@@ -24,7 +24,7 @@ function reverseLinkRef(lineUserId: string) {
   return adminDb.collection(LINE_USER_LINKS).doc(getLineUserLinkId(lineUserId));
 }
 
-async function getLineAccountLinkDecision(
+export async function prepareLineAccountLinkInTransaction(
   transaction: Transaction,
   uid: string,
   lineUserId: string
@@ -58,6 +58,36 @@ async function getLineAccountLinkDecision(
   };
 }
 
+export function writePreparedLineAccountLink(
+  transaction: Transaction,
+  prepared: Awaited<ReturnType<typeof prepareLineAccountLinkInTransaction>>,
+  input: {
+    uid: string;
+    lineUserId: string;
+    now: Timestamp;
+    deliveryStatus?: "reachable" | "unreachable" | "unknown";
+  }
+): "linked" | "already_linked" {
+  if (prepared.decision === "already_linked") return "already_linked";
+  transaction.create(prepared.linkRef, {
+    provider: "line",
+    lineUserId: input.lineUserId,
+    status: "linked",
+    deliveryStatus: input.deliveryStatus ?? "unknown",
+    linkedAt: input.now,
+    updatedAt: input.now,
+    lastFollowAt: null,
+    lastUnfollowAt: null,
+  });
+  transaction.create(prepared.reverseRef, {
+    uid: input.uid,
+    lineUserId: input.lineUserId,
+    linkedAt: input.now,
+    updatedAt: input.now,
+  });
+  return "linked";
+}
+
 export async function linkFirebaseUserToLineUserInTransaction(
   transaction: Transaction,
   input: {
@@ -69,30 +99,12 @@ export async function linkFirebaseUserToLineUserInTransaction(
 ): Promise<"linked" | "already_linked"> {
   const uid = requireFirebaseUid(input.uid);
   const lineUserId = requireLineUserId(input.lineUserId);
-  const { decision, linkRef, reverseRef } = await getLineAccountLinkDecision(
+  const prepared = await prepareLineAccountLinkInTransaction(
     transaction,
     uid,
     lineUserId
   );
-  if (decision === "already_linked") return "already_linked";
-
-  transaction.create(linkRef, {
-    provider: "line",
-    lineUserId,
-    status: "linked",
-    deliveryStatus: input.deliveryStatus ?? "unknown",
-    linkedAt: input.now,
-    updatedAt: input.now,
-    lastFollowAt: null,
-    lastUnfollowAt: null,
-  });
-  transaction.create(reverseRef, {
-    uid,
-    lineUserId,
-    linkedAt: input.now,
-    updatedAt: input.now,
-  });
-  return "linked";
+  return writePreparedLineAccountLink(transaction, prepared, { ...input, uid, lineUserId });
 }
 
 export async function unlinkLineAccount(uidValue: string): Promise<{

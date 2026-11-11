@@ -68,7 +68,7 @@ export async function verifyLineLoginIdToken(input: {
   nonce: string;
   fetchImpl?: FetchInput;
   nowSeconds?: number;
-}): Promise<{ lineUserId: string }> {
+}): Promise<{ lineUserId: string; displayName?: string; photoURL?: string }> {
   const response = await postForm(LINE_LOGIN_VERIFY_ENDPOINT, {
     id_token: input.idToken,
     client_id: input.channelId,
@@ -90,7 +90,11 @@ export async function verifyLineLoginIdToken(input: {
     nonce: input.nonce,
     nowSeconds: input.nowSeconds,
   });
-  return { lineUserId: requireLineUserId(verified.sub) };
+  return {
+    lineUserId: requireLineUserId(verified.sub),
+    ...(verified.name ? { displayName: verified.name } : {}),
+    ...(verified.picture ? { photoURL: verified.picture } : {}),
+  };
 }
 
 export async function getLineFriendshipStatus(input: {

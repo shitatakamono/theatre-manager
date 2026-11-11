@@ -74,6 +74,18 @@ describe("LINE authentication callback", () => {
     strictEqual(location.searchParams.has("ticket"), false);
   });
 
+  it("returns an opaque signup attempt only for an invite-bound state", async () => {
+    const signupToken = "g".repeat(43);
+    const handler = createLineAuthCallbackHandler(callbackDependencies({
+      completeState: async () => ({ outcome: "signup_required", signupToken }),
+    }));
+    const response = await handler(new Request(`https://app.example/api/line/auth/callback?code=x&state=${state}`));
+    const location = new URL(response.headers.get("location"));
+    strictEqual(location.searchParams.get("result"), "signup");
+    strictEqual(location.searchParams.has("signup"), false);
+    strictEqual(new URLSearchParams(location.hash.slice(1)).get("signup"), signupToken);
+  });
+
   it("rejects missing, replayed, cancelled, and invalid-token callbacks safely", async () => {
     const noState = await createLineAuthCallbackHandler(callbackDependencies())(
       new Request("https://app.example/api/line/auth/callback")

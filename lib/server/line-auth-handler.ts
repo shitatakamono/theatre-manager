@@ -20,26 +20,38 @@ function json(body: unknown, status: number): Response {
 
 function completionRedirect(
   appOrigin: string,
-  result: "ticket" | "unlinked" | "error",
-  ticket?: string
+  result: "ticket" | "signup" | "unlinked" | "error",
+  opaqueValue?: string
 ): Response {
   const url = new URL("/line/auth/complete", appOrigin);
   url.searchParams.set("result", result);
-  if (result === "ticket" && ticket) {
-    url.hash = new URLSearchParams({ ticket }).toString();
+  if (result === "ticket" && opaqueValue) {
+    url.hash = new URLSearchParams({ ticket: opaqueValue }).toString();
+  }
+  if (result === "signup" && opaqueValue) {
+    url.hash = new URLSearchParams({ signup: opaqueValue }).toString();
   }
   return Response.redirect(url, 303);
 }
 
 export function createLineAuthStartHandler(dependencies: {
-  createState: () => Promise<{ state: string; nonce: string; codeVerifier: string }>;
+  createState: (inviteToken?: string) => Promise<{ state: string; nonce: string; codeVerifier: string }>;
   getConfig: () => Pick<AuthConfig, "channelId" | "redirectUri">;
   logError?: (event: string) => void;
 }) {
-  return async function POST(): Promise<Response> {
+  return async function POST(request?: Request): Promise<Response> {
     try {
+      let inviteToken: string | undefined;
+      if (request) {
+        try {
+          const body = await request.json() as { inviteToken?: unknown };
+          if (typeof body.inviteToken === "string" && body.inviteToken) inviteToken = body.inviteToken;
+        } catch {
+          // Normal LINE login has no request body.
+        }
+      }
       const config = dependencies.getConfig();
-      const temporary = await dependencies.createState();
+      const temporary = await dependencies.createState(inviteToken);
       return json({
         redirectUrl: buildLineLoginAuthorizationUrl({
           channelId: config.channelId,
@@ -61,6 +73,7 @@ export function createLineAuthCallbackHandler(dependencies: {
     status: "pending" | "consumed" | "failed";
     nonce: string;
     codeVerifier: string;
+    inviteId: string | null;
   }>;
   failState: (state: string) => Promise<void>;
   exchangeCode: (input: {
@@ -74,9 +87,16 @@ export function createLineAuthCallbackHandler(dependencies: {
     idToken: string;
     channelId: string;
     nonce: string;
-  }) => Promise<{ lineUserId: string }>;
-  completeState: (input: { state: string; lineUserId: string }) => Promise<
-    { outcome: "ticket_created"; ticket: string } | { outcome: "not_linked" }
+  }) => Promise<{ lineUserId: string; displayName?: string; photoURL?: string }>;
+  completeState: (input: {
+    state: string;
+    lineUserId: string;
+    displayName?: string;
+    photoURL?: string;
+  }) => Promise<
+    | { outcome: "ticket_created"; ticket: string }
+    | { outcome: "signup_required"; signupToken: string }
+    | { outcome: "not_linked" }
   >;
   getConfig: () => AuthConfig;
   logError?: (event: string) => void;
@@ -118,10 +138,16 @@ export function createLineAuthCallbackHandler(dependencies: {
       const completed = await dependencies.completeState({
         state,
         lineUserId: identity.lineUserId,
+        ...(identity.displayName ? { displayName: identity.displayName } : {}),
+        ...(identity.photoURL ? { photoURL: identity.photoURL } : {}),
       });
-      return completed.outcome === "ticket_created"
-        ? completionRedirect(config.appOrigin, "ticket", completed.ticket)
-        : completionRedirect(config.appOrigin, "unlinked");
+      if (completed.outcome === "ticket_created") {
+        return completionRedirect(config.appOrigin, "ticket", completed.ticket);
+      }
+      if (completed.outcome === "signup_required") {
+        return completionRedirect(config.appOrigin, "signup", completed.signupToken);
+      }
+      return completionRedirect(config.appOrigin, "unlinked");
     } catch (error) {
       try {
         await dependencies.failState(state);

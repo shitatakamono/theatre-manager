@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:line-invite-signup": "node --no-warnings --test tests/line-invite-signup.test.mjs tests/line-invite-signup-handler.test.mjs",
+    "test:line-invite-signup:integration": "firebase emulators:exec --only firestore --project seisakuboard-conflict-test \"node --no-warnings --test tests/line-invite-signup.integration.test.mjs\"",
     "test:project-invite-links": "node --no-warnings --test tests/project-invite-links.test.mjs tests/project-invite-link-handler.test.mjs tests/project-invite-link-ui.test.mjs",
     "test:project-invite-links:integration": "firebase emulators:exec --only firestore --project seisakuboard-conflict-test \"node --no-warnings --test tests/project-invite-links.integration.test.mjs\"",
     "test:production-assets": "node --no-warnings --test tests/production-assets.test.mjs",
