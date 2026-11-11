@@ -39,6 +39,11 @@ import {
   retryDueLineRehearsalReminders,
   runTomorrowLineRehearsalReminders,
 } from "../../lib/server/line-rehearsal-reminder";
+import {
+  recordRehearsalChangeNotificationEvent,
+  retryRehearsalChangeNotifications,
+  runRehearsalChangeNotifications,
+} from "../../lib/server/line-rehearsal-change";
 
 if (getApps().length === 0) initializeApp();
 
@@ -147,8 +152,16 @@ export const onRehearsalCreated = onDocumentCreated(
   { document: REHEARSAL_DOCUMENT, retry: true },
   async (event) => {
     const plan = planGoogleCalendarRehearsalTrigger("create");
-    if (!plan) return;
-    await enqueueForAudience({ projectId: event.params.projectId, ...plan });
+    await Promise.all([
+      recordRehearsalChangeNotificationEvent({
+        eventId: event.id,
+        projectId: event.params.projectId,
+        rehearsalId: event.params.rehearsalId,
+        eventType: "created",
+        after: event.data?.data(),
+      }),
+      plan ? enqueueForAudience({ projectId: event.params.projectId, ...plan }) : Promise.resolve(),
+    ]);
   }
 );
 
@@ -160,8 +173,17 @@ export const onRehearsalUpdated = onDocumentUpdated(
       event.data?.before.data(),
       event.data?.after.data()
     );
-    if (!plan) return;
-    await enqueueForAudience({ projectId: event.params.projectId, ...plan });
+    await Promise.all([
+      recordRehearsalChangeNotificationEvent({
+        eventId: event.id,
+        projectId: event.params.projectId,
+        rehearsalId: event.params.rehearsalId,
+        eventType: "updated",
+        before: event.data?.before.data(),
+        after: event.data?.after.data(),
+      }),
+      plan ? enqueueForAudience({ projectId: event.params.projectId, ...plan }) : Promise.resolve(),
+    ]);
   }
 );
 
@@ -169,8 +191,16 @@ export const onRehearsalDeleted = onDocumentDeleted(
   { document: REHEARSAL_DOCUMENT, retry: true },
   async (event) => {
     const plan = planGoogleCalendarRehearsalTrigger("delete");
-    if (!plan) return;
-    await enqueueForAudience({ projectId: event.params.projectId, ...plan });
+    await Promise.all([
+      recordRehearsalChangeNotificationEvent({
+        eventId: event.id,
+        projectId: event.params.projectId,
+        rehearsalId: event.params.rehearsalId,
+        eventType: "deleted",
+        before: event.data?.data(),
+      }),
+      plan ? enqueueForAudience({ projectId: event.params.projectId, ...plan }) : Promise.resolve(),
+    ]);
   }
 );
 
@@ -308,6 +338,63 @@ export const retryRehearsalLineReminders = onSchedule(
       sentCount: results.reduce((sum, result) => sum + result.sentCount, 0),
       skippedCount: results.reduce((sum, result) => sum + result.skippedCount, 0),
       failedCount: results.reduce((sum, result) => sum + result.failedCount, 0),
+    });
+  }
+);
+
+async function runRehearsalChangeSchedule(slot: "12" | "20"): Promise<void> {
+  const result = await runRehearsalChangeNotifications({ slot });
+  logger.info("line_rehearsal_change_notification_completed", {
+    eventCount: result.eventCount,
+    projectCount: result.projectCount,
+    batchCount: result.batchCount,
+    rehearsalCount: result.rehearsalCount,
+    noopCount: result.noopCount,
+    recipientCount: result.recipientCount,
+    sentCount: result.sentCount,
+    skippedCount: result.skippedCount,
+    failedCount: result.failedCount,
+    retryCount: result.retryCount,
+    suppressedCount: result.suppressedCount,
+  });
+}
+
+export const sendNoonRehearsalChangeLineNotifications = onSchedule(
+  {
+    schedule: "0 12 * * *",
+    timeZone: "Asia/Tokyo",
+    timeoutSeconds: 540,
+    memory: "256MiB",
+    secrets: [lineChannelAccessToken],
+  },
+  async () => runRehearsalChangeSchedule("12")
+);
+
+export const sendEveningRehearsalChangeLineNotifications = onSchedule(
+  {
+    schedule: "0 20 * * *",
+    timeZone: "Asia/Tokyo",
+    timeoutSeconds: 540,
+    memory: "256MiB",
+    secrets: [lineChannelAccessToken],
+  },
+  async () => runRehearsalChangeSchedule("20")
+);
+
+export const retryRehearsalChangeLineNotifications = onSchedule(
+  {
+    schedule: "every 10 minutes",
+    timeZone: "Asia/Tokyo",
+    timeoutSeconds: 540,
+    memory: "256MiB",
+    secrets: [lineChannelAccessToken],
+  },
+  async () => {
+    const result = await retryRehearsalChangeNotifications();
+    logger.info("line_rehearsal_change_notification_retry_completed", {
+      sentCount: result.sentCount,
+      failedCount: result.failedCount,
+      retryCount: result.retryCount,
     });
   }
 );

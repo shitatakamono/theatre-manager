@@ -1782,6 +1782,20 @@ describe("server-only LINE notification deliveries", () => {
   });
 });
 
+describe("server-only rehearsal change notification state", () => {
+  it("denies anonymous and authenticated client reads and writes", async () => {
+    for (const db of [firestoreFor(), firestoreFor(ownerUid)]) {
+      for (const ref of [
+        doc(db, "rehearsalChangeNotificationEvents", "opaque-event-id"),
+        doc(db, "rehearsalChangeNotificationBatches", "opaque-batch-id"),
+      ]) {
+        await assertFails(getDoc(ref));
+        await assertFails(setDoc(ref, { status: "pending" }));
+      }
+    }
+  });
+});
+
 describe("server-only project invite links", () => {
   it("denies public and authenticated client reads and writes", async () => {
     for (const db of [firestoreFor(), firestoreFor(ownerUid)]) {

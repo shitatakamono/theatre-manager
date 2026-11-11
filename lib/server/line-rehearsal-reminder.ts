@@ -83,7 +83,7 @@ async function loadRehearsals(db: Firestore, projectId: string, date: string): P
   return { all, active: activeReminderRehearsals(all) };
 }
 
-async function loadPeople(db: Firestore, projectId: string): Promise<ReminderPerson[]> {
+export async function loadLineReminderPeople(db: Firestore, projectId: string): Promise<ReminderPerson[]> {
   const project = db.collection("projects").doc(projectId);
   const [people, participants] = await Promise.all([
     project.collection("people").get(),
@@ -129,7 +129,7 @@ async function loadAttendance(db: Firestore, projectId: string, date: string): P
   });
 }
 
-async function loadLinkedRecipients(db: Firestore, projectId: string, people: readonly ReminderPerson[]) {
+export async function loadLineReminderRecipients(db: Firestore, projectId: string, people: readonly ReminderPerson[]) {
   const candidates = [...new Map(people.filter((person) => person.linkedUserUid)
     .map((person) => [person.linkedUserUid!, person])).entries()];
   const linked: Array<{ uid: string; lineUserId: string }> = [];
@@ -232,9 +232,9 @@ export async function runLineRehearsalReminderForDate(input: {
     result.cancelledExcludedCount += rehearsals.all.length - rehearsals.active.length;
     if (!rehearsals.active.length) continue;
     const [people, attendance] = await Promise.all([
-      loadPeople(db, project.id), loadAttendance(db, project.id, input.date),
+      loadLineReminderPeople(db, project.id), loadAttendance(db, project.id, input.date),
     ]);
-    const recipients = await loadLinkedRecipients(db, project.id, people);
+    const recipients = await loadLineReminderRecipients(db, project.id, people);
     const selected = recipients.linked.filter(({ uid }) => !onlyRecipients || onlyRecipients.has(uid));
     const attendanceSummary = buildReminderAttendanceSummary({ people, attendance, rehearsals: rehearsals.active });
     const message = buildLineRehearsalReminderMessage({ date: input.date, rehearsals: rehearsals.active, attendance: attendanceSummary });
