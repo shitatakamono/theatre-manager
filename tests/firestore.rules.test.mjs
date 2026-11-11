@@ -1757,6 +1757,21 @@ describe("server-only LINE integration state", () => {
   });
 });
 
+describe("server-only account merge state", () => {
+  it("denies anonymous and authenticated client reads and writes", async () => {
+    for (const db of [firestoreFor(), firestoreFor(ownerUid)]) {
+      for (const ref of [
+        doc(db, "accountMergeAttempts", "attempt-a"),
+        doc(db, "accountMergeLocks", "uid-a"),
+        doc(db, "accountMergeAliases", "uid-a"),
+      ]) {
+        await assertFails(getDoc(ref));
+        await assertFails(setDoc(ref, { status: "inventory" }));
+      }
+    }
+  });
+});
+
 describe("server-only LINE notification deliveries", () => {
   it("denies anonymous and authenticated client reads and writes", async () => {
     for (const db of [firestoreFor(), firestoreFor(ownerUid)]) {
