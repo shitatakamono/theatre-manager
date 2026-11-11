@@ -151,7 +151,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   if (loading) return <div className={styles.loading}>認証状態を確認しています…</div>;
-  if (!profile) return <main className={styles.login}><section><p>SEISAKU BOARD</p><h1>SeisakuBoard</h1><h2>公演制作をチームで管理</h2><div className={styles.loginActions}><button onClick={() => void login()}>Googleでログイン</button><button className={styles.lineLoginButton} onClick={() => void loginWithLine()}>LINEでログイン</button></div><small>LINEログインは、個人設定でLINE連携済みの方が利用できます。</small>{error && <span role="alert">{error}</span>}</section></main>;
+  if (!profile) return <main className={styles.login}><section><p>SEISAKU BOARD</p><h1>SeisakuBoard</h1><h2>公演制作をチームで管理</h2><div className={styles.loginActions}><button className={styles.lineLoginButton} onClick={() => void loginWithLine()}>LINEでログイン</button><button className={styles.googleLoginButton} onClick={() => void login()}>Googleでログイン（既存利用者）</button></div><small>初めて利用する方は、公演の招待リンクからLINEで参加してください。Googleログインは既存利用者の本人確認のために残しています。</small>{error && <span role="alert">{error}</span>}</section></main>;
 
   return <AuthContext.Provider value={value}><div className={styles.userBar}><span>{profile.displayName || profile.email || "ログイン中"}</span><button onClick={() => void signOut(auth)}>ログアウト</button></div>{children}</AuthContext.Provider>;
 }

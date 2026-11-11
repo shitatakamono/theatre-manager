@@ -25,6 +25,8 @@ describe("Firebase Authentication login flows", () => {
     assert.match(source, /signInWithPopup/);
     assert.match(source, /signInWithRedirect/);
     assert.match(source, /LINEでログイン/);
+    assert.ok(source.indexOf("LINEでログイン") < source.indexOf("Googleでログイン（既存利用者）"));
+    assert.match(source, /招待リンクからLINEで参加/);
     assert.match(source, /\/api\/line\/auth\/start/);
     assert.match(source, /getRedirectResult/);
     assert.match(source, /completeAuthenticatedUserBootstrap/);

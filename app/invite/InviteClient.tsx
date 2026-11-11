@@ -101,9 +101,9 @@ export function InviteClient() {
     {error && <p className={styles.error} role="alert">{error}</p>}
     {loginError && <p className={styles.error} role="alert">{loginError}</p>}
     {preview?.status === "pending" && !profile && <div className={styles.actions}>
-      <p>SeisakuBoardへログインして招待を受けてください。</p>
-      <button type="button" onClick={() => void login()}>Googleでログイン</button>
-      <button type="button" data-line onClick={() => void startLineLogin()}>LINEでログイン</button>
+      <p>LINEで認証して、この公演への参加を進めてください。</p>
+      <button type="button" data-line onClick={() => void startLineLogin()}>LINEで公演に参加</button>
+      <button type="button" className={styles.secondary} onClick={() => void login()}>Googleでログイン（既存利用者）</button>
       <small>初めて利用する方も、有効な招待からLINEだけで登録できます。</small>
     </div>}
     {preview?.status === "pending" && profile && <div className={styles.actions}><p>{profile.displayName || profile.email || "ログイン中のアカウント"}で参加します。</p><button type="button" disabled={claiming} onClick={() => void claim()}>{claiming ? "参加処理中…" : "この公演に参加"}</button></div>}

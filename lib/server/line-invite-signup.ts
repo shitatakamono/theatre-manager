@@ -49,6 +49,8 @@ function activity(fields: string[], name: string, now: Timestamp) {
 export async function previewLineInviteSignup(token: string): Promise<{
   projectName: string;
   displayName: string | null;
+  personName: string | null;
+  existingAccountRequired: boolean;
 } | null> {
   let attemptReference;
   try { attemptReference = signupRef(token); } catch { return null; }
@@ -64,6 +66,14 @@ export async function previewLineInviteSignup(token: string): Promise<{
   const projectId = typeof inviteData.projectId === "string" ? inviteData.projectId : "";
   const project = projectId ? await adminDb.collection("projects").doc(projectId).get() : null;
   if (!project?.exists) return null;
+  const personId = typeof inviteData.personId === "string" ? inviteData.personId : "";
+  const person = personId
+    ? await adminDb.collection("projects").doc(projectId).collection("people").doc(personId).get()
+    : null;
+  if (personId && (!person?.exists || person.data()?.active !== true)) return null;
+  const linkedUserUid = typeof person?.data()?.linkedUserUid === "string"
+    ? person.data()!.linkedUserUid.trim()
+    : "";
   const title = [project.data()?.performanceName, project.data()?.title]
     .find((value) => typeof value === "string" && value.trim());
   return {
@@ -71,6 +81,10 @@ export async function previewLineInviteSignup(token: string): Promise<{
     displayName: typeof data.displayName === "string" && data.displayName.trim()
       ? data.displayName.trim().slice(0, 128)
       : null,
+    personName: personId
+      ? String(person?.data()?.displayName ?? "").trim().slice(0, 128) || "関係者"
+      : null,
+    existingAccountRequired: Boolean(linkedUserUid),
   };
 }
 
@@ -122,6 +136,20 @@ async function reserveSignup(token: string): Promise<ReservedSignup> {
       throw new LineInviteSignupError("invite_unavailable");
     }
     if (lock.exists) throw new LineInviteSignupError("signup_in_progress");
+    const projectId = typeof inviteData.projectId === "string" ? inviteData.projectId : "";
+    const personId = typeof inviteData.personId === "string" ? inviteData.personId : "";
+    if (personId) {
+      const person = await transaction.get(
+        adminDb.collection("projects").doc(projectId).collection("people").doc(personId)
+      );
+      if (!person.exists || person.data()?.active !== true) {
+        throw new LineInviteSignupError("person_conflict", 409);
+      }
+      const linkedUserUid = typeof person.data()?.linkedUserUid === "string"
+        ? person.data()!.linkedUserUid.trim()
+        : "";
+      if (linkedUserUid) throw new LineInviteSignupError("existing_account_required", 409);
+    }
     const now = Timestamp.now();
     transaction.create(lockRef, {
       attemptId: attempt.id, inviteId, status: "active", createdAt: now, expiresAt: data.expiresAt,

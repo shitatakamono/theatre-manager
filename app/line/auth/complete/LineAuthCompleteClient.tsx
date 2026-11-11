@@ -19,7 +19,12 @@ type Status =
   | "invite_used"
   | "invite_unavailable"
   | "error";
-type SignupPreview = { projectName: string; displayName: string | null };
+type SignupPreview = {
+  projectName: string;
+  displayName: string | null;
+  personName: string | null;
+  existingAccountRequired: boolean;
+};
 
 export function LineAuthCompleteClient() {
   const started = useRef(false);
@@ -121,14 +126,16 @@ export function LineAuthCompleteClient() {
         body: JSON.stringify({ signupToken }),
       });
       const body = await response.json().catch(() => ({})) as {
-        ticket?: unknown; projectId?: unknown;
+        ticket?: unknown; projectId?: unknown; error?: unknown;
       };
       if (!response.ok || typeof body.ticket !== "string" || typeof body.projectId !== "string") {
-        throw new Error("signup_failed");
+        throw new Error(typeof body.error === "string" ? body.error : "signup_failed");
       }
       await exchangeAndSignIn(body.ticket, body.projectId);
-    } catch {
-      setSignupError("新しいアカウントを作成できませんでした。時間をおいてもう一度お試しください。");
+    } catch (error) {
+      setSignupError(error instanceof Error && error.message !== "signup_failed"
+        ? error.message
+        : "公演への参加を完了できませんでした。時間をおいてもう一度お試しください。");
       setSubmitting(false);
     }
   }
@@ -163,16 +170,37 @@ export function LineAuthCompleteClient() {
         )}
         {status === "signup" && signupPreview && (
           <div className={styles.signup}>
-            <h2>SeisakuBoardを初めて利用しますか？</h2>
-            <p>このLINEアカウントはSeisakuBoardにまだ登録されていません。</p>
-            <p><strong>{signupPreview.projectName}</strong>へ閲覧者として参加します。</p>
-            <p className={styles.warning}>すでにGoogleでSeisakuBoardを利用したことがある場合は、新しいアカウントを作成しないでください。</p>
-            <div className={styles.actions}>
-              <button type="button" className={styles.secondary} disabled={submitting} onClick={useExistingAccount}>既存アカウントでログイン</button>
-              <button type="button" disabled={submitting} onClick={() => void createAccount()}>{submitting ? "作成中…" : "LINEで新しいアカウントを作成"}</button>
-            </div>
+            {signupPreview.personName ? (
+              <>
+                <h2>公演への参加を確認</h2>
+                <p><strong>{signupPreview.personName}</strong>さんとして、<strong>{signupPreview.projectName}</strong>へ参加します。</p>
+                {signupPreview.existingAccountRequired ? (
+                  <>
+                    <p className={styles.warning}>この関係者情報はすでにSeisakuBoardで利用されています。既存のGoogleアカウントで本人確認してから参加してください。</p>
+                    <div className={styles.actions}>
+                      <button type="button" disabled={submitting} onClick={useExistingAccount}>既存アカウントで本人確認する</button>
+                    </div>
+                  </>
+                ) : (
+                  <div className={styles.actions}>
+                    <button type="button" disabled={submitting} onClick={() => void createAccount()}>{submitting ? "参加処理中…" : "この公演に参加する"}</button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <h2>SeisakuBoardを初めて利用しますか？</h2>
+                <p>このLINEアカウントはSeisakuBoardにまだ登録されていません。</p>
+                <p><strong>{signupPreview.projectName}</strong>へ閲覧者として参加します。</p>
+                <p className={styles.warning}>すでにGoogleでSeisakuBoardを利用したことがある場合は、新しいアカウントを作成しないでください。</p>
+                <div className={styles.actions}>
+                  <button type="button" className={styles.secondary} disabled={submitting} onClick={useExistingAccount}>既存アカウントでログイン</button>
+                  <button type="button" disabled={submitting} onClick={() => void createAccount()}>{submitting ? "作成中…" : "LINEで新しいアカウントを作成"}</button>
+                </div>
+              </>
+            )}
             {signupError && <p role="alert">{signupError}</p>}
-            <small>新しいアカウントを作成すると、<Link href="/terms">利用規約</Link>と<Link href="/privacy">プライバシーポリシー</Link>に同意したものとみなされます。</small>
+            {!signupPreview.existingAccountRequired && <small>公演へ参加すると、<Link href="/terms">利用規約</Link>と<Link href="/privacy">プライバシーポリシー</Link>に同意したものとみなされます。</small>}
           </div>
         )}
         {status === "error" && (

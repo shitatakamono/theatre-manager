@@ -9,6 +9,7 @@
 .actions p { color: #485850; font-size: 12px; line-height: 1.6; }
 .actions button { min-height: 42px; border-radius: 7px; background: #24684f; color: #fff; padding: 9px 14px; font-size: 12px; font-weight: 850; }
 .actions button[data-line] { background: #06c755; }
+.actions .secondary { border: 1px solid #9baba4; background: #fff; color: #31584b; }
 .actions button:disabled { opacity: .55; }
 .actions small { color: #68766f; font-size: 10px; line-height: 1.5; }
 .error { margin-top: 16px; border-radius: 7px; background: #fff3f1; color: #913a32; padding: 10px 12px; font-size: 12px; font-weight: 700; }

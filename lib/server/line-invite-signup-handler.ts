@@ -12,7 +12,12 @@ async function bodyToken(request: Request): Promise<string> {
 }
 
 export function createLineInviteSignupPreviewHandler(dependencies: {
-  preview: (token: string) => Promise<{ projectName: string; displayName: string | null } | null>;
+  preview: (token: string) => Promise<{
+    projectName: string;
+    displayName: string | null;
+    personName: string | null;
+    existingAccountRequired: boolean;
+  } | null>;
 }) {
   return async function POST(request: Request): Promise<Response> {
     const token = await bodyToken(request);
@@ -42,10 +47,15 @@ export function createLineInviteSignupHandler(dependencies: {
         error instanceof LineInviteSignupError ? "line_invite_signup_rejected" : "line_invite_signup_failed"
       );
       const status = error instanceof LineInviteSignupError ? error.status : 500;
+      const code = error instanceof LineInviteSignupError ? error.code : "";
       return json({
-        error: status === 503
-          ? "登録処理を完了できませんでした。時間をおいてもう一度お試しください。"
-          : "この招待では新しいアカウントを作成できません。",
+        error: code === "existing_account_required"
+          ? "この関係者情報はすでにSeisakuBoardで利用されています。既存アカウントで本人確認してください。"
+          : code === "signup_conflict" || code === "person_conflict" || code === "line_already_linked"
+            ? "関係者情報またはLINE連携が別の利用情報と競合しています。招待した方に確認してください。"
+            : status === 503
+              ? "登録処理を完了できませんでした。時間をおいてもう一度お試しください。"
+              : "この招待では公演への参加を完了できません。",
       }, status);
     }
   };

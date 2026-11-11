@@ -10,9 +10,11 @@ describe("LINE invite signup primitives", () => {
     strictEqual(LINE_INVITE_SIGNUP_TTL_MS, 10 * 60 * 1000);
     match(generateLineOnlyFirebaseUid(), /^line_[A-Za-z0-9_-]{43}$/);
   });
-  it("keeps the confirmation explicit and warns existing users", async () => {
+  it("uses a single participation action for a designated person and keeps general-invite protection", async () => {
     const source = await readFile(new URL("../app/line/auth/complete/LineAuthCompleteClient.tsx", import.meta.url), "utf8");
+    match(source, /公演への参加を確認/); match(source, /この公演に参加する/);
+    match(source, /既存アカウントで本人確認する/); match(source, /signupPreview\.personName/);
     match(source, /SeisakuBoardを初めて利用しますか/); match(source, /既存アカウントでログイン/);
-    match(source, /LINEで新しいアカウントを作成/); match(source, /利用規約/); match(source, /プライバシーポリシー/);
+    match(source, /利用規約/); match(source, /プライバシーポリシー/);
   });
 });

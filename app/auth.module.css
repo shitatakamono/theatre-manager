@@ -7,6 +7,7 @@
 .loginActions { display: grid; gap: 10px; margin-top: 26px; }
 .login button { min-height: 46px; border-radius: 9px; background: #286c55; color: #fff; padding: 10px 20px; font-weight: 850; }
 .login .lineLoginButton { background: #06c755; }
+.login .googleLoginButton { border: 1px solid #9baba4; background: #fff; color: #31584b; }
 .login small { display: block; margin-top: 12px; color: #66766f; font-size: 11px; line-height: 1.6; }
 .login span { display: block; margin-top: 12px; color: #b32626; font-size: 12px; }
 .userBar { min-height: 34px; display: flex; align-items: center; justify-content: flex-end; gap: 10px; background: #193e32; color: #fff; padding: 5px 18px; font-size: 11px; }

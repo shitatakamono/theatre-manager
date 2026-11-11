@@ -154,11 +154,32 @@ describe("LINE invite-only signup", () => {
 
   it("atomically links a designated person for immediate attendance identity", async () => {
     const started = await begin("person-a"); const auth = fakeAuth();
+    const preview = await signupService.previewLineInviteSignup(started.result.signupToken);
+    strictEqual(preview.personName, "参加者A");
+    strictEqual(preview.projectName, "LINE招待公演");
+    strictEqual(preview.existingAccountRequired, false);
     await signupService.completeLineInviteSignup(started.result.signupToken, auth);
     const uid = [...auth.users.keys()][0];
     strictEqual((await projectRef().collection("people").doc("person-a").get()).data().linkedUserUid, uid);
     strictEqual((await projectRef().collection("participants").doc("person-a").get()).data().linkedUserUid, uid);
     strictEqual((await projectRef().collection("participantLinkedUsers").doc(uid).get()).data().participantId, "person-a");
+  });
+
+  it("requires existing-account verification before creating a user for an already linked person", async () => {
+    const existingUid = "existing-google-user";
+    await projectRef().collection("people").doc("person-a").update({ linkedUserUid: existingUid });
+    const started = await begin("person-a", `U${"9".repeat(32)}`);
+    const preview = await signupService.previewLineInviteSignup(started.result.signupToken);
+    strictEqual(preview.personName, "参加者A");
+    strictEqual(preview.existingAccountRequired, true);
+    const auth = fakeAuth();
+    await rejects(
+      () => signupService.completeLineInviteSignup(started.result.signupToken, auth),
+      (error) => error?.code === "existing_account_required",
+    );
+    strictEqual(auth.users.size, 0);
+    strictEqual((await projectRef().collection("people").doc("person-a").get()).data().linkedUserUid, existingUid);
+    strictEqual((await db.collection("projectInviteLinks").doc(started.created.invite.id).get()).data().status, "pending");
   });
 
   it("does not offer signup without an invite and keeps an existing LINE mapping on its original uid", async () => {
