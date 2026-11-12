@@ -91,6 +91,7 @@ describe("external performance values", () => {
 
   it("keeps internal labels out of the UI and hides editing controls from viewers", async () => {
     const source = await readFile(new URL("../app/projects/[projectId]/external-performances/page.tsx", import.meta.url), "utf8");
+    const csvSource = await readFile(new URL("../app/projects/[projectId]/external-performances/ExternalPerformanceCsvImport.tsx", import.meta.url), "utf8");
     strictEqual(source.includes("この公演に折込する"), true);
     strictEqual(source.includes("折込情報を編集"), true);
     strictEqual(source.includes("折込情報も削除されます"), true);
@@ -98,6 +99,10 @@ describe("external performance values", () => {
     strictEqual(source.includes("折込・受渡日時"), true);
     strictEqual(source.includes("到着日時指定"), true);
     strictEqual(source.includes("未定の場合は空欄"), true);
-    strictEqual(source.includes("canEdit && <button"), true);
+    strictEqual(source.includes("{canEdit && <div className={styles.rowActions}"), true);
+    strictEqual(source.includes("canEdit && <div className={styles.headingActions}"), true);
+    strictEqual(csvSource.includes("CSV取込"), true);
+    strictEqual(csvSource.includes("重複スキップ"), true);
+    strictEqual(csvSource.includes("確認した公演を登録"), true);
   });
 });

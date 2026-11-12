@@ -680,6 +680,14 @@ describe("external performances", () => {
       ));
     }
   });
+
+  it("keeps CSV import serialization state server-only", async () => {
+    for (const db of [firestoreFor(), firestoreFor(ownerUid), firestoreFor(editorUid), firestoreFor(viewerUid)]) {
+      const ref = doc(db, "projects", projectId, "externalPerformanceImportState", "current");
+      await assertFails(getDoc(ref));
+      await assertFails(setDoc(ref, { revision: 1, updatedAt: serverTimestamp() }));
+    }
+  });
 });
 
 describe("multiple flyers", () => {

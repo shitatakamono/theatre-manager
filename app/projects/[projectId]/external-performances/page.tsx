@@ -16,6 +16,7 @@ import {
   type InsertionMethod, type InsertionStatus,
 } from "@/lib/external-performances";
 import { useProjectAccess } from "../ProjectAccess";
+import { ExternalPerformanceCsvImport } from "./ExternalPerformanceCsvImport";
 import styles from "./external-performances.module.css";
 
 type Props = { params: Promise<{ projectId: string }> };
@@ -112,7 +113,7 @@ export default function ExternalPerformancesPage({ params }: Props) {
   return <main className={styles.page}>
     <header className={styles.heading}>
       <div><p>EXTERNAL PERFORMANCES</p><h1>他団体公演・折込</h1><span>他団体の公演情報と、チラシ折込の予定をまとめます。</span></div>
-      {canEdit && <button type="button" onClick={openCreate}>＋ 公演情報を追加</button>}
+      {canEdit && <div className={styles.headingActions}><ExternalPerformanceCsvImport projectId={projectId} existing={items} onImported={reload} /><button type="button" onClick={openCreate}>＋ 公演情報を追加</button></div>}
     </header>
     <nav className={styles.filters} aria-label="表示する公演の絞り込み">{FILTERS.map((item) => <button key={item.value} type="button" aria-pressed={filter === item.value} onClick={() => setFilter(item.value)}>{item.label}</button>)}</nav>
     {error && !open && <p className={styles.error} role="alert">{error}</p>}
