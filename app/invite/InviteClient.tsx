@@ -103,8 +103,8 @@ export function InviteClient() {
     {preview?.status === "pending" && !profile && <div className={styles.actions}>
       <p>LINEで認証して、この公演への参加を進めてください。</p>
       <button type="button" data-line onClick={() => void startLineLogin()}>LINEで公演に参加</button>
-      <button type="button" className={styles.secondary} onClick={() => void login()}>Googleでログイン（既存利用者）</button>
-      <small>初めて利用する方も、有効な招待からLINEだけで登録できます。</small>
+      <button type="button" className={styles.secondary} onClick={() => void login()}>以前Googleで利用していた方</button>
+      <small>初めて利用する方はLINEだけで参加できます。以前Googleで利用していた方は、同じGoogleアカウントで本人確認し、参加後に個人設定からLINEを連携してください。</small>
     </div>}
     {preview?.status === "pending" && profile && <div className={styles.actions}><p>{profile.displayName || profile.email || "ログイン中のアカウント"}で参加します。</p><button type="button" disabled={claiming} onClick={() => void claim()}>{claiming ? "参加処理中…" : "この公演に参加"}</button></div>}
     <Link href="/projects">SeisakuBoardへ戻る</Link>

@@ -272,13 +272,17 @@ function SettingsContent() {
           {!lineLoading && <span className={styles.status} data-connected={lineConnected}>{lineConnected ? "連携済み" : "未連携"}</span>}
         </div>
 
-        <p className={styles.description}>LINEでお知らせを受け取るための個人設定です。</p>
+        <p className={styles.description}>
+          {lineConnected
+            ? "LINEログインとLINEでのお知らせを利用できます。"
+            : "以前Googleで利用していた方も、ここでLINEを連携すると、同じアカウントと公演権限のまま次回からLINEでログインできます。"}
+        </p>
 
         {lineLoading ? <p className={styles.loading}>連携状態を確認しています…</p> : (
           <div className={styles.actions}>
             {lineConnected ? (
               <div className={styles.lineConnectedActions}>
-                <p className={styles.connectedMessage}>LINEとの連携が完了しています。</p>
+                <p className={styles.connectedMessage}>LINEとの連携が完了しています。次回からLINEでログインできます。</p>
                 <button className={styles.disconnectButton} type="button" disabled={lineProcessing} onClick={() => void disconnectLine()}>{lineProcessing ? "解除中…" : "LINE連携を解除"}</button>
               </div>
             ) : (

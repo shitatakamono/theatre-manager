@@ -153,7 +153,7 @@ export function LineAuthCompleteClient() {
         {status === "unlinked" && (
           <p role="alert">
             このLINEアカウントはまだSeisakuBoardに連携されていません。<br />
-            既にSeisakuBoardを利用している方は、Googleでログイン後、個人設定からLINEを連携してください。
+            以前Googleで利用していた方は、同じGoogleアカウントで本人確認後、個人設定からLINEを連携してください。
           </p>
         )}
         {status === "invite_expired" && (
@@ -176,9 +176,9 @@ export function LineAuthCompleteClient() {
                 <p><strong>{signupPreview.personName}</strong>さんとして、<strong>{signupPreview.projectName}</strong>へ参加します。</p>
                 {signupPreview.existingAccountRequired ? (
                   <>
-                    <p className={styles.warning}>この関係者情報はすでにSeisakuBoardで利用されています。既存のGoogleアカウントで本人確認してから参加してください。</p>
+                    <p className={styles.warning}>この関係者情報はすでにSeisakuBoardで利用されています。以前利用していたGoogleアカウントで本人確認してから参加してください。</p>
                     <div className={styles.actions}>
-                      <button type="button" disabled={submitting} onClick={useExistingAccount}>既存アカウントで本人確認する</button>
+                      <button type="button" disabled={submitting} onClick={useExistingAccount}>以前のGoogleアカウントで本人確認する</button>
                     </div>
                   </>
                 ) : (
@@ -192,10 +192,10 @@ export function LineAuthCompleteClient() {
                 <h2>SeisakuBoardを初めて利用しますか？</h2>
                 <p>このLINEアカウントはSeisakuBoardにまだ登録されていません。</p>
                 <p><strong>{signupPreview.projectName}</strong>へ閲覧者として参加します。</p>
-                <p className={styles.warning}>すでにGoogleでSeisakuBoardを利用したことがある場合は、新しいアカウントを作成しないでください。</p>
+                <p className={styles.warning}>以前GoogleでSeisakuBoardを利用していた方は、同じGoogleアカウントで本人確認してください。</p>
                 <div className={styles.actions}>
-                  <button type="button" className={styles.secondary} disabled={submitting} onClick={useExistingAccount}>既存アカウントでログイン</button>
-                  <button type="button" disabled={submitting} onClick={() => void createAccount()}>{submitting ? "作成中…" : "LINEで新しいアカウントを作成"}</button>
+                  <button type="button" className={styles.secondary} disabled={submitting} onClick={useExistingAccount}>以前Googleで利用していた方</button>
+                  <button type="button" disabled={submitting} onClick={() => void createAccount()}>{submitting ? "参加処理中…" : "LINEでこの公演に参加"}</button>
                 </div>
               </>
             )}

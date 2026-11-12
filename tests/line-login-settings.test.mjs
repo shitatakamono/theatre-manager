@@ -10,6 +10,8 @@ describe("LINE Login settings UI", () => {
     assert.match(source, /LINE連携/);
     assert.match(source, /LINEと連携/);
     assert.match(source, /連携済み/);
+    assert.match(source, /同じアカウントと公演権限のまま次回からLINEでログイン/);
+    assert.match(source, /LINEとの連携が完了しています。次回からLINEでログインできます/);
     assert.match(source, /\/api\/line\/login\/status/);
     assert.match(source, /\/api\/line\/login\/start/);
     assert.match(source, /\/api\/line\/login\/disconnect/);

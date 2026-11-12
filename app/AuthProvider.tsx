@@ -9,7 +9,7 @@ import {
   signOut,
 } from "firebase/auth";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { auth, googleAuthProvider } from "@/lib/firebase";
 import type { UserProfile } from "@/lib/auth";
 import { completeAuthenticatedUserBootstrap } from "@/lib/auth-bootstrap";
@@ -19,6 +19,7 @@ import { isPublicAppPath } from "@/lib/auth-paths";
 import styles from "./auth.module.css";
 
 type LoginResult = "signed_in" | "redirect_started" | "cancelled" | "failed";
+const LINE_MIGRATION_KEY = "seisakuboard:line-migration";
 
 type AuthContextValue = {
   loading: boolean;
@@ -34,6 +35,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [error, setError] = useState("");
@@ -41,7 +43,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let active = true;
-    void getRedirectResult(auth).catch(() => setError("Googleログインを完了できませんでした"));
+    void getRedirectResult(auth).then((result) => {
+      if (result && sessionStorage.getItem(LINE_MIGRATION_KEY) === "1") {
+        sessionStorage.removeItem(LINE_MIGRATION_KEY);
+        router.replace("/settings?line=migration");
+      }
+    }).catch(() => {
+      sessionStorage.removeItem(LINE_MIGRATION_KEY);
+      setError("Googleログインを完了できませんでした");
+    });
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (!user) {
         if (active) {
@@ -81,7 +91,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       })();
     });
     return () => { active = false; unsubscribe(); };
-  }, []);
+  }, [router]);
 
   async function login(): Promise<LoginResult> {
     setError("");
@@ -101,6 +111,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (code === "auth/popup-closed-by-user") return "cancelled";
       setError("Googleログインに失敗しました");
       return "failed";
+    }
+  }
+
+  async function loginForLineMigration() {
+    sessionStorage.setItem(LINE_MIGRATION_KEY, "1");
+    const result = await login();
+    if (result === "signed_in") {
+      sessionStorage.removeItem(LINE_MIGRATION_KEY);
+      router.push("/settings?line=migration");
+    } else if (result !== "redirect_started") {
+      sessionStorage.removeItem(LINE_MIGRATION_KEY);
     }
   }
 
@@ -151,7 +172,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   if (loading) return <div className={styles.loading}>認証状態を確認しています…</div>;
-  if (!profile) return <main className={styles.login}><section><p>SEISAKU BOARD</p><h1>SeisakuBoard</h1><h2>公演制作をチームで管理</h2><div className={styles.loginActions}><button className={styles.lineLoginButton} onClick={() => void loginWithLine()}>LINEでログイン</button><button className={styles.googleLoginButton} onClick={() => void login()}>Googleでログイン（既存利用者）</button></div><small>初めて利用する方は、公演の招待リンクからLINEで参加してください。Googleログインは既存利用者の本人確認のために残しています。</small>{error && <span role="alert">{error}</span>}</section></main>;
+  if (!profile) return <main className={styles.login}><section><p>SEISAKU BOARD</p><h1>SeisakuBoard</h1><h2>公演制作をチームで管理</h2><div className={styles.loginActions}><button className={styles.lineLoginButton} onClick={() => void loginWithLine()}>LINEでログイン</button><button className={styles.googleLoginButton} onClick={() => void loginForLineMigration()}>以前Googleで利用していた方</button></div><small>初めて利用する方は、公演の招待リンクからLINEで参加してください。以前Googleで利用していた方は、同じGoogleアカウントで本人確認後、個人設定からLINEを連携できます。</small>{error && <span role="alert">{error}</span>}</section></main>;
 
   return <AuthContext.Provider value={value}><div className={styles.userBar}><span>{profile.displayName || profile.email || "ログイン中"}</span><button onClick={() => void signOut(auth)}>ログアウト</button></div>{children}</AuthContext.Provider>;
 }

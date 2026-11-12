@@ -20,7 +20,7 @@ describe("project invite link UI", () => {
     doesNotMatch(value, /ProjectInviteLinksPanel|createProjectMemberInvite|システム利用者を招待|招待リンクを作成/);
   });
   it("keeps raw invite tokens in sessionStorage, removes the fragment, and exposes no editor role", async () => {
-    const page = await source("app/invite/InviteClient.tsx"); match(page, /sessionStorage/); match(page, /history\.replaceState/); match(page, /Googleでログイン（既存利用者）/); match(page, /LINEで公演に参加/); match(page, /loginWithLine\(token, true\)/); doesNotMatch(page, /localStorage/);
+    const page = await source("app/invite/InviteClient.tsx"); match(page, /sessionStorage/); match(page, /history\.replaceState/); match(page, /以前Googleで利用していた方/); match(page, /同じGoogleアカウントで本人確認/); match(page, /参加後に個人設定からLINEを連携/); match(page, /LINEで公演に参加/); match(page, /loginWithLine\(token, true\)/); doesNotMatch(page, /localStorage/);
     const provider = await source("app/AuthProvider.tsx"); match(provider, /startMode: requireInvite \? "invite" : "normal"/); match(provider, /inviteToken/);
     const model = await source("lib/project-invite-links.ts"); doesNotMatch(model, /"editor"|"owner"/);
   });

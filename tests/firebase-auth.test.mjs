@@ -25,8 +25,12 @@ describe("Firebase Authentication login flows", () => {
     assert.match(source, /signInWithPopup/);
     assert.match(source, /signInWithRedirect/);
     assert.match(source, /LINEでログイン/);
-    assert.ok(source.indexOf("LINEでログイン") < source.indexOf("Googleでログイン（既存利用者）"));
+    assert.ok(source.indexOf("LINEでログイン") < source.indexOf("以前Googleで利用していた方"));
     assert.match(source, /招待リンクからLINEで参加/);
+    assert.match(source, /同じGoogleアカウントで本人確認後、個人設定からLINEを連携/);
+    assert.match(source, /loginForLineMigration/);
+    assert.match(source, /sessionStorage\.setItem\(LINE_MIGRATION_KEY, "1"\)/);
+    assert.match(source, /router\.(push|replace)\("\/settings\?line=migration"\)/);
     assert.match(source, /\/api\/line\/auth\/start/);
     assert.match(source, /getRedirectResult/);
     assert.match(source, /completeAuthenticatedUserBootstrap/);
