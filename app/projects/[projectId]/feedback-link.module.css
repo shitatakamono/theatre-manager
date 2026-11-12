@@ -1,0 +1,45 @@
+.link {
+  position: fixed;
+  z-index: 40;
+  right: 1rem;
+  bottom: 1rem;
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  border: 1px solid #065f46;
+  border-radius: 9999px;
+  background: #fff;
+  padding: 0 1rem;
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 10%), 0 4px 6px -4px rgb(0 0 0 / 10%);
+  color: #064e3b;
+  font-size: .875rem;
+  font-weight: 700;
+  line-height: 1.25rem;
+  text-decoration: none;
+  touch-action: manipulation;
+}
+
+.link:hover { background: #ecfdf5; }
+.link:focus-visible { outline: 2px solid #065f46; outline-offset: 2px; }
+.mobileLabel { display: none; }
+
+@media screen and (max-width: 700px) {
+  .link {
+    z-index: 4;
+    right: max(8px, env(safe-area-inset-right, 0px));
+    bottom: max(8px, env(safe-area-inset-bottom, 0px));
+    min-width: 44px;
+    min-height: 44px;
+    justify-content: center;
+    padding: 6px 10px;
+    font-size: 12px;
+    line-height: 1.2;
+  }
+
+  .desktopLabel { display: none; }
+  .mobileLabel { display: inline; }
+}
+
+@media print {
+  .link { display: none !important; }
+}

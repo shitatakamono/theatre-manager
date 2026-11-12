@@ -1,4 +1,5 @@
 import { deepStrictEqual, strictEqual, throws } from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { describe, it } from "node:test";
 import {
   buildFeedbackPayload,
@@ -71,5 +72,42 @@ describe("feedback payload", () => {
   it("keeps the page where reporting started and rejects another project path", () => {
     strictEqual(normalizeFeedbackSourcePath("project-a", "/projects/project-a/production/flyer?x=1"), "/projects/project-a/production/flyer");
     strictEqual(normalizeFeedbackSourcePath("project-a", "/projects/project-b/info"), "/projects/project-a/feedback");
+  });
+});
+
+describe("feedback shortcut", () => {
+  it("keeps the desktop label while using a safe compact mobile control below overlays", async () => {
+    const [component, css] = await Promise.all([
+      readFile(new URL("../app/projects/[projectId]/FeedbackLink.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../app/projects/[projectId]/feedback-link.module.css", import.meta.url), "utf8"),
+    ]);
+
+    strictEqual(component.includes('pathname === `/projects/${projectId}/feedback`'), true);
+    strictEqual(component.includes('pathname: `/projects/${projectId}/feedback`'), true);
+    strictEqual(component.includes('aria-label="フィードバックを送る"'), true);
+    strictEqual(component.includes(">フィードバック</span>"), true);
+    strictEqual(component.includes(">問題を報告</span>"), true);
+    strictEqual(css.includes("z-index: 40"), true);
+    strictEqual(css.includes("@media screen and (max-width: 700px)"), true);
+    strictEqual(css.includes("z-index: 4"), true);
+    strictEqual(css.includes("min-width: 44px"), true);
+    strictEqual(css.includes("min-height: 44px"), true);
+    strictEqual(css.includes("env(safe-area-inset-right, 0px)"), true);
+    strictEqual(css.includes("env(safe-area-inset-bottom, 0px)"), true);
+    strictEqual(css.includes("@media print"), true);
+  });
+
+  it("keeps the mobile shortcut below sticky actions and editing overlays", async () => {
+    const [feedbackCss, attendanceCss, attendanceManageCss, rehearsalCss] = await Promise.all([
+      readFile(new URL("../app/projects/[projectId]/feedback-link.module.css", import.meta.url), "utf8"),
+      readFile(new URL("../app/projects/[projectId]/attendance/attendance.module.css", import.meta.url), "utf8"),
+      readFile(new URL("../app/projects/[projectId]/attendance/manage/attendance-manage.module.css", import.meta.url), "utf8"),
+      readFile(new URL("../app/projects/[projectId]/rehearsals/rehearsals.module.css", import.meta.url), "utf8"),
+    ]);
+
+    strictEqual(feedbackCss.includes("z-index: 4"), true);
+    strictEqual(attendanceCss.includes("z-index: 5"), true);
+    strictEqual(attendanceManageCss.includes("z-index: 30"), true);
+    strictEqual(rehearsalCss.includes("z-index: 50"), true);
   });
 });
