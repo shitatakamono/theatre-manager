@@ -1,7 +1,12 @@
 import { deepStrictEqual, strictEqual, throws } from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { analyzeExternalPerformanceCsv } from "../lib/external-performance-csv.ts";
+import {
+  analyzeExternalPerformanceCsv,
+  buildExternalPerformanceCsvTemplate,
+  EXTERNAL_PERFORMANCE_CSV_HEADERS,
+  EXTERNAL_PERFORMANCE_CSV_TEMPLATE_FILES,
+} from "../lib/external-performance-csv.ts";
 
 const header = "団体名,公演名,会場,開始日,終了日,備考,日程原文";
 
@@ -14,6 +19,28 @@ function existing(overrides = {}) {
 }
 
 describe("external performance CSV", () => {
+  it("builds a BOM-prefixed empty template with the supported header only", () => {
+    const template = buildExternalPerformanceCsvTemplate("empty");
+    strictEqual(template.startsWith("\uFEFF"), true);
+    strictEqual(template, `\uFEFF${EXTERNAL_PERFORMANCE_CSV_HEADERS.join(",")}\r\n`);
+    strictEqual(EXTERNAL_PERFORMANCE_CSV_TEMPLATE_FILES.empty, "seisakuboard_orikomi_template.csv");
+    strictEqual(EXTERNAL_PERFORMANCE_CSV_TEMPLATE_FILES.sample, "seisakuboard_orikomi_sample.csv");
+  });
+
+  it("builds a parseable fictional sample with fixed and uncertain schedules", () => {
+    const sample = buildExternalPerformanceCsvTemplate("sample");
+    const result = analyzeExternalPerformanceCsv(sample);
+    strictEqual(sample.startsWith("\uFEFF"), true);
+    strictEqual(result.total, 2);
+    strictEqual(result.ready, 2);
+    strictEqual(result.rows[0].startDate, "2027-04-10");
+    strictEqual(result.rows[0].endDate, "2027-04-12");
+    strictEqual(result.rows[1].startDate, "");
+    strictEqual(result.rows[1].endDate, "");
+    strictEqual(result.rows[1].note.includes("日程原文：2027年秋頃予定"), true);
+    strictEqual(result.rows.every((row) => row.organizationName.startsWith("サンプル")), true);
+  });
+
   it("parses UTF-8 BOM, quoted commas, quotes, and embedded newlines", () => {
     const csv = `\uFEFF${header}\r\n"劇団,A","春""公演",会場A,2027-03-01,2027-03-03,"一行目\n二行目",調整中`;
     const result = analyzeExternalPerformanceCsv(csv);

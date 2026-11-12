@@ -6,8 +6,35 @@ import {
 
 export const EXTERNAL_PERFORMANCE_CSV_MAX_ROWS = 100;
 
+export const EXTERNAL_PERFORMANCE_CSV_HEADERS = [
+  "団体名", "公演名", "会場", "開始日", "終了日", "備考", "日程原文",
+] as const;
+
 const REQUIRED_HEADERS = ["団体名", "公演名", "会場", "開始日", "終了日", "備考"] as const;
 const OPTIONAL_HEADERS = ["日程原文"] as const;
+
+export type ExternalPerformanceCsvTemplateKind = "empty" | "sample";
+
+export const EXTERNAL_PERFORMANCE_CSV_TEMPLATE_FILES: Record<ExternalPerformanceCsvTemplateKind, string> = {
+  empty: "seisakuboard_orikomi_template.csv",
+  sample: "seisakuboard_orikomi_sample.csv",
+};
+
+function escapeCsvCell(value: string): string {
+  if (!/[",\r\n]/u.test(value)) return value;
+  return `"${value.replaceAll('"', '""')}"`;
+}
+
+export function buildExternalPerformanceCsvTemplate(kind: ExternalPerformanceCsvTemplateKind): string {
+  const rows: string[][] = [Array.from(EXTERNAL_PERFORMANCE_CSV_HEADERS)];
+  if (kind === "sample") {
+    rows.push(
+      ["サンプル劇団ひかり", "サンプル公演『春の風』", "サンプル市民ホール", "2027-04-10", "2027-04-12", "入力例（確定日程）", ""],
+      ["サンプル演劇ユニット星", "サンプル公演『月の庭』", "サンプル文化会館", "", "", "入力例（日程未確定）", "2027年秋頃予定"],
+    );
+  }
+  return `\uFEFF${rows.map((row) => row.map(escapeCsvCell).join(",")).join("\r\n")}\r\n`;
+}
 
 export type ExternalPerformanceCsvRowStatus = "ready" | "duplicate" | "possible_duplicate" | "error";
 

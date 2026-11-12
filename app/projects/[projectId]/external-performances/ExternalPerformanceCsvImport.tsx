@@ -1,13 +1,29 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { analyzeExternalPerformanceCsv, type ExternalPerformanceCsvAnalysis } from "@/lib/external-performance-csv";
+import {
+  analyzeExternalPerformanceCsv,
+  buildExternalPerformanceCsvTemplate,
+  EXTERNAL_PERFORMANCE_CSV_TEMPLATE_FILES,
+  type ExternalPerformanceCsvAnalysis,
+  type ExternalPerformanceCsvTemplateKind,
+} from "@/lib/external-performance-csv";
 import type { ExternalPerformance } from "@/lib/external-performances";
 import { auth } from "@/lib/firebase";
 import type { ExternalPerformanceImportResult } from "@/lib/server/external-performance-import";
 import styles from "./external-performances.module.css";
 
 const MAX_CSV_BYTES = 1024 * 1024;
+
+function downloadTemplate(kind: ExternalPerformanceCsvTemplateKind): void {
+  const blob = new Blob([buildExternalPerformanceCsvTemplate(kind)], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = EXTERNAL_PERFORMANCE_CSV_TEMPLATE_FILES[kind];
+  link.click();
+  URL.revokeObjectURL(url);
+}
 
 function dateLabel(startDate: string, endDate: string): string {
   if (!startDate && !endDate) return "日程未定";
@@ -93,6 +109,19 @@ export function ExternalPerformanceCsvImport({ projectId, existing, onImported }
         <header><div><p>CSV IMPORT</p><h2 id="csv-import-title">公演候補をCSVから登録</h2></div><button type="button" aria-label="閉じる" onClick={close}>×</button></header>
         <div className={styles.csvBody}>
           <p className={styles.csvLead}>団体名・公演名・会場・開始日・終了日・備考・日程原文のCSVを読み込みます。確認して登録するまで保存されません。</p>
+          <section className={styles.csvTemplates} aria-labelledby="csv-template-title">
+            <div><strong id="csv-template-title">CSVテンプレート</strong><span>入力用の空ファイル、または入力例付きファイルをダウンロードできます。</span></div>
+            <div className={styles.csvTemplateLinks}>
+              <button type="button" onClick={() => downloadTemplate("empty")}>空のCSVテンプレート</button>
+              <button type="button" onClick={() => downloadTemplate("sample")}>入力例付きサンプルCSV</button>
+            </div>
+            <ul>
+              <li>団体名・公演名は必須です。</li>
+              <li>日付はYYYY-MM-DD形式で入力してください。</li>
+              <li>日程未確定の場合は開始日・終了日を空欄にし、日程原文へ入力してください。</li>
+              <li>Excelで保存する際は「CSV UTF-8」形式を使用してください。</li>
+            </ul>
+          </section>
           <input ref={inputRef} className={styles.visuallyHidden} type="file" accept=".csv,text/csv" onChange={(event) => { void choose(event.target.files?.[0]); }} />
           <button className={styles.fileButton} type="button" disabled={saving} onClick={() => inputRef.current?.click()}>CSVを選択</button>
           {fileName && <p className={styles.fileName}>{fileName}</p>}
