@@ -13,6 +13,10 @@ import { getAppOrigin } from "../app-url.ts";
 import { UserLinkReservationError } from "../user-link-reservations.ts";
 import { adminDb } from "./firebase-admin.ts";
 import { linkProjectPersonToUserInTransaction } from "./user-link-reservations.ts";
+import {
+  lineLinkEventId,
+  writeLineLinkEvent,
+} from "./line-link-events.ts";
 
 const COLLECTION = "projectInviteLinks";
 const CREATE_ATTEMPTS = 3;
@@ -279,7 +283,7 @@ export async function claimProjectInviteLink(input: {
     throw new ProjectInviteLinkError("invite_not_found", 404, "招待リンクが見つかりません");
   }
   try {
-    return await adminDb.runTransaction(async (transaction) => {
+    const result = await adminDb.runTransaction(async (transaction) => {
       const invite = await transaction.get(inviteRef);
       if (!invite.exists) throw new ProjectInviteLinkError("invite_not_found", 404, "招待リンクが見つかりません");
       const data = invite.data() ?? {};
@@ -300,10 +304,11 @@ export async function claimProjectInviteLink(input: {
       const memberRef = projectRef.collection("members").doc(input.uid);
       const personId = typeof data.personId === "string" ? requiredId(data.personId, "関係者ID") : null;
       const personRef = personId ? projectRef.collection("people").doc(personId) : null;
-      const [project, member, person] = await Promise.all([
+      const [project, member, person, lineIntegration] = await Promise.all([
         transaction.get(projectRef),
         transaction.get(memberRef),
         personRef ? transaction.get(personRef) : Promise.resolve(null),
+        transaction.get(adminDb.collection("userIntegrations").doc(input.uid).collection("providers").doc("line")),
       ]);
       if (!project.exists) throw new ProjectInviteLinkError("project_not_found", 404, "招待された公演が見つかりません");
       const memberUids = Array.isArray(project.data()?.memberUids) ? project.data()!.memberUids as unknown[] : [];
@@ -313,6 +318,12 @@ export async function claimProjectInviteLink(input: {
 
       const now = Timestamp.now();
       const actorName = input.displayName?.trim() || "システム利用者";
+      const hasLineLink = lineIntegration.exists
+        && lineIntegration.data()?.provider === "line"
+        && lineIntegration.data()?.status === "linked";
+      const linkEventId = person && personId && hasLineLink
+        ? lineLinkEventId(inviteRef.id, projectId, personId)
+        : null;
       if (person && personId) {
         await linkProjectPersonToUserInTransaction({
           transaction,
@@ -325,6 +336,15 @@ export async function claimProjectInviteLink(input: {
           activityRef: projectRef.collection("activityLogs").doc(),
           redactActivityActorUid: true,
         });
+        if (linkEventId) {
+          writeLineLinkEvent(transaction, {
+            projectRef, eventId: linkEventId, eventType: "linked", personId,
+            personName: String(person.data()?.displayName ?? "関係者"),
+            lineDisplayName: typeof lineIntegration.data()?.lineDisplayName === "string"
+              ? lineIntegration.data()!.lineDisplayName : actorName,
+            source: "invite_claim", occurredAt: now,
+          });
+        }
       }
       if (!member.exists) {
         transaction.update(projectRef, { memberUids: [...memberUids, input.uid] });
@@ -348,8 +368,9 @@ export async function claimProjectInviteLink(input: {
         actorName,
         now
       ));
-      return { projectId, outcome: "claimed" as const, personLinked: Boolean(personId) };
+      return { projectId, outcome: "claimed" as const, personLinked: Boolean(personId), linkEventId };
     });
+    return { projectId: result.projectId, outcome: result.outcome, personLinked: result.personLinked };
   } catch (error) {
     if (error instanceof UserLinkReservationError) {
       throw new ProjectInviteLinkError(

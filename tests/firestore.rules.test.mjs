@@ -501,6 +501,7 @@ describe("owner role", () => {
     removeBatch.delete(memberRef(db, outsiderUid));
     removeBatch.update(projectRef(db), { memberUids: arrayRemove(outsiderUid) });
     await assertSucceeds(removeBatch.commit());
+    await assertFails(getDoc(projectRef(firestoreFor(outsiderUid))));
   });
 
   it("rejects inconsistent member document and memberUids changes", async () => {
@@ -1778,6 +1779,16 @@ describe("server-only LINE notification deliveries", () => {
       const ref = doc(db, "lineNotificationDeliveries", "opaque-delivery-id");
       await assertFails(getDoc(ref));
       await assertFails(setDoc(ref, { status: "pending" }));
+    }
+  });
+});
+
+describe("server-only LINE link history", () => {
+  it("denies direct client reads and writes, including owners", async () => {
+    for (const db of [firestoreFor(), firestoreFor(ownerUid), firestoreFor(viewerUid)]) {
+      const ref = doc(db, "projects", projectId, "lineLinkEvents", "event-a");
+      await assertFails(getDoc(ref));
+      await assertFails(setDoc(ref, { eventType: "linked" }));
     }
   });
 });

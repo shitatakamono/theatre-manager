@@ -40,6 +40,12 @@ import {
   getPersonInviteState,
   type ProjectInviteLinkSummary,
 } from "@/lib/project-invite-links";
+import {
+  listLineLinkHistory,
+  repairLinePersonLink,
+  type LineLinkHistoryItem,
+} from "@/lib/line-link-event-client";
+import { lineLinkEventLabel } from "@/lib/line-link-events";
 import { useProjectAccess } from "../ProjectAccess";
 import styles from "./people.module.css";
 
@@ -80,6 +86,9 @@ export function PeopleManagementClient({
   const [newInvitePersonId, setNewInvitePersonId] = useState("");
   const [showInactive, setShowInactive] = useState(false);
   const [sortOrder, setSortOrder] = useState<PeopleManagementListSort>("cast_first");
+  const [lineLinkEvents, setLineLinkEvents] = useState<LineLinkHistoryItem[]>([]);
+  const [lineHistoryError, setLineHistoryError] = useState("");
+  const [repairingPersonId, setRepairingPersonId] = useState("");
   const memberByUid = useMemo(() => new Map(members.map((member) => [member.uid, member])), [members]);
   const linkedPersonByUid = useMemo(() => new Map(people.flatMap((person) => person.linkedUserUid
     ? [[person.linkedUserUid, person.id] as const]
@@ -135,6 +144,15 @@ export function PeopleManagementClient({
           : "招待状況を読み込めませんでした");
       })
       .finally(() => { if (active) setInviteLinksLoading(false); });
+    return () => { active = false; };
+  }, [canManageMembers, project.id]);
+
+  useEffect(() => {
+    if (!canManageMembers) return;
+    let active = true;
+    void listLineLinkHistory(project.id)
+      .then((items) => { if (active) setLineLinkEvents(items); })
+      .catch(() => { if (active) setLineHistoryError("LINE連携履歴を読み込めませんでした"); });
     return () => { active = false; };
   }, [canManageMembers, project.id]);
 
@@ -211,6 +229,40 @@ export function PeopleManagementClient({
     } catch (caught) {
       setInviteError(caught instanceof Error ? caught.message : "招待を取り消せませんでした");
     } finally { setInviteBusyPersonId(""); }
+  }
+
+  async function repairLineLink(person: ProjectPerson) {
+    if (!canManageMembers || !person.linkedUserUid || repairingPersonId) return;
+    const member = memberByUid.get(person.linkedUserUid);
+    if (member && member.role !== "viewer") {
+      setInviteError("OwnerまたはEditorの連携は自動解除できません。先にシステム利用者の権限を確認してください。");
+      return;
+    }
+    if (!window.confirm(
+      `${person.displayName}さんの誤った連携を解除しますか？\n\n対象のViewerはこの公演を利用できなくなります。`+
+      "\nLINEログインや他公演の利用権は解除されません。\n解除後、新しい招待リンクを発行します。"
+    )) return;
+    setRepairingPersonId(person.id);
+    setInviteError("");
+    setCreatedInvite(null);
+    try {
+      await repairLinePersonLink(project.id, person.id);
+      setPeople(await getProjectPeopleWithFallback(project.id));
+      setLineLinkEvents(await listLineLinkHistory(project.id));
+      try {
+        const result = await createProjectInviteLink(project.id, person.id);
+        setInviteLinks((current) => [result.invite, ...current]);
+        setCreatedInvite({ personName: person.displayName, url: result.url });
+        setNotice(`${person.displayName}さんの連携を解除し、新しい招待リンクを発行しました`);
+      } catch {
+        setNotice(`${person.displayName}さんの連携を解除しました`);
+        setInviteError("招待リンクを発行できませんでした。関係者一覧からもう一度発行してください。");
+      }
+    } catch (caught) {
+      setInviteError(caught instanceof Error ? caught.message : "誤連携を解除できませんでした");
+    } finally {
+      setRepairingPersonId("");
+    }
   }
 
   async function createNewPersonAndInvite(event: React.FormEvent<HTMLFormElement>) {
@@ -425,6 +477,15 @@ export function PeopleManagementClient({
                   <button type="button" disabled={Boolean(inviteBusyPersonId)} onClick={() => void issuePersonInvite(person, pendingInvite)}>新しい招待リンクを発行</button>
                   <button type="button" data-danger disabled={Boolean(inviteBusyPersonId)} onClick={() => void cancelPersonInvite(pendingInvite, person.displayName)}>招待を取り消す</button>
                 </div>}
+                {canManageMembers && person.linkedUserUid && member?.role === "viewer" && <button
+                  type="button"
+                  data-danger
+                  disabled={Boolean(repairingPersonId)}
+                  onClick={() => void repairLineLink(person)}
+                >{repairingPersonId === person.id ? "解除中…" : "誤連携を解除して再招待"}</button>}
+                {canManageMembers && person.linkedUserUid && member && member.role !== "viewer" && <small>
+                  Owner・Editorの連携解除は権限確認が必要です。
+                </small>}
               </div></td>
               <td data-label="キャスト">{association.castLabels.join(" / ") || "—"}</td>
               <td data-label="スタッフ">{association.staffRoles.join(" / ") || "—"}</td>
@@ -434,6 +495,21 @@ export function PeopleManagementClient({
         </table>
       </div>
     )}
+
+    {canManageMembers && <section className={styles.lineHistory} aria-labelledby="line-link-history-title">
+      <div><h2 id="line-link-history-title">LINE連携履歴</h2><span>最新100件</span></div>
+      {lineHistoryError && <p className={styles.error} role="alert">{lineHistoryError}</p>}
+      {!lineHistoryError && lineLinkEvents.length === 0 && <p>LINE連携履歴はまだありません。</p>}
+      {lineLinkEvents.length > 0 && <ul>{lineLinkEvents.map((item) => <li key={item.id}>
+        <time>{item.occurredAt ? new Intl.DateTimeFormat("ja-JP", {
+          timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit", day: "2-digit",
+          hour: "2-digit", minute: "2-digit",
+        }).format(new Date(item.occurredAt)) : "日時未確定"}</time>
+        <strong>{item.personName}</strong>
+        <span>LINE表示名：{item.lineDisplayName}</span>
+        <em>{lineLinkEventLabel(item.eventType)}</em>
+      </li>)}</ul>}
+    </section>}
 
     {editing !== undefined && <div className={styles.overlay} role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) closeEditor(); }}>
       <section className={styles.drawer} role="dialog" aria-modal="true" aria-labelledby="related-person-editor-title">

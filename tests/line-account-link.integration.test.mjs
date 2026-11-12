@@ -75,10 +75,12 @@ describe("LINE Login server transactions", () => {
     const result = await lineLoginService.completeLineLoginState({
       state: temporary.state,
       lineUserId: lineA,
+      lineDisplayName: "LINE表示名",
       deliveryStatus: "reachable",
     });
     strictEqual(result.outcome, "linked");
     strictEqual((await integrationRef(uidA).get()).data().deliveryStatus, "reachable");
+    strictEqual((await integrationRef(uidA).get()).data().lineDisplayName, "LINE表示名");
     strictEqual((await reverseRef(lineA).get()).data().uid, uidA);
     strictEqual((await loginStateRef(temporary.state).get()).data().status, "consumed");
   });

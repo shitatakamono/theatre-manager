@@ -1106,6 +1106,10 @@ service cloud.firestore {
         allow update, delete: if false;
       }
 
+      match /lineLinkEvents/{eventId} {
+        allow read, write: if false;
+      }
+
       match /taskEvents/{eventId} {
         allow read: if isMember(projectId);
         allow create: if canEdit(projectId) && validTaskEvent();

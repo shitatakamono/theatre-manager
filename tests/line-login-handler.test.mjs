@@ -179,7 +179,7 @@ describe("LINE Login callback", () => {
     const calls = [];
     const handler = createLineLoginCallbackHandler(callbackDependencies({
       exchangeCode: async (input) => { calls.push(["exchange", input]); return { accessToken: "access-a", idToken: "id-a" }; },
-      verifyIdToken: async (input) => { calls.push(["verify", input]); return { lineUserId }; },
+      verifyIdToken: async (input) => { calls.push(["verify", input]); return { lineUserId, displayName: "LINE表示名" }; },
       completeState: async (input) => { calls.push(["complete", input]); return { outcome: "linked" }; },
     }));
     const response = await handler(new Request(`https://app.example/api/line/login/callback?code=code-a&state=${state}`));
@@ -188,6 +188,7 @@ describe("LINE Login callback", () => {
     strictEqual(calls[0][1].codeVerifier, verifier);
     strictEqual(calls[1][1].nonce, "nonce-a");
     strictEqual(calls[2][1].lineUserId, lineUserId);
+    strictEqual(calls[2][1].lineDisplayName, "LINE表示名");
     strictEqual(calls[2][1].deliveryStatus, "reachable");
   });
 

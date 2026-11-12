@@ -59,6 +59,11 @@ after(async () => {
 describe("LINE authentication server transactions", () => {
   it("stores hashed state without a uid and issues a one-use ticket for an existing link", async () => {
     await establishExistingLink();
+    await db.collection("projects").doc("project-a").set({ memberUids: [uid] });
+    await db.collection("projects").doc("project-a").collection("members").doc(uid).set({ uid, role: "viewer" });
+    await db.collection("projects").doc("project-a").collection("people").doc("person-a").set({
+      displayName: "参加者A", linkedUserUid: uid,
+    });
     const temporary = await authService.createLineAuthState();
     const storedState = await stateRef(temporary.state).get();
     strictEqual(storedState.exists, true);
@@ -72,6 +77,7 @@ describe("LINE authentication server transactions", () => {
     strictEqual(storedTicket.id === completed.ticket, false);
     strictEqual(storedTicket.data().uid, uid);
     strictEqual(storedTicket.data().expiresAt.toMillis() - storedTicket.data().createdAt.toMillis(), authPrimitives.LINE_AUTH_TICKET_TTL_MS);
+    strictEqual((await db.collection("projects").doc("project-a").collection("lineLinkEvents").get()).empty, true);
     strictEqual(await authService.consumeLineAuthTicket(completed.ticket), uid);
     await rejects(() => authService.consumeLineAuthTicket(completed.ticket), (error) => error.code === "ticket_not_pending");
   });

@@ -36,11 +36,12 @@ type CallbackDependencies = {
     idToken: string;
     channelId: string;
     nonce: string;
-  }) => Promise<{ lineUserId: string }>;
+  }) => Promise<{ lineUserId: string; displayName?: string }>;
   getFriendshipStatus: (input: { accessToken: string }) => Promise<boolean>;
   completeState: (input: {
     state: string;
     lineUserId: string;
+    lineDisplayName?: string;
     deliveryStatus: "reachable" | "unreachable" | "unknown";
   }) => Promise<{ outcome: "linked" | "already_linked" }>;
   getConfig: (request: Request) => {
@@ -152,6 +153,7 @@ export function createLineLoginCallbackHandler(dependencies: CallbackDependencie
       await dependencies.completeState({
         state,
         lineUserId: identity.lineUserId,
+        ...(identity.displayName ? { lineDisplayName: identity.displayName } : {}),
         deliveryStatus,
       });
       return settingsRedirect(config.appOrigin, "connected");

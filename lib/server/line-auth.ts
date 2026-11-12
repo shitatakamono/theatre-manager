@@ -244,6 +244,15 @@ export async function completeLineAuthState(input: {
           };
         }
         const uid = requireFirebaseUid(typeof reverseData.uid === "string" ? reverseData.uid : "");
+        const integrationRef = adminDb.collection("userIntegrations").doc(uid).collection("providers").doc("line");
+        const integration = await transaction.get(integrationRef);
+        if (!integration.exists || integration.data()?.lineUserId !== lineUserId) {
+          throw new LineAuthError("line_mapping_inconsistent");
+        }
+        const lineDisplayName = input.displayName?.trim().slice(0, 128);
+        if (lineDisplayName && integration.data()?.lineDisplayName !== lineDisplayName) {
+          transaction.update(integrationRef, { lineDisplayName, updatedAt: now });
+        }
         transaction.create(ticketReference, {
           uid,
           status: "pending",

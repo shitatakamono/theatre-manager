@@ -10,6 +10,7 @@ const editorUid = "invite-editor";
 const viewerUid = "invite-viewer";
 let db;
 let service;
+let accountLink;
 
 function projectRef() { return db.collection("projects").doc(projectId); }
 function rawToken(url) { return new URLSearchParams(new URL(url).hash.slice(1)).get("token"); }
@@ -28,10 +29,21 @@ before(async () => {
   process.env.GCLOUD_PROJECT = emulatorProjectId;
   process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID = emulatorProjectId;
   service = await import("../lib/server/project-invite-links.ts");
+  accountLink = await import("../lib/line-account-link.ts");
   db = getFirestore();
 });
-beforeEach(async () => { await db.recursiveDelete(db.collection("projectInviteLinks")); await db.recursiveDelete(db.collection("projects")); await seed(); });
-after(async () => { await db.recursiveDelete(db.collection("projectInviteLinks")); await db.recursiveDelete(db.collection("projects")); await Promise.all(getApps().map((app) => deleteApp(app))); });
+beforeEach(async () => {
+  for (const collection of ["projectInviteLinks", "projects", "userIntegrations", "lineUserLinks", "lineNotificationDeliveries"]) {
+    await db.recursiveDelete(db.collection(collection));
+  }
+  await seed();
+});
+after(async () => {
+  for (const collection of ["projectInviteLinks", "projects", "userIntegrations", "lineUserLinks", "lineNotificationDeliveries"]) {
+    await db.recursiveDelete(db.collection(collection));
+  }
+  await Promise.all(getApps().map((app) => deleteApp(app)));
+});
 
 describe("project invite link transactions", () => {
   it("allows only owner creation and stores only hash, viewer role, and seven-day expiry", async () => {
@@ -54,12 +66,24 @@ describe("project invite link transactions", () => {
   });
 
   it("links a designated person through the existing people, participants, and reverse structures", async () => {
+    const personLineId = `U${"d".repeat(32)}`;
+    await Promise.all([
+      db.collection("userIntegrations").doc("person-user").collection("providers").doc("line").set({
+        provider: "line", status: "linked", lineUserId: personLineId, lineDisplayName: "LINE参加者A",
+      }),
+      db.collection("lineUserLinks").doc(accountLink.getLineUserLinkId(personLineId)).set({
+        uid: "person-user", lineUserId: personLineId,
+      }),
+    ]);
     const created = await service.createProjectInviteLink({ uid: ownerUid, projectId, personId: "person-a", appOrigin: "https://app.test" });
     const result = await service.claimProjectInviteLink({ uid: "person-user", displayName: "参加者A", rawToken: rawToken(created.url) });
     strictEqual(result.personLinked, true);
     strictEqual((await projectRef().collection("people").doc("person-a").get()).data().linkedUserUid, "person-user");
     strictEqual((await projectRef().collection("participants").doc("person-a").get()).data().linkedUserUid, "person-user");
     strictEqual((await projectRef().collection("participantLinkedUsers").doc("person-user").get()).data().participantId, "person-a");
+    const events = await projectRef().collection("lineLinkEvents").get();
+    strictEqual(events.size, 1);
+    strictEqual(events.docs[0].data().lineDisplayName, "LINE参加者A");
   });
 
   it("rejects missing, inactive, cross-project and conflicting people without claiming", async () => {

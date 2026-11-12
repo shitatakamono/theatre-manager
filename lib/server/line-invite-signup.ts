@@ -19,6 +19,10 @@ import {
   writePreparedLineAccountLink,
 } from "./line-account-link.ts";
 import { linkProjectPersonToUserInTransaction } from "./user-link-reservations.ts";
+import {
+  lineLinkEventId,
+  writeLineLinkEvent,
+} from "./line-link-events.ts";
 
 const ATTEMPTS = "lineSignupAttempts";
 const LOCKS = "lineSignupLocks";
@@ -269,6 +273,9 @@ async function finalizeSignup(reserved: ReservedSignup, ticket: string) {
       transaction, reserved.uid, reserved.lineUserId
     );
     const now = Timestamp.now();
+    const linkEventId = person && personId
+      ? lineLinkEventId(reserved.attemptId, projectId, personId)
+      : null;
     if (person && personId) {
       await linkProjectPersonToUserInTransaction({
         transaction, projectRef, person, personId, linkedUserUid: reserved.uid,
@@ -276,9 +283,15 @@ async function finalizeSignup(reserved: ReservedSignup, ticket: string) {
         activityRef: projectRef.collection("activityLogs").doc(),
         redactActivityActorUid: true,
       });
+      writeLineLinkEvent(transaction, {
+        projectRef, eventId: linkEventId!, eventType: "linked", personId,
+        personName: String(person.data()?.displayName ?? "関係者"),
+        lineDisplayName: reserved.displayName, source: "invite_signup", occurredAt: now,
+      });
     }
     writePreparedLineAccountLink(transaction, preparedLine, {
       uid: reserved.uid, lineUserId: reserved.lineUserId, now, deliveryStatus: "unknown",
+      lineDisplayName: reserved.displayName,
     });
     if (!member.exists) {
       transaction.update(projectRef, { memberUids: [...memberUids, reserved.uid] });
@@ -303,7 +316,7 @@ async function finalizeSignup(reserved: ReservedSignup, ticket: string) {
     transaction.create(projectRef.collection("activityLogs").doc(), activity(
       [personId ? "関係者指定招待から参加" : "招待リンクから参加"], reserved.displayName, now
     ));
-    return { ticket, projectId };
+    return { ticket, projectId, linkEventId };
   });
 }
 
@@ -315,7 +328,8 @@ export async function completeLineInviteSignup(
   await ensureFirebaseUser(auth, reserved);
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
-      return await finalizeSignup(reserved, generateLineAuthTicket());
+      const result = await finalizeSignup(reserved, generateLineAuthTicket());
+      return { ticket: result.ticket, projectId: result.projectId };
     } catch (error) {
       if (error instanceof LineInviteSignupError && error.code === "ticket_collision") continue;
       const permanentCode = error instanceof LineInviteSignupError && [

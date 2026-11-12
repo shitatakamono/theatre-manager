@@ -13,6 +13,8 @@
     "test:line-rehearsal-reminder:integration": "firebase emulators:exec --only firestore --project seisakuboard-conflict-test \"node --no-warnings --test tests/line-rehearsal-reminder.integration.test.mjs\"",
     "test:line-rehearsal-change": "node --no-warnings --test tests/line-rehearsal-change.test.mjs",
     "test:line-rehearsal-change:integration": "firebase emulators:exec --only firestore --project seisakuboard-conflict-test \"node --no-warnings --test tests/line-rehearsal-change.integration.test.mjs\"",
+    "test:line-link-events": "node --no-warnings --test tests/line-link-events.test.mjs",
+    "test:line-link-events:integration": "firebase emulators:exec --only firestore --project seisakuboard-conflict-test \"node --no-warnings --test tests/line-link-events.integration.test.mjs\"",
     "test:account-merge": "node --no-warnings --test tests/account-merge.test.mjs",
     "test:account-merge:integration": "firebase emulators:exec --only firestore --project seisakuboard-conflict-test \"node --no-warnings --test tests/account-merge.integration.test.mjs\"",
     "test:project-invite-links": "node --no-warnings --test tests/project-invite-links.test.mjs tests/project-invite-link-handler.test.mjs tests/project-invite-link-ui.test.mjs",

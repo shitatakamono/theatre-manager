@@ -11,6 +11,7 @@ import {
 import { requireFirebaseUid, requireLineUserId } from "../line-account-link.ts";
 import { adminDb } from "./firebase-admin.ts";
 import { linkFirebaseUserToLineUserInTransaction } from "./line-account-link.ts";
+import { recordRelinkEvents } from "./line-link-events.ts";
 
 const LINE_LOGIN_STATES = "lineLoginStates";
 const USER_INTEGRATIONS = "userIntegrations";
@@ -119,11 +120,12 @@ export async function failLineLoginState(state: string): Promise<void> {
 export async function completeLineLoginState(input: {
   state: string;
   lineUserId: string;
+  lineDisplayName?: string;
   deliveryStatus: "reachable" | "unreachable" | "unknown";
 }): Promise<{ outcome: "linked" | "already_linked" }> {
   const lineUserId = requireLineUserId(input.lineUserId);
   const reference = stateRef(input.state);
-  return adminDb.runTransaction(async (transaction) => {
+  const result = await adminDb.runTransaction(async (transaction) => {
     const snapshot = await transaction.get(reference);
     const data = snapshot.data();
     if (!snapshot.exists) throw new LineLoginError("state_not_found");
@@ -135,9 +137,10 @@ export async function completeLineLoginState(input: {
         lineUserId,
         now: Timestamp.now(),
         deliveryStatus: input.deliveryStatus,
+        lineDisplayName: input.lineDisplayName,
       });
       if (status !== "already_linked") throw new LineLoginError("state_already_consumed");
-      return { outcome: "already_linked" as const };
+      return { outcome: "already_linked" as const, uid };
     }
     if (data?.status !== "pending") throw new LineLoginError("state_not_pending");
     const expiresAt = data.expiresAt;
@@ -152,8 +155,21 @@ export async function completeLineLoginState(input: {
       lineUserId,
       now,
       deliveryStatus: input.deliveryStatus,
+      lineDisplayName: input.lineDisplayName,
     });
     transaction.update(reference, { status: "consumed", consumedAt: now });
-    return { outcome };
+    return { outcome, uid };
   });
+  if (result.outcome === "linked") {
+    try {
+      await recordRelinkEvents({
+        uid: result.uid,
+        lineDisplayName: input.lineDisplayName?.trim() || "表示名未取得",
+        sourceId: reference.id,
+      });
+    } catch {
+      console.error("line_link_event_record_failed", { category: "settings_relink" });
+    }
+  }
+  return { outcome: result.outcome };
 }

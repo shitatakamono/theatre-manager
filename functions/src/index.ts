@@ -39,6 +39,7 @@ import {
   retryDueLineRehearsalReminders,
   runTomorrowLineRehearsalReminders,
 } from "../../lib/server/line-rehearsal-reminder";
+import { dispatchLineLinkEvent, retryDueLineLinkEvents } from "../../lib/server/line-link-events";
 import {
   recordRehearsalChangeNotificationEvent,
   retryRehearsalChangeNotifications,
@@ -54,6 +55,7 @@ const PROJECT_DOCUMENT = "projects/{projectId}";
 const REHEARSAL_DOCUMENT = `${PROJECT_DOCUMENT}/rehearsals/{rehearsalId}`;
 const PERSON_DOCUMENT = `${PROJECT_DOCUMENT}/people/{personId}`;
 const LINKED_USER_DOCUMENT = `${PROJECT_DOCUMENT}/participantLinkedUsers/{uid}`;
+const LINE_LINK_EVENT_DOCUMENT = `${PROJECT_DOCUMENT}/lineLinkEvents/{eventId}`;
 const SYNC_JOB_DOCUMENT = "googleCalendarSyncJobs/{jobId}";
 const RETRY_JOB_LIMIT = 10;
 const googleCalendarWorkerSecrets = [
@@ -332,12 +334,31 @@ export const retryRehearsalLineReminders = onSchedule(
     secrets: [lineChannelAccessToken],
   },
   async () => {
-    const results = await retryDueLineRehearsalReminders();
+    const [results, linkResult] = await Promise.all([
+      retryDueLineRehearsalReminders(),
+      retryDueLineLinkEvents(),
+    ]);
     logger.info("line_rehearsal_reminder_retry_completed", {
       batchCount: results.length,
       sentCount: results.reduce((sum, result) => sum + result.sentCount, 0),
       skippedCount: results.reduce((sum, result) => sum + result.skippedCount, 0),
       failedCount: results.reduce((sum, result) => sum + result.failedCount, 0),
+    });
+    logger.info("line_link_notification_retry_completed", linkResult);
+  }
+);
+
+export const onLineLinkEventCreated = onDocumentCreated(
+  {
+    document: LINE_LINK_EVENT_DOCUMENT,
+    timeoutSeconds: 120,
+    memory: "256MiB",
+    secrets: [lineChannelAccessToken],
+  },
+  async (event) => {
+    await dispatchLineLinkEvent({
+      projectId: event.params.projectId,
+      eventId: event.params.eventId,
     });
   }
 );

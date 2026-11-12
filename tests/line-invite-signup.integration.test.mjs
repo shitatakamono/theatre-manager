@@ -163,6 +163,9 @@ describe("LINE invite-only signup", () => {
     strictEqual((await projectRef().collection("people").doc("person-a").get()).data().linkedUserUid, uid);
     strictEqual((await projectRef().collection("participants").doc("person-a").get()).data().linkedUserUid, uid);
     strictEqual((await projectRef().collection("participantLinkedUsers").doc(uid).get()).data().participantId, "person-a");
+    const events = await projectRef().collection("lineLinkEvents").get();
+    strictEqual(events.size, 1);
+    strictEqual(events.docs[0].data().lineDisplayName, "LINE利用者");
   });
 
   it("requires existing-account verification before creating a user for an already linked person", async () => {

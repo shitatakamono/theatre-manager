@@ -66,6 +66,7 @@ export function writePreparedLineAccountLink(
     lineUserId: string;
     now: Timestamp;
     deliveryStatus?: "reachable" | "unreachable" | "unknown";
+    lineDisplayName?: string;
   }
 ): "linked" | "already_linked" {
   if (prepared.decision === "already_linked") return "already_linked";
@@ -78,6 +79,9 @@ export function writePreparedLineAccountLink(
     updatedAt: input.now,
     lastFollowAt: null,
     lastUnfollowAt: null,
+    ...(input.lineDisplayName?.trim()
+      ? { lineDisplayName: input.lineDisplayName.trim().slice(0, 128) }
+      : {}),
   });
   transaction.create(prepared.reverseRef, {
     uid: input.uid,
@@ -95,6 +99,7 @@ export async function linkFirebaseUserToLineUserInTransaction(
     lineUserId: string;
     now: Timestamp;
     deliveryStatus?: "reachable" | "unreachable" | "unknown";
+    lineDisplayName?: string;
   }
 ): Promise<"linked" | "already_linked"> {
   const uid = requireFirebaseUid(input.uid);

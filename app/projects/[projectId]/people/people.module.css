@@ -126,3 +126,38 @@
   .table td::before { content: attr(data-label); color: #718079; font-size: 10px; font-weight: 700; }
   .drawer { inset: 0; width: 100%; }
 }
+.lineHistory {
+  margin-top: 24px;
+  padding: 20px;
+  border: 1px solid #d8dee8;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.lineHistory > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.lineHistory h2 { margin: 0; font-size: 1.05rem; }
+.lineHistory > div span { color: #667085; font-size: .78rem; }
+.lineHistory ul { display: grid; gap: 8px; margin: 14px 0 0; padding: 0; list-style: none; }
+.lineHistory li {
+  display: grid;
+  grid-template-columns: 9rem minmax(8rem, 1fr) minmax(10rem, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f7f8fa;
+}
+.lineHistory time, .lineHistory span { color: #596273; font-size: .82rem; }
+.lineHistory em { color: #245b45; font-size: .78rem; font-style: normal; font-weight: 700; }
+
+@media (max-width: 720px) {
+  .lineHistory { padding: 16px; }
+  .lineHistory li { grid-template-columns: 1fr auto; gap: 4px 10px; }
+  .lineHistory li span { grid-column: 1 / -1; }
+}

@@ -295,6 +295,7 @@ export async function retryDueLineRehearsalReminders(input: {
   const db = input.db ?? adminDb;
   const now = input.now ?? Timestamp.now();
   const snapshot = await db.collection(DELIVERY_COLLECTION)
+    .where("notificationType", "==", LINE_REHEARSAL_REMINDER_TYPE)
     .where("status", "==", "failed_retryable")
     .limit(100)
     .get();
