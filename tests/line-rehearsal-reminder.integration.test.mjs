@@ -73,6 +73,7 @@ describe("LINE rehearsal day-before reminder", () => {
     await addPerson(project, "attending", "uid-attending", "田中", "a", { status: "attending", availableFrom: "14:00", availableUntil: "18:00" });
     await addPerson(project, "absent", "uid-absent", "鈴木", "b", { status: "absent", availableFrom: null, availableUntil: null });
     await addPerson(project, "unanswered", "uid-unanswered", "佐藤", "c", null);
+    await addPerson(project, "tentative", "uid-tentative", "伊藤", "e", { status: "tentative", availableFrom: null, availableUntil: null });
     await addPerson(project, "early", "uid-early", "高橋", "d", { status: "attending", availableFrom: "13:00", availableUntil: "16:00" });
     await addPerson(project, "unlinked", "uid-unlinked", "未連携", null, null);
     const messages = [];
@@ -81,18 +82,35 @@ describe("LINE rehearsal day-before reminder", () => {
       send: async (payload) => messages.push(payload),
     });
     strictEqual(result.rehearsalCount, 2);
-    strictEqual(result.participantCount, 5);
-    strictEqual(result.linkedCount, 4);
+    strictEqual(result.participantCount, 6);
+    strictEqual(result.linkedCount, 5);
     strictEqual(result.unlinkedCount, 1);
-    strictEqual(result.sentCount, 4);
-    strictEqual(messages.length, 4);
+    strictEqual(result.sentCount, 5);
+    strictEqual(messages.length, 5);
     strictEqual(messages[0].text.includes("■ 芝居"), true);
     strictEqual(messages[0].text.includes("■ 殺陣"), true);
     strictEqual(messages[0].text.includes("田中（14:00頃から）"), true);
     strictEqual(messages[0].text.includes("高橋（16:00頃まで）"), true);
-    strictEqual(messages[0].text.includes("鈴木"), false);
-    strictEqual(messages[0].text.includes("佐藤"), false);
+    strictEqual(messages[0].text.includes("欠席：\n・鈴木"), true);
+    strictEqual(messages[0].text.includes("未定：\n・伊藤"), true);
+    strictEqual(messages[0].text.includes("未回答：\n・佐藤"), true);
+    strictEqual(messages[0].text.includes("出席予定："), false);
+    strictEqual(messages[0].text.includes("出欠は当日全体の予定です（部門別ではありません）"), true);
     strictEqual(messages[0].text.includes("-旧"), false);
+  });
+
+  it("does not send when the project has no rehearsal on the target date", async () => {
+    const project = db.collection("projects").doc("project-empty");
+    await project.set({ name: "稽古なし公演" });
+    await addPerson(project, "person", "uid-person", "田中", "a", null);
+    let calls = 0;
+    const result = await service.runLineRehearsalReminderForDate({
+      date, projectId: project.id, db, send: async () => { calls += 1; },
+    });
+    strictEqual(result.targetProjectCount, 0);
+    strictEqual(result.rehearsalCount, 0);
+    strictEqual(result.sentCount, 0);
+    strictEqual(calls, 0);
   });
 
   it("is idempotent across reruns and dry-run never sends or writes", async () => {

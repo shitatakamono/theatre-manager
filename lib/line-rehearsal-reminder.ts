@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 export const LINE_REHEARSAL_REMINDER_TYPE = "rehearsal_day_before" as const;
 export const LINE_REHEARSAL_REMINDER_MAX_ATTEMPTS = 3;
 export const LINE_REHEARSAL_REMINDER_TIME_ZONE = "Asia/Tokyo";
+export const LINE_TEXT_MESSAGE_MAX_LENGTH = 5000;
 
 export type ReminderRehearsal = {
   id: string;
@@ -33,6 +34,9 @@ export type ReminderAttendanceSummary = {
   late: string[];
   early: string[];
   lateAndEarly: string[];
+  absent: string[];
+  tentative: string[];
+  unanswered: string[];
 };
 
 function tokyoParts(value: Date): { year: number; month: number; day: number } {
@@ -107,10 +111,25 @@ export function buildReminderAttendanceSummary(input: {
   const ends = input.rehearsals.flatMap((item) => item.endAtMillis === null ? [] : [timeInTokyo(item.endAtMillis)]);
   const dayStart = starts.sort()[0] ?? null;
   const dayEnd = ends.sort().at(-1) ?? null;
-  const summary: ReminderAttendanceSummary = { attending: [], late: [], early: [], lateAndEarly: [] };
-  for (const record of input.attendance) {
-    const person = people.get(record.participantId);
-    if (!person || record.status !== "attending") continue;
+  const attendance = new Map(input.attendance.map((record) => [record.participantId, record]));
+  const summary: ReminderAttendanceSummary = {
+    attending: [], late: [], early: [], lateAndEarly: [],
+    absent: [], tentative: [], unanswered: [],
+  };
+  for (const person of people.values()) {
+    const record = attendance.get(person.id);
+    if (!record) {
+      summary.unanswered.push(person.displayName);
+      continue;
+    }
+    if (record.status === "absent") {
+      summary.absent.push(person.displayName);
+      continue;
+    }
+    if (record.status === "tentative") {
+      summary.tentative.push(person.displayName);
+      continue;
+    }
     const late = Boolean(dayStart && record.availableFrom && record.availableFrom > dayStart);
     const early = Boolean(dayEnd && record.availableUntil && record.availableUntil < dayEnd);
     if (late && early) {
@@ -127,8 +146,63 @@ export function buildReminderAttendanceSummary(input: {
   return summary;
 }
 
-function section(title: string, values: readonly string[]): string {
-  return `${title}：\n${values.length ? values.map((value) => `・${value}`).join("\n") : "・なし"}`;
+type NamedSection = { title: string; values: readonly string[] };
+
+const ATTENDANCE_GUIDANCE = "出欠は当日全体の予定です（部門別ではありません）。";
+const MESSAGE_FOOTER = "SeisakuBoardで最新の稽古予定と出欠をご確認ください。";
+
+function truncateUtf16(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value;
+  let result = "";
+  for (const character of value) {
+    if ((result + character + "…").length > maxLength) break;
+    result += character;
+  }
+  return `${result}…`;
+}
+
+function scheduleBlock(item: ReminderRehearsal, compact = false): string {
+  const time = `${timeInTokyo(item.startAtMillis)}〜${item.endAtMillis === null ? "終了未設定" : timeInTokyo(item.endAtMillis)}`;
+  const typeLabel = compact ? truncateUtf16(item.typeLabel, 48) : item.typeLabel;
+  const venue = compact ? truncateUtf16(item.venue || "会場未設定", 96) : item.venue || "会場未設定";
+  return `■ ${typeLabel}\n${time}\n${venue}`;
+}
+
+function namedSection(section: NamedSection, shownCount: number): string {
+  if (!section.values.length) return `${section.title}：\n・なし`;
+  const shown = section.values.slice(0, shownCount).map((value) => `・${value}`);
+  const omitted = section.values.length - shownCount;
+  if (omitted > 0) shown.push(`・ほか${omitted}名`);
+  return `${section.title}：\n${shown.join("\n")}`;
+}
+
+function joinMessageParts(parts: readonly string[]): string {
+  return parts.join("\n\n");
+}
+
+function buildScheduleForMessage(input: {
+  prefix: readonly string[];
+  rehearsals: readonly ReminderRehearsal[];
+  minimalTail: readonly string[];
+}): string {
+  const full = input.rehearsals.map((item) => scheduleBlock(item)).join("\n\n");
+  if (joinMessageParts([...input.prefix, full, ...input.minimalTail]).length <= LINE_TEXT_MESSAGE_MAX_LENGTH) {
+    return full;
+  }
+
+  const blocks = input.rehearsals.map((item) => scheduleBlock(item, true));
+  const included: string[] = [];
+  for (let index = 0; index < blocks.length; index += 1) {
+    const remaining = blocks.length - (index + 1);
+    const candidate = [...included, blocks[index]];
+    if (remaining > 0) candidate.push(`■ ほか${remaining}件の稽古枠があります`);
+    if (joinMessageParts([...input.prefix, candidate.join("\n\n"), ...input.minimalTail]).length
+      > LINE_TEXT_MESSAGE_MAX_LENGTH) break;
+    included.push(blocks[index]);
+  }
+  const omitted = blocks.length - included.length;
+  if (omitted > 0) included.push(`■ ほか${omitted}件の稽古枠があります`);
+  return included.join("\n\n");
 }
 
 export function buildLineRehearsalReminderMessage(input: {
@@ -138,20 +212,40 @@ export function buildLineRehearsalReminderMessage(input: {
 }): string {
   const rehearsals = activeReminderRehearsals(input.rehearsals);
   if (!rehearsals.length) throw new Error("no_active_rehearsals");
-  const schedule = rehearsals.map((item) => {
-    const time = `${timeInTokyo(item.startAtMillis)}〜${item.endAtMillis === null ? "終了未設定" : timeInTokyo(item.endAtMillis)}`;
-    return `■ ${item.typeLabel}\n${time}\n${item.venue || "会場未設定"}`;
-  }).join("\n\n");
-  return [
-    "明日の稽古のお知らせ",
-    dateLabel(input.date),
-    schedule,
-    section("出席予定", input.attendance.attending),
-    section("遅刻", input.attendance.late),
-    section("早退", input.attendance.early),
-    section("遅刻・早退", input.attendance.lateAndEarly),
-    "SeisakuBoardで最新情報をご確認ください。",
-  ].join("\n\n");
+  const prefix = ["明日の稽古のお知らせ", dateLabel(input.date)];
+  const sections: NamedSection[] = [
+    { title: "出席予定", values: input.attendance.attending },
+    { title: "遅刻", values: input.attendance.late },
+    { title: "早退", values: input.attendance.early },
+    { title: "遅刻・早退", values: input.attendance.lateAndEarly },
+    { title: "欠席", values: input.attendance.absent },
+    { title: "未定", values: input.attendance.tentative },
+    { title: "未回答", values: input.attendance.unanswered },
+  ].filter((section) => section.values.length > 0);
+  const minimalSections = sections.map((item) => namedSection(item, 0));
+  const minimalTail = [ATTENDANCE_GUIDANCE, ...minimalSections, MESSAGE_FOOTER];
+  const schedule = buildScheduleForMessage({ prefix, rehearsals, minimalTail });
+  const renderedSections: string[] = [];
+  for (let index = 0; index < sections.length; index += 1) {
+    const remaining = sections.slice(index + 1).map((item) => namedSection(item, 0));
+    let rendered = namedSection(sections[index], 0);
+    for (let count = 1; count <= sections[index].values.length; count += 1) {
+      const candidate = namedSection(sections[index], count);
+      const message = joinMessageParts([
+        ...prefix, schedule, ATTENDANCE_GUIDANCE,
+        ...renderedSections, candidate, ...remaining, MESSAGE_FOOTER,
+      ]);
+      if (message.length > LINE_TEXT_MESSAGE_MAX_LENGTH) break;
+      rendered = candidate;
+    }
+    renderedSections.push(rendered);
+  }
+  const message = joinMessageParts([
+    ...prefix, schedule, ATTENDANCE_GUIDANCE, ...renderedSections, MESSAGE_FOOTER,
+  ]);
+  return message.length <= LINE_TEXT_MESSAGE_MAX_LENGTH
+    ? message
+    : truncateUtf16(message, LINE_TEXT_MESSAGE_MAX_LENGTH);
 }
 
 export function buildLineReminderDeliveryId(projectId: string, date: string, recipientUid: string): string {
