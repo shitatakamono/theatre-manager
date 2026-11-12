@@ -26,6 +26,7 @@ import { canUseRehearsalScreenshotImport } from "@/lib/rehearsal-import";
 import { buildRehearsalPrintModel } from "@/lib/rehearsal-print";
 import { useProjectAccess } from "../ProjectAccess";
 import { RehearsalImportDialog } from "./RehearsalImportDialog";
+import { RehearsalMobileTimeline } from "./RehearsalMobileTimeline";
 import { RehearsalSharePanel } from "./RehearsalSharePanel";
 import { RehearsalTimeline } from "./RehearsalTimeline";
 import styles from "./rehearsals.module.css";
@@ -277,7 +278,10 @@ export function RehearsalClient({ projectId }: { projectId: string }) {
         </details>
       </> : <section className={styles.timelineSection} aria-labelledby="timeline-title">
         <div className={styles.sectionTitle}><p>TIMELINE</p><h2 id="timeline-title">今後の稽古時間軸</h2><span>{timelineModel.days.length}日</span></div>
-        {loading ? <p className={styles.empty}>読み込み中…</p> : timelineModel.rehearsalCount === 0 ? <p className={styles.empty}>登録されている今後の稽古はありません。</p> : <RehearsalTimeline model={timelineModel} onSelect={canEdit ? (id) => { const item = upcoming.find((rehearsal) => rehearsal.id === id); if (item) openEdit(item); } : undefined} />}
+        {loading ? <p className={styles.empty}>読み込み中…</p> : timelineModel.rehearsalCount === 0 ? <p className={styles.empty}>登録されている今後の稽古はありません。</p> : <>
+          <div className={styles.desktopTimeline}><RehearsalTimeline model={timelineModel} onSelect={canEdit ? (id) => { const item = upcoming.find((rehearsal) => rehearsal.id === id); if (item) openEdit(item); } : undefined} /></div>
+          <RehearsalMobileTimeline model={timelineModel} onSelect={canEdit ? (id) => { const item = upcoming.find((rehearsal) => rehearsal.id === id); if (item) openEdit(item); } : undefined} />
+        </>}
       </section>}
 
       {mode && <div className={styles.overlay} role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) closeEditor(); }}><section className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby="editor-title"><header><div><p>REHEARSAL</p><h2 id="editor-title">{mode === "edit" ? "稽古を編集" : mode === "copy" ? "稽古予定をコピー" : mode === "bulk" ? "複数日追加" : "稽古を追加"}</h2></div><button aria-label="閉じる" type="button" onClick={closeEditor}>×</button></header><form onSubmit={save}>

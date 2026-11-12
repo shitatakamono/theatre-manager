@@ -27,6 +27,8 @@ const baseInput = {
 
 const clientUrl = new URL("../app/projects/[projectId]/rehearsals/RehearsalClient.tsx", import.meta.url);
 const timelineUrl = new URL("../app/projects/[projectId]/rehearsals/RehearsalTimeline.tsx", import.meta.url);
+const mobileTimelineUrl = new URL("../app/projects/[projectId]/rehearsals/RehearsalMobileTimeline.tsx", import.meta.url);
+const mobileTimelineCssUrl = new URL("../app/projects/[projectId]/rehearsals/rehearsal-mobile-timeline.module.css", import.meta.url);
 
 describe("rehearsal values", () => {
   it("keeps schedule editing for owner and editor while import stays owner-only", () => {
@@ -145,5 +147,22 @@ describe("rehearsal values", () => {
     strictEqual(client.includes("if (item) openEdit(item)"), true);
     strictEqual(timeline.includes("を編集"), true);
     strictEqual(timeline.includes("onSelect(bar.id)"), true);
+  });
+
+  it("uses a mobile-only compact timeline without replacing the desktop or print timeline", async () => {
+    const [client, mobileTimeline, mobileCss] = await Promise.all([
+      readFile(clientUrl, "utf8"),
+      readFile(mobileTimelineUrl, "utf8"),
+      readFile(mobileTimelineCssUrl, "utf8"),
+    ]);
+
+    strictEqual(client.includes("<RehearsalTimeline model={timelineModel}"), true);
+    strictEqual(client.includes("<RehearsalMobileTimeline model={timelineModel}"), true);
+    strictEqual(mobileTimeline.includes("buildRehearsalMobileTimelineModel(model)"), true);
+    strictEqual(mobileTimeline.includes("予定なし"), true);
+    strictEqual(mobileTimeline.includes("onSelect(bar.id)"), true);
+    strictEqual(mobileCss.includes("@media screen and (max-width: 700px)"), true);
+    strictEqual(mobileCss.includes("overflow: clip"), true);
+    strictEqual(mobileCss.includes("@media print"), true);
   });
 });

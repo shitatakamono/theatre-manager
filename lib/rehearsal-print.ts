@@ -58,6 +58,19 @@ export type RehearsalPrintModel = {
   days: RehearsalPrintDay[];
 };
 
+export type RehearsalMobileTimelineDay = RehearsalPrintDay & {
+  axisStartMinutes: number;
+  axisEndMinutes: number;
+  slotCount: number;
+  hourTicks: Array<{ minutes: number; label: string; offsetSlots: number }>;
+};
+
+export type RehearsalMobileTimelineModel = {
+  rehearsalCount: number;
+  slotMinutes: number;
+  days: RehearsalMobileTimelineDay[];
+};
+
 export type RehearsalTimelineBarText = {
   primary: string;
   secondary: string | null;
@@ -233,4 +246,72 @@ export function buildRehearsalPrintModel(rehearsals: Rehearsal[], now = new Date
     hourTicks,
     days,
   };
+}
+
+const MOBILE_AXIS_PADDING_MINUTES = 30;
+const MOBILE_MIN_AXIS_MINUTES = 3 * 60;
+const MINUTES_PER_DAY = 24 * 60;
+
+function mobileTickStep(durationMinutes: number): number {
+  if (durationMinutes > 12 * 60) return 3 * 60;
+  if (durationMinutes > 7 * 60) return 2 * 60;
+  return 60;
+}
+
+/**
+ * Reuses the print model's 15-minute slots and overlap lanes while giving each
+ * mobile day its own compact, shared time range.
+ */
+export function buildRehearsalMobileTimelineModel(model: RehearsalPrintModel): RehearsalMobileTimelineModel {
+  const days = model.days.map((day) => {
+    const bars = day.categories.flatMap((category) => category.bars);
+    const absoluteStarts = bars.map((bar) => model.axisStartMinutes + bar.leftSlot * model.slotMinutes);
+    const absoluteEnds = bars.map((bar) => model.axisStartMinutes + (bar.leftSlot + bar.slotSpan) * model.slotMinutes);
+    const earliest = Math.min(...absoluteStarts);
+    const latest = Math.max(...absoluteEnds);
+
+    let axisStartMinutes = Math.max(0, Math.floor((earliest - MOBILE_AXIS_PADDING_MINUTES) / 60) * 60);
+    let axisEndMinutes = Math.min(MINUTES_PER_DAY, Math.ceil((latest + MOBILE_AXIS_PADDING_MINUTES) / 60) * 60);
+
+    while (axisEndMinutes - axisStartMinutes < MOBILE_MIN_AXIS_MINUTES) {
+      if (axisEndMinutes < MINUTES_PER_DAY) axisEndMinutes += 60;
+      else if (axisStartMinutes > 0) axisStartMinutes -= 60;
+      else break;
+    }
+
+    const slotCount = (axisEndMinutes - axisStartMinutes) / model.slotMinutes;
+    const tickStep = mobileTickStep(axisEndMinutes - axisStartMinutes);
+    const hourTicks: RehearsalMobileTimelineDay["hourTicks"] = [];
+    for (let minutes = axisStartMinutes; minutes <= axisEndMinutes; minutes += tickStep) {
+      hourTicks.push({
+        minutes,
+        label: formatMinutes(minutes),
+        offsetSlots: (minutes - axisStartMinutes) / model.slotMinutes,
+      });
+    }
+    if (hourTicks.at(-1)?.minutes !== axisEndMinutes) {
+      hourTicks.push({
+        minutes: axisEndMinutes,
+        label: formatMinutes(axisEndMinutes),
+        offsetSlots: slotCount,
+      });
+    }
+
+    return {
+      ...day,
+      axisStartMinutes,
+      axisEndMinutes,
+      slotCount,
+      hourTicks,
+      categories: day.categories.map((category) => ({
+        ...category,
+        bars: category.bars.map((bar) => ({
+          ...bar,
+          leftSlot: (model.axisStartMinutes + bar.leftSlot * model.slotMinutes - axisStartMinutes) / model.slotMinutes,
+        })),
+      })),
+    };
+  });
+
+  return { rehearsalCount: model.rehearsalCount, slotMinutes: model.slotMinutes, days };
 }

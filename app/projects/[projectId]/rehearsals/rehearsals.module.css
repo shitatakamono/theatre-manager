@@ -40,6 +40,7 @@
 .schedule, .timelineSection { margin-top: 22px; }
 .schedule > .sectionTitle { margin-bottom: 10px; flex-wrap: wrap; }
 .timelineSection > .sectionTitle { margin-bottom: 12px; flex-wrap: wrap; }
+.desktopTimeline { min-width: 0; max-width: 100%; }
 .tableWrap { overflow-x: auto; border-top: 1px solid #cbd5d1; }
 .table { width: 100%; border-collapse: collapse; background: transparent; font-size: 13px; }
 .table th { padding: 9px 8px; color: #65746f; text-align: left; font-size: 11px; white-space: nowrap; }
@@ -138,6 +139,7 @@
   .headerActions > button, .headerActions > .actionLink { flex: 1 1 calc(50% - 4px); }
   .headerActions button, .headerActions .actionLink { width: 100%; justify-content: center; padding-inline: 10px; }
   .viewSwitch button { flex: 1; }
+  .desktopTimeline { display: none; }
   .sharePanel { grid-template-columns: 1fr; padding: 14px; }
   .shareControls { justify-content: stretch; }
   .shareControls strong { width: 100%; }
@@ -165,4 +167,8 @@
   .importFormGrid { grid-template-columns: 1fr; }
   .importFull { grid-column: auto; }
   .cancelledRow { grid-template-columns: 1fr; gap: 3px; }
+}
+
+@media print {
+  .desktopTimeline { display: block !important; }
 }

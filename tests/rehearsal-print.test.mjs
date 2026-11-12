@@ -1,7 +1,7 @@
 import { deepStrictEqual, strictEqual } from "node:assert/strict";
 import { describe, it } from "node:test";
 import { Timestamp } from "firebase/firestore";
-import { buildRehearsalPrintModel, formatRehearsalTimelineBar } from "../lib/rehearsal-print.ts";
+import { buildRehearsalMobileTimelineModel, buildRehearsalPrintModel, formatRehearsalTimelineBar } from "../lib/rehearsal-print.ts";
 
 function rehearsal(id, date, startTime, endTime, type, venue = "稽古場") {
   const toTimestamp = (time) => Timestamp.fromDate(new Date(`${date}T${time}:00+09:00`));
@@ -80,6 +80,49 @@ describe("rehearsal print model", () => {
     ]);
     const category = model.days[0].categories[0];
     strictEqual(category.bars.length, 3);
+    strictEqual(category.laneCount, 2);
+    deepStrictEqual(category.bars.map((bar) => bar.lane), [0, 1, 0]);
+  });
+
+  it("builds a shared compact mobile axis for every category on the same day", () => {
+    const desktop = buildRehearsalPrintModel([
+      rehearsal("acting", "2026-11-15", "13:00", "17:00", "acting", "稽古場A"),
+      rehearsal("dance", "2026-11-15", "14:00", "16:00", "japanese_dance", "和室"),
+      rehearsal("combat", "2026-11-15", "18:00", "20:00", "stage_combat", "体育室"),
+    ]);
+    const mobile = buildRehearsalMobileTimelineModel(desktop);
+    const day = mobile.days[0];
+
+    strictEqual(day.axisStartMinutes, 12 * 60);
+    strictEqual(day.axisEndMinutes, 21 * 60);
+    strictEqual(day.slotCount, 36);
+    deepStrictEqual(day.categories.map((category) => category.bars.map((bar) => bar.id)), [["acting"], ["dance"], ["combat"]]);
+    deepStrictEqual(day.categories.map((category) => category.bars[0].leftSlot), [4, 8, 24]);
+  });
+
+  it("uses an independent mobile time range for each date and keeps a readable minimum range", () => {
+    const desktop = buildRehearsalPrintModel([
+      rehearsal("morning", "2026-11-15", "06:30", "07:00", "acting"),
+      rehearsal("evening", "2026-11-16", "20:30", "22:00", "stage_combat"),
+    ]);
+    const mobile = buildRehearsalMobileTimelineModel(desktop);
+
+    deepStrictEqual(mobile.days.map(({ axisStartMinutes, axisEndMinutes }) => [axisStartMinutes, axisEndMinutes]), [
+      [6 * 60, 9 * 60],
+      [20 * 60, 23 * 60],
+    ]);
+    strictEqual(mobile.days[0].categories[0].bars[0].leftSlot, 2);
+    strictEqual(mobile.days[1].categories[2].bars[0].leftSlot, 2);
+  });
+
+  it("preserves overlap lanes in the compact mobile model", () => {
+    const desktop = buildRehearsalPrintModel([
+      rehearsal("first", "2026-11-15", "13:00", "15:00", "acting"),
+      rehearsal("second", "2026-11-15", "14:00", "16:00", "acting"),
+      rehearsal("third", "2026-11-15", "16:00", "17:00", "acting"),
+    ]);
+    const category = buildRehearsalMobileTimelineModel(desktop).days[0].categories[0];
+
     strictEqual(category.laneCount, 2);
     deepStrictEqual(category.bars.map((bar) => bar.lane), [0, 1, 0]);
   });
