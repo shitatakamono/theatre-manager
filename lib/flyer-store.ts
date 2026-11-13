@@ -14,6 +14,11 @@ import {
   type FlyerSides,
 } from "./flyers.ts";
 import { ConflictError, normalizeRevision } from "./project-revisions.ts";
+import {
+  buildFlyerTaskTransitionEvents,
+  buildTaskEventPayload,
+  getPerformanceDateSnapshot,
+} from "./task-events.ts";
 
 type WriteContext = { actor: ActivityActor; expectedRevision: number };
 
@@ -180,7 +185,11 @@ export async function updateProjectFlyer(
   const flyerRef = doc(projectRef, "flyers", flyerId);
   const logRef = doc(collection(projectRef, "activityLogs"));
   return runTransaction(firestore, async (transaction) => {
-    const snapshot = await transaction.get(flyerRef);
+    const [projectSnapshot, snapshot] = await Promise.all([
+      transaction.get(projectRef),
+      transaction.get(flyerRef),
+    ]);
+    if (!projectSnapshot.exists()) throw new Error("公演が見つかりません");
     if (!snapshot.exists()) throw new Error("チラシが見つかりません");
     const current = mapFlyer(snapshot);
     if (current.revision !== context.expectedRevision) throw new ConflictError(context.expectedRevision, current.revision);
@@ -194,6 +203,14 @@ export async function updateProjectFlyer(
       updatedByUid: context.actor.uid,
     });
     transaction.set(logRef, activityPayload(context.actor, "update", ["チラシ更新", ...changedFields]));
+    for (const event of buildFlyerTaskTransitionEvents({
+      before: current,
+      after: { id: flyerId, ...values },
+      userUid: context.actor.uid,
+      performanceDateSnapshot: getPerformanceDateSnapshot(projectSnapshot.data()),
+    })) {
+      transaction.set(doc(collection(projectRef, "taskEvents")), buildTaskEventPayload(event, serverTimestamp()));
+    }
     return { changed: true, revision };
   });
 }

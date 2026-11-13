@@ -10,6 +10,7 @@ import {
 } from "firebase/firestore";
 import {
   buildProductionTaskViews,
+  getFlyerRecordTaskId,
   toCustomProductionTask,
   type ProductionSectionSlug,
   type ProductionTaskSource,
@@ -27,6 +28,13 @@ export const TASK_EVENT_STATUSES = ["not_started", "in_progress", "completed", "
 export type TaskEventType = (typeof TASK_EVENT_TYPES)[number];
 export type TaskEventStatus = (typeof TASK_EVENT_STATUSES)[number];
 
+export const TASK_EVENT_CHANGE_FIELDS = [
+  "title", "assigneeUid", "assigneeName", "dueDate", "priority", "categoryParent", "categoryChild",
+] as const;
+
+export type TaskEventChangeField = (typeof TASK_EVENT_CHANGE_FIELDS)[number];
+export type TaskEventChanges = Partial<Record<TaskEventChangeField, { before: string; after: string }>>;
+
 export type TaskEventDraft = {
   taskId: string;
   taskSource: ProductionTaskSource;
@@ -37,6 +45,7 @@ export type TaskEventDraft = {
   taskTitle: string;
   performanceDateSnapshot: string | null;
   userUid: string;
+  changes?: TaskEventChanges;
 };
 
 export type TaskEvent = TaskEventDraft & {
@@ -182,6 +191,76 @@ export function buildCustomTaskLifecycleEvent(input: {
   };
 }
 
+function customTaskText(task: CustomTaskLike, key: "category_parent" | "category_child"): string {
+  const value = task[key];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+export function buildCustomTaskChanges(
+  projectId: string,
+  before: CustomTaskLike,
+  after: CustomTaskLike
+): TaskEventChanges {
+  const beforeView = toCustomProductionTask(projectId, before);
+  const afterView = toCustomProductionTask(projectId, after);
+  const values: Record<TaskEventChangeField, [string, string]> = {
+    title: [beforeView.title, afterView.title],
+    assigneeUid: [beforeView.assigneeUid ?? "", afterView.assigneeUid ?? ""],
+    assigneeName: [beforeView.assignee ?? "", afterView.assignee ?? ""],
+    dueDate: [beforeView.dueDate ?? "", afterView.dueDate ?? ""],
+    priority: [beforeView.priority ?? "", afterView.priority ?? ""],
+    categoryParent: [customTaskText(before, "category_parent"), customTaskText(after, "category_parent")],
+    categoryChild: [customTaskText(before, "category_child"), customTaskText(after, "category_child")],
+  };
+  return Object.fromEntries(
+    Object.entries(values)
+      .filter(([, [beforeValue, afterValue]]) => beforeValue !== afterValue)
+      .map(([field, [beforeValue, afterValue]]) => [field, { before: beforeValue, after: afterValue }])
+  ) as TaskEventChanges;
+}
+
+function withChanges(event: TaskEventDraft, changes: TaskEventChanges): TaskEventDraft {
+  return Object.keys(changes).length > 0 ? { ...event, changes } : event;
+}
+
+function customTaskSemanticData(projectId: string, task: CustomTaskLike) {
+  const view = toCustomProductionTask(projectId, task);
+  return {
+    title: view.title,
+    stage: typeof task.stage === "string" ? task.stage.trim() : "",
+    categoryParent: customTaskText(task, "category_parent"),
+    categoryChild: customTaskText(task, "category_child"),
+    dueDate: view.dueDate ?? "",
+    status: view.status,
+    priority: view.priority ?? "normal",
+    assigneeUid: view.assigneeUid ?? "",
+    assigneeName: view.assignee ?? "",
+    note: view.note ?? "",
+    relatedView: view.relatedView ?? null,
+  };
+}
+
+function customTaskChanged(projectId: string, before: CustomTaskLike, after: CustomTaskLike): boolean {
+  return JSON.stringify(customTaskSemanticData(projectId, before))
+    !== JSON.stringify(customTaskSemanticData(projectId, after));
+}
+
+export function buildCustomTaskUpdatedEvent(input: {
+  projectId: string;
+  before: CustomTaskLike;
+  after: CustomTaskLike;
+  userUid: string;
+  performanceDateSnapshot: string | null;
+}): TaskEventDraft {
+  return withChanges(buildCustomTaskLifecycleEvent({
+    projectId: input.projectId,
+    task: input.after,
+    eventType: "taskUpdated",
+    userUid: input.userUid,
+    performanceDateSnapshot: input.performanceDateSnapshot,
+  }), buildCustomTaskChanges(input.projectId, input.before, input.after));
+}
+
 export function buildTaskTransitionEvent(
   before: ProductionTaskView,
   after: ProductionTaskView,
@@ -217,12 +296,43 @@ export function buildCustomTaskTransitionEvent(input: {
   userUid: string;
   performanceDateSnapshot: string | null;
 }): TaskEventDraft | null {
-  return buildTaskTransitionEvent(
+  const event = buildTaskTransitionEvent(
     toCustomProductionTask(input.projectId, input.before),
     toCustomProductionTask(input.projectId, input.after),
     input.userUid,
     input.performanceDateSnapshot
   );
+  return event ? withChanges(event, buildCustomTaskChanges(input.projectId, input.before, input.after)) : null;
+}
+
+function isExplicitDynamicTask(task: ProductionTaskView): boolean {
+  if (task.source === "accountingCustom") return true;
+  return task.source === "standard" && (
+    /^standard:venue:documents:[^:]+$/.test(task.id)
+    || /^standard:reception:preparations:custom:[^:]+$/.test(task.id)
+    || /^standard:reception:merchandise:custom:[^:]+$/.test(task.id)
+    || /^standard:reception:closing:[^:]+:custom:[^:]+$/.test(task.id)
+  );
+}
+
+function buildDynamicTaskLifecycleEvent(
+  task: ProductionTaskView,
+  eventType: "taskCreated" | "taskDeleted",
+  userUid: string,
+  performanceDateSnapshot: string | null
+): TaskEventDraft {
+  const status = eventStatus(task.status);
+  return {
+    taskId: task.id,
+    taskSource: task.source,
+    section: task.section,
+    eventType,
+    beforeStatus: eventType === "taskCreated" ? null : status,
+    afterStatus: status,
+    taskTitle: task.title,
+    performanceDateSnapshot,
+    userUid,
+  };
 }
 
 export function buildProductionTaskTransitionEvents(input: {
@@ -237,13 +347,58 @@ export function buildProductionTaskTransitionEvents(input: {
   const afterTasks = buildProductionTaskViews(toProjectRecord(input.projectId, input.afterProject), [])
     .filter((task) => task.section === input.section && task.source !== "customTask");
   const beforeById = new Map(beforeTasks.map((task) => [task.id, task]));
+  const afterById = new Map(afterTasks.map((task) => [task.id, task]));
   const performanceDateSnapshot = getPerformanceDateSnapshot(input.beforeProject);
 
-  return afterTasks.flatMap((after) => {
+  const events = afterTasks.flatMap((after) => {
     const before = beforeById.get(after.id);
-    if (!before) return [];
+    if (!before) return isExplicitDynamicTask(after)
+      ? [buildDynamicTaskLifecycleEvent(after, "taskCreated", input.userUid, performanceDateSnapshot)]
+      : [];
     const event = buildTaskTransitionEvent(before, after, input.userUid, performanceDateSnapshot);
     return event ? [event] : [];
+  });
+  for (const before of beforeTasks) {
+    if (!afterById.has(before.id) && isExplicitDynamicTask(before)) {
+      events.push(buildDynamicTaskLifecycleEvent(before, "taskDeleted", input.userUid, performanceDateSnapshot));
+    }
+  }
+  return events;
+}
+
+type FlyerTaskEventInput = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  submissionDate?: string;
+  deliveryDate?: string;
+};
+
+export function buildFlyerTaskTransitionEvents(input: {
+  before: FlyerTaskEventInput;
+  after: FlyerTaskEventInput;
+  userUid: string;
+  performanceDateSnapshot: string | null;
+}): TaskEventDraft[] {
+  if (!input.before.enabled || !input.after.enabled) return [];
+  return ([
+    ["submission", "入稿", Boolean(input.before.submissionDate), Boolean(input.after.submissionDate)],
+    ["delivery", "納品", Boolean(input.before.deliveryDate), Boolean(input.after.deliveryDate)],
+  ] as const).flatMap(([kind, label, beforeDone, afterDone]) => {
+    if (beforeDone === afterDone) return [];
+    const beforeStatus: TaskEventStatus = beforeDone ? "completed" : "not_started";
+    const afterStatus: TaskEventStatus = afterDone ? "completed" : "not_started";
+    return [{
+      taskId: getFlyerRecordTaskId(input.after.id, kind),
+      taskSource: "standard" as const,
+      section: "flyer" as const,
+      eventType: afterDone ? "taskCompleted" as const : "taskReopened" as const,
+      beforeStatus,
+      afterStatus,
+      taskTitle: `${input.after.name} ${label}`,
+      performanceDateSnapshot: input.performanceDateSnapshot,
+      userUid: input.userUid,
+    }];
   });
 }
 
@@ -353,9 +508,10 @@ export async function updateCustomTaskWithEvent(
       if (relatedView) after.relatedView = relatedView;
       else delete after.relatedView;
     }
+    if (!customTaskChanged(projectId, before, after)) return;
     const performanceDateSnapshot = getPerformanceDateSnapshot(project.data());
     const event = buildCustomTaskTransitionEvent({ projectId, before, after, userUid, performanceDateSnapshot })
-      ?? buildCustomTaskLifecycleEvent({ projectId, task: after, eventType: "taskUpdated", userUid, performanceDateSnapshot });
+      ?? buildCustomTaskUpdatedEvent({ projectId, before, after, userUid, performanceDateSnapshot });
     transaction.update(taskRef, updates);
     transaction.set(eventRef, buildTaskEventPayload(event, serverTimestamp()));
   });

@@ -1445,6 +1445,23 @@ describe("task events", () => {
       taskId: "custom:task-a", taskSource: "customTask", section: null,
       eventType: "taskDeleted", beforeStatus: "in_progress", afterStatus: "in_progress",
     })));
+    await assertSucceeds(setDoc(taskEventRef(firestoreFor(editorUid), "changes-event"), taskEventData(editorUid, {
+      taskId: "custom:task-a", taskSource: "customTask", section: "dm",
+      eventType: "taskUpdated", beforeStatus: "not_started", afterStatus: "not_started",
+      changes: {
+        title: { before: "旧タイトル", after: "新タイトル" },
+        dueDate: { before: "", after: "2026-11-01" },
+        priority: { before: "normal", after: "high" },
+      },
+    })));
+    await assertSucceeds(setDoc(taskEventRef(firestoreFor(ownerUid), "dynamic-created"), taskEventData(ownerUid, {
+      taskId: "standard:venue:documents:document-a", taskSource: "standard", section: "venue",
+      eventType: "taskCreated", beforeStatus: null, afterStatus: "not_started",
+    })));
+    await assertSucceeds(setDoc(taskEventRef(firestoreFor(ownerUid), "dynamic-deleted"), taskEventData(ownerUid, {
+      taskId: "accounting-custom:custom-a", taskSource: "accountingCustom", section: "accounting",
+      eventType: "taskDeleted", beforeStatus: "completed", afterStatus: "completed",
+    })));
   });
 
   it("allows members to read and denies nonmembers", async () => {
@@ -1468,6 +1485,32 @@ describe("task events", () => {
     await assertFails(setDoc(taskEventRef(db, "bad-source"), taskEventData(ownerUid, { taskSource: "customTask" })));
     await assertFails(setDoc(taskEventRef(db, "client-time"), taskEventData(ownerUid, { occurredAt: new Date() })));
     await assertFails(setDoc(taskEventRef(db, "standard-deletion"), taskEventData(ownerUid, { eventType: "taskDeleted" })));
+  });
+
+  it("validates change keys, values, sizes, and allowed event types", async () => {
+    const db = firestoreFor(ownerUid);
+    const updated = {
+      taskId: "custom:task-a", taskSource: "customTask", section: null,
+      eventType: "taskUpdated", beforeStatus: "not_started", afterStatus: "not_started",
+    };
+    await assertFails(setDoc(taskEventRef(db, "empty-changes"), taskEventData(ownerUid, { ...updated, changes: {} })));
+    await assertFails(setDoc(taskEventRef(db, "unknown-change"), taskEventData(ownerUid, {
+      ...updated, changes: { note: { before: "秘密", after: "別の秘密" } },
+    })));
+    await assertFails(setDoc(taskEventRef(db, "oversized-change"), taskEventData(ownerUid, {
+      ...updated, changes: { title: { before: "旧", after: "x".repeat(201) } },
+    })));
+    await assertFails(setDoc(taskEventRef(db, "bad-priority"), taskEventData(ownerUid, {
+      ...updated, changes: { priority: { before: "normal", after: "urgent" } },
+    })));
+    await assertFails(setDoc(taskEventRef(db, "bad-due-date"), taskEventData(ownerUid, {
+      ...updated, changes: { dueDate: { before: "", after: "来週" } },
+    })));
+    await assertFails(setDoc(taskEventRef(db, "create-with-changes"), taskEventData(ownerUid, {
+      taskId: "custom:task-a", taskSource: "customTask", section: null,
+      eventType: "taskCreated", beforeStatus: null, afterStatus: "not_started",
+      changes: { title: { before: "", after: "追加" } },
+    })));
   });
 
   it("keeps task events append-only", async () => {

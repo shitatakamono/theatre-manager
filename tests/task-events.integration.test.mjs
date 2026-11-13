@@ -3,7 +3,7 @@ import { rejects, strictEqual } from "node:assert/strict";
 import { after, before, beforeEach, describe, it } from "node:test";
 import { initializeTestEnvironment } from "@firebase/rules-unit-testing";
 import { collection, doc, getDoc, getDocs, setDoc } from "firebase/firestore";
-import { getProductionActivityDefinition } from "../lib/activity.ts";
+import { getProductionActivityDefinition, getVenueActivityDefinition } from "../lib/activity.ts";
 import { runProjectRevisionTransaction } from "../lib/project-revisions.ts";
 import {
   buildProductionTaskTransitionEvents,
@@ -90,6 +90,10 @@ describe("task event writes", () => {
       title: "他劇団の公演情報を集める", category_parent: "制作", category_child: "DM・折込", dueDate: "2026-11-21",
       status: "in-progress", priority: "high", assigneeUid: editorUid, assigneeName: "Editor", note: "メモだけ更新",
     }, editorUid);
+    await updateCustomTaskWithEvent(db, projectId, taskId, {
+      title: "他劇団の公演情報を集める", category_parent: "制作", category_child: "DM・折込", dueDate: "2026-11-21",
+      status: "in-progress", priority: "high", assigneeUid: editorUid, assigneeName: "Editor", note: "メモだけ更新",
+    }, editorUid);
     const taskSnapshot = await getDocs(collection(db, "projects", projectId, "tasks"));
     strictEqual(taskSnapshot.docs[0].data().source, "custom");
     strictEqual(taskSnapshot.docs[0].data().priority, "high");
@@ -98,8 +102,16 @@ describe("task event writes", () => {
     await deleteCustomTaskWithEvent(db, projectId, taskId, editorUid);
     strictEqual((await getDocs(collection(db, "projects", projectId, "tasks"))).empty, true);
     const events = (await getDocs(collection(db, "projects", projectId, "taskEvents"))).docs.map((entry) => entry.data());
-    strictEqual(events.some((event) => event.eventType === "statusChanged"), true);
-    strictEqual(events.some((event) => event.eventType === "taskUpdated"), true);
+    const statusEvent = events.find((event) => event.eventType === "statusChanged");
+    strictEqual(statusEvent?.changes?.title?.before, "他劇団の公演情報を集めてまとめる");
+    strictEqual(statusEvent?.changes?.title?.after, "他劇団の公演情報を集める");
+    strictEqual(statusEvent?.changes?.dueDate?.after, "2026-11-21");
+    strictEqual(statusEvent?.changes?.priority?.after, "high");
+    strictEqual(statusEvent?.changes?.assigneeUid?.after, editorUid);
+    strictEqual(JSON.stringify(statusEvent).includes("候補をまとめる"), false);
+    const noteOnlyEvent = events.find((event) => event.eventType === "taskUpdated");
+    strictEqual(noteOnlyEvent?.changes, undefined);
+    strictEqual(events.filter((event) => event.eventType === "taskUpdated").length, 1);
     strictEqual(events.some((event) => event.eventType === "taskDeleted"), true);
   });
 
@@ -127,6 +139,23 @@ describe("task event writes", () => {
     strictEqual((await getDoc(ref)).data()?.relatedView, undefined);
     const events = await getDocs(collection(db, "projects", projectId, "taskEvents"));
     strictEqual(events.docs.filter((entry) => entry.data().eventType === "taskUpdated").length, 3);
+  });
+
+  it("serializes concurrent custom edits and records both actual transitions", async () => {
+    const db = firestoreFor(ownerUid);
+    const taskId = await createCustomTaskWithEvent(db, projectId, { title: "同時編集前" }, ownerUid);
+    await Promise.all([
+      updateCustomTaskWithEvent(db, projectId, taskId, { title: "同時編集A" }, ownerUid),
+      updateCustomTaskWithEvent(db, projectId, taskId, { title: "同時編集B" }, ownerUid),
+    ]);
+
+    const events = (await getDocs(collection(db, "projects", projectId, "taskEvents"))).docs
+      .map((entry) => entry.data())
+      .filter((event) => event.eventType === "taskUpdated");
+    strictEqual(events.length, 2);
+    const transitions = events.map((event) => `${event.changes?.title?.before}->${event.changes?.title?.after}`);
+    strictEqual(transitions.some((value) => value === "同時編集前->同時編集A" || value === "同時編集前->同時編集B"), true);
+    strictEqual(transitions.some((value) => value === "同時編集A->同時編集B" || value === "同時編集B->同時編集A"), true);
   });
 
   it("updates a legacy task without removing its untouched legacy fields", async () => {
@@ -191,5 +220,38 @@ describe("task event writes", () => {
     strictEqual(events.size, 1);
     strictEqual(events.docs[0].data().taskId, "standard:flyer:information:proofread");
     strictEqual(events.docs[0].data().eventType, "taskCompleted");
+  });
+
+  it("atomically records explicit dynamic task creation and deletion", async () => {
+    const db = firestoreFor(editorUid);
+    async function save(documents, expectedRevision) {
+      return runProjectRevisionTransaction({
+        firestore: db,
+        projectId,
+        revisionKey: "venue",
+        expectedRevision,
+        updates: { "production.venue.documents": documents },
+        nextValue: documents,
+        readCurrentValue: (project) => project.production?.venue?.documents,
+        actor: { uid: editorUid, displayName: "Editor" },
+        activity: getVenueActivityDefinition("documents"),
+        buildTaskEvents: (project) => buildProductionTaskTransitionEvents({
+          projectId,
+          beforeProject: project,
+          afterProject: withProductionBlock(project, "venue", "documents", documents),
+          section: "venue",
+          userUid: editorUid,
+        }),
+      });
+    }
+
+    const documentTask = [{ id: "document-a", name: "消防署提出", submitted: false }];
+    await save(documentTask, 0);
+    await save([], 1);
+    const events = (await getDocs(collection(db, "projects", projectId, "taskEvents"))).docs.map((entry) => entry.data());
+    strictEqual(events.length, 2);
+    strictEqual(events.some((event) => event.eventType === "taskCreated"), true);
+    strictEqual(events.some((event) => event.eventType === "taskDeleted"), true);
+    strictEqual(events.every((event) => event.taskId === "standard:venue:documents:document-a"), true);
   });
 });

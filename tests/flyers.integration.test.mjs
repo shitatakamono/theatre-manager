@@ -32,7 +32,10 @@ beforeEach(async () => {
   await testEnv.clearFirestore();
   await testEnv.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
-    await setDoc(doc(db, "projects", projectId), { title: "複数チラシ", memberUids: [ownerUid, editorUid, viewerUid] });
+    await setDoc(doc(db, "projects", projectId), {
+      title: "複数チラシ", memberUids: [ownerUid, editorUid, viewerUid],
+      performances: [{ id: "show-a", date: "2026-11-15", startTime: "13:00" }],
+    });
     await setDoc(doc(db, "projects", projectId, "members", ownerUid), { uid: ownerUid, role: "owner" });
     await setDoc(doc(db, "projects", projectId, "members", editorUid), { uid: editorUid, role: "editor" });
     await setDoc(doc(db, "projects", projectId, "members", viewerUid), { uid: viewerUid, role: "viewer" });
@@ -70,6 +73,28 @@ describe("multiple flyer transactions and rules", () => {
       () => updateProjectFlyer(db, projectId, id, { name: "競合", enabled: true }, { actor: actor(ownerUid), expectedRevision: 0 }),
       (error) => isConflictError(error),
     );
+  });
+
+  it("atomically records flyer task completion and reopening", async () => {
+    const db = firestoreFor(ownerUid);
+    const id = await createProjectFlyer(projectId, { name: "本番チラシ", enabled: true }, actor(ownerUid), db);
+    await updateProjectFlyer(db, projectId, id, {
+      name: "本番チラシ", enabled: true, submissionDate: "2026-10-01", deliveryDate: "2026-10-05",
+    }, { actor: actor(ownerUid), expectedRevision: 0 });
+    await updateProjectFlyer(db, projectId, id, {
+      name: "本番チラシ", enabled: true, deliveryDate: "2026-10-05",
+    }, { actor: actor(ownerUid), expectedRevision: 1 });
+    await rejects(
+      () => updateProjectFlyer(db, projectId, id, { name: "競合", enabled: true }, { actor: actor(ownerUid), expectedRevision: 0 }),
+      (error) => isConflictError(error),
+    );
+
+    const events = (await getDocs(collection(db, "projects", projectId, "taskEvents"))).docs.map((entry) => entry.data());
+    strictEqual(events.length, 3);
+    strictEqual(events.filter((event) => event.eventType === "taskCompleted").length, 2);
+    strictEqual(events.filter((event) => event.eventType === "taskReopened").length, 1);
+    strictEqual(events.every((event) => event.performanceDateSnapshot === "2026-11-15"), true);
+    strictEqual(events.every((event) => event.taskId.startsWith(`standard:flyer:record:${id}:`)), true);
   });
 
   it("duplicates collection and legacy flyers with reset production dates and safe logs", async () => {

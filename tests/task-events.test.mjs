@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 import {
   buildCustomTaskTransitionEvent,
   buildCustomTaskLifecycleEvent,
+  buildCustomTaskUpdatedEvent,
+  buildFlyerTaskTransitionEvents,
   buildProductionTaskTransitionEvents,
   buildTaskCreatedEvent,
   getPerformanceDateSnapshot,
@@ -49,14 +51,36 @@ describe("custom task events", () => {
     strictEqual(buildCustomTaskTransitionEvent({ projectId, before: base, after: base, userUid, performanceDateSnapshot: null }), null);
   });
 
-  it("records metadata edits and deletion without copying note contents", () => {
+  it("records only changed metadata values and never copies note contents", () => {
     const task = { id: "task-a", title: "追加作業", stage: "", category_parent: "会場", category_child: "", done: false, note: "非公開メモ" };
-    const updated = buildCustomTaskLifecycleEvent({ projectId, task, eventType: "taskUpdated", userUid, performanceDateSnapshot: null });
+    const after = {
+      ...task, title: "追加作業（更新）", category_parent: "制作", category_child: "DM・折込",
+      dueDate: "2026-11-01", priority: "high", assigneeUid: "member-a", assigneeName: "担当者", note: "更新後の非公開メモ",
+    };
+    const updated = buildCustomTaskUpdatedEvent({ projectId, before: task, after, userUid, performanceDateSnapshot: null });
     const deleted = buildCustomTaskLifecycleEvent({ projectId, task, eventType: "taskDeleted", userUid, performanceDateSnapshot: null });
     strictEqual(updated.eventType, "taskUpdated");
+    deepStrictEqual(updated.changes, {
+      title: { before: "追加作業", after: "追加作業（更新）" },
+      assigneeUid: { before: "", after: "member-a" },
+      assigneeName: { before: "", after: "担当者" },
+      dueDate: { before: "", after: "2026-11-01" },
+      priority: { before: "normal", after: "high" },
+      categoryParent: { before: "会場", after: "制作" },
+      categoryChild: { before: "", after: "DM・折込" },
+    });
     strictEqual(deleted.eventType, "taskDeleted");
     strictEqual("note" in updated, false);
+    strictEqual(JSON.stringify(updated).includes("非公開メモ"), false);
     strictEqual(updated.beforeStatus, updated.afterStatus);
+  });
+
+  it("keeps one status event when status and metadata change together", () => {
+    const before = { id: "task-a", title: "追加作業", category_parent: "制作", done: false, status: "not-started" };
+    const after = { ...before, title: "追加作業（着手）", done: false, status: "in-progress" };
+    const event = buildCustomTaskTransitionEvent({ projectId, before, after, userUid, performanceDateSnapshot: null });
+    strictEqual(event?.eventType, "statusChanged");
+    deepStrictEqual(event?.changes, { title: { before: "追加作業", after: "追加作業（着手）" } });
   });
 });
 
@@ -101,6 +125,38 @@ describe("standard production task events", () => {
     const before = project({ flyer: { flyer: { enabled: false } } });
     const after = withProductionBlock(before, "flyer", "flyer", { enabled: true, submissionDate: "2026-10-20" });
     deepStrictEqual(buildProductionTaskTransitionEvents({ projectId, beforeProject: before, afterProject: after, section: "flyer", userUid }), []);
+  });
+
+  it("records explicit dynamic task creation and deletion but not display-only tasks", () => {
+    const before = project({ venue: { documents: [] } });
+    const withDocument = project({ venue: { documents: [{ id: "document-a", name: "消防署提出", submitted: false }] } });
+    const created = buildProductionTaskTransitionEvents({ projectId, beforeProject: before, afterProject: withDocument, section: "venue", userUid });
+    const deleted = buildProductionTaskTransitionEvents({ projectId, beforeProject: withDocument, afterProject: before, section: "venue", userUid });
+    deepStrictEqual(created.map(({ taskId, eventType }) => [taskId, eventType]), [["standard:venue:documents:document-a", "taskCreated"]]);
+    deepStrictEqual(deleted.map(({ taskId, eventType }) => [taskId, eventType]), [["standard:venue:documents:document-a", "taskDeleted"]]);
+  });
+});
+
+describe("flyer task events", () => {
+  it("records completion and reopening for each collection flyer task", () => {
+    const base = { id: "flyer-a", name: "本番チラシ", enabled: true };
+    const completed = buildFlyerTaskTransitionEvents({
+      before: base, after: { ...base, submissionDate: "2026-10-01", deliveryDate: "2026-10-05" },
+      userUid, performanceDateSnapshot: "2026-11-15",
+    });
+    deepStrictEqual(completed.map(({ taskId, eventType }) => [taskId, eventType]), [
+      ["standard:flyer:record:flyer-a:submission", "taskCompleted"],
+      ["standard:flyer:record:flyer-a:delivery", "taskCompleted"],
+    ]);
+    const reopened = buildFlyerTaskTransitionEvents({
+      before: { ...base, submissionDate: "2026-10-01" }, after: base,
+      userUid, performanceDateSnapshot: "2026-11-15",
+    });
+    strictEqual(reopened[0]?.eventType, "taskReopened");
+    deepStrictEqual(buildFlyerTaskTransitionEvents({
+      before: { ...base, enabled: false }, after: { ...base, submissionDate: "2026-10-01" },
+      userUid, performanceDateSnapshot: null,
+    }), []);
   });
 });
 

@@ -56,6 +56,56 @@ service cloud.firestore {
       return value in ['not_started', 'in_progress', 'completed', 'on_hold'];
     }
 
+    function validTaskEventChange(change, maxSize) {
+      return change is map
+        && change.keys().hasOnly(['before', 'after'])
+        && change.keys().hasAll(['before', 'after'])
+        && change.before is string && change.before.size() <= maxSize
+        && change.after is string && change.after.size() <= maxSize;
+    }
+
+    function validTaskEventDateChange(change) {
+      return validTaskEventChange(change, 10)
+        && (change.before == ''
+          || change.before.matches('^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'))
+        && (change.after == ''
+          || change.after.matches('^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'));
+    }
+
+    function validTaskEventChanges(data, eventType) {
+      let hasChanges = data.keys().hasAny(['changes']);
+      let changes = hasChanges ? data.changes : {};
+      return !hasChanges || (
+        eventType in ['taskUpdated', 'statusChanged', 'taskCompleted', 'taskReopened']
+        && changes is map
+        && changes.size() > 0
+        && changes.keys().hasOnly([
+          'title', 'assigneeUid', 'assigneeName', 'dueDate', 'priority',
+          'categoryParent', 'categoryChild'
+        ])
+        && (!changes.keys().hasAny(['title']) || validTaskEventChange(changes.title, 200))
+        && (!changes.keys().hasAny(['assigneeUid']) || validTaskEventChange(changes.assigneeUid, 128))
+        && (!changes.keys().hasAny(['assigneeName']) || validTaskEventChange(changes.assigneeName, 200))
+        && (!changes.keys().hasAny(['dueDate']) || validTaskEventDateChange(changes.dueDate))
+        && (!changes.keys().hasAny(['priority']) || (
+          validTaskEventChange(changes.priority, 10)
+          && changes.priority.before in ['', 'low', 'normal', 'high']
+          && changes.priority.after in ['', 'low', 'normal', 'high']))
+        && (!changes.keys().hasAny(['categoryParent']) || validTaskEventChange(changes.categoryParent, 100))
+        && (!changes.keys().hasAny(['categoryChild']) || validTaskEventChange(changes.categoryChild, 100))
+      );
+    }
+
+    function isExplicitDynamicTaskEvent(source, taskId) {
+      return source == 'accountingCustom'
+        || (source == 'standard' && (
+          taskId.matches('^standard:venue:documents:[^:]+$')
+          || taskId.matches('^standard:reception:preparations:custom:[^:]+$')
+          || taskId.matches('^standard:reception:merchandise:custom:[^:]+$')
+          || taskId.matches('^standard:reception:closing:[^:]+:custom:[^:]+$')
+        ));
+    }
+
     function validTaskRelatedView(data) {
       return !data.keys().hasAny(['relatedView'])
         || data.relatedView in [
@@ -138,30 +188,33 @@ service cloud.firestore {
       let beforeStatus = request.resource.data.beforeStatus;
       let afterStatus = request.resource.data.afterStatus;
       let source = request.resource.data.taskSource;
+      let taskId = request.resource.data.taskId;
       return request.resource.data.keys().hasOnly([
           'taskId', 'taskSource', 'section', 'eventType', 'beforeStatus',
           'afterStatus', 'occurredAt', 'userUid', 'taskTitle',
-          'performanceDateSnapshot'
+          'performanceDateSnapshot', 'changes'
         ])
         && request.resource.data.keys().hasAll([
           'taskId', 'taskSource', 'section', 'eventType', 'beforeStatus',
           'afterStatus', 'occurredAt', 'userUid', 'taskTitle',
           'performanceDateSnapshot'
         ])
-        && request.resource.data.taskId is string
-        && request.resource.data.taskId.size() > 0
-        && request.resource.data.taskId.size() <= 500
+        && taskId is string
+        && taskId.size() > 0
+        && taskId.size() <= 500
         && source in ['standard', 'accountingCustom', 'customTask']
-        && ((source == 'standard' && request.resource.data.taskId.matches('^standard:.*'))
-          || (source == 'accountingCustom' && request.resource.data.taskId.matches('^accounting-custom:.*'))
-          || (source == 'customTask' && request.resource.data.taskId.matches('^custom:.*')))
+        && ((source == 'standard' && taskId.matches('^standard:.*'))
+          || (source == 'accountingCustom' && taskId.matches('^accounting-custom:.*'))
+          || (source == 'customTask' && taskId.matches('^custom:.*')))
         && (request.resource.data.section == null
           || request.resource.data.section in ['venue', 'flyer', 'dm', 'web', 'tickets', 'reception', 'accounting'])
         && eventType in ['taskCreated', 'taskUpdated', 'taskDeleted', 'statusChanged', 'taskCompleted', 'taskReopened']
         && validTaskEventStatus(afterStatus)
-        && ((eventType == 'taskCreated' && source == 'customTask'
+        && ((eventType == 'taskCreated' && (source == 'customTask' || isExplicitDynamicTaskEvent(source, taskId))
             && beforeStatus == null)
-          || (eventType in ['taskUpdated', 'taskDeleted'] && source == 'customTask'
+          || (eventType == 'taskUpdated' && source == 'customTask'
+            && validTaskEventStatus(beforeStatus) && beforeStatus == afterStatus)
+          || (eventType == 'taskDeleted' && (source == 'customTask' || isExplicitDynamicTaskEvent(source, taskId))
             && validTaskEventStatus(beforeStatus) && beforeStatus == afterStatus)
           || (eventType == 'taskCompleted' && validTaskEventStatus(beforeStatus)
             && beforeStatus != 'completed' && afterStatus == 'completed')
@@ -170,6 +223,7 @@ service cloud.firestore {
           || (eventType == 'statusChanged' && validTaskEventStatus(beforeStatus)
             && beforeStatus != afterStatus
             && beforeStatus != 'completed' && afterStatus != 'completed'))
+        && validTaskEventChanges(request.resource.data, eventType)
         && request.resource.data.occurredAt == request.time
         && request.resource.data.userUid == request.auth.uid
         && request.resource.data.taskTitle is string
