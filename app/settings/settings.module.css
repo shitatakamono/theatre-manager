@@ -24,6 +24,9 @@
 .connectButton:hover:not(:disabled) { background: #215d49; }
 .disconnectButton { border: 1px solid #c7d1cd; color: #4d5b56; }
 .disconnectButton:hover:not(:disabled) { background: #f2f5f4; }
+.calendarConnectedActions { width: 100%; }
+.reauthDescription { color: #5e6c66; font-size: 12px; line-height: 1.7; }
+.calendarActionButtons { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
 .lineConnectButton { background: #06c755; color: #fff; }
 .lineConnectButton:hover:not(:disabled) { background: #05ad4a; }
 .connectedMessage { color: #226448; font-size: 13px; font-weight: 750; }
@@ -36,5 +39,6 @@
   .page { padding: 22px 14px; }
   .header { align-items: flex-start; flex-direction: column; }
   .section { padding: 18px; }
+  .calendarActionButtons { flex-direction: column; }
   .actions button { width: 100%; }
 }

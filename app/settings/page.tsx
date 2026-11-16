@@ -252,7 +252,13 @@ function SettingsContent() {
         {loading ? <p className={styles.loading}>連携状態を確認しています…</p> : (
           <div className={styles.actions}>
             {connected ? (
-              <button className={styles.disconnectButton} type="button" disabled={processing} onClick={() => void disconnect()}>{processing ? "解除中…" : "連携を解除"}</button>
+              <div className={styles.calendarConnectedActions}>
+                <p className={styles.reauthDescription}>同期されない場合は再認証をお試しください。以前と同じGoogleアカウントを選択してください。</p>
+                <div className={styles.calendarActionButtons}>
+                  <button className={styles.connectButton} type="button" disabled={processing} onClick={() => void connect()}>{processing ? "処理中…" : "Googleカレンダーを再認証"}</button>
+                  <button className={styles.disconnectButton} type="button" disabled={processing} onClick={() => void disconnect()}>{processing ? "処理中…" : "連携を解除"}</button>
+                </div>
+              </div>
             ) : (
               <button className={styles.connectButton} type="button" disabled={processing} onClick={() => void connect()}>{processing ? "接続中…" : "Googleカレンダーと連携"}</button>
             )}
