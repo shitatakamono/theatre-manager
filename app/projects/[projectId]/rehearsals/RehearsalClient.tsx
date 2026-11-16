@@ -20,12 +20,19 @@ import {
   updateProjectRehearsal,
   type Rehearsal,
   type RehearsalInput,
+  type RehearsalType,
 } from "@/lib/rehearsals";
 import { CONFLICT_MESSAGE, isConflictError } from "@/lib/project-revisions";
 import { canUseRehearsalScreenshotImport } from "@/lib/rehearsal-import";
 import { buildRehearsalPrintModel } from "@/lib/rehearsal-print";
+import {
+  ALL_REHEARSAL_FILTER_TYPES,
+  filterRehearsalsByTypes,
+  serializeRehearsalFilterTypes,
+} from "@/lib/rehearsal-filter";
 import { useProjectAccess } from "../ProjectAccess";
 import { RehearsalImportDialog } from "./RehearsalImportDialog";
+import { GoogleCalendarSyncSettings } from "./GoogleCalendarSyncSettings";
 import { RehearsalMobileTimeline } from "./RehearsalMobileTimeline";
 import { RehearsalSharePanel } from "./RehearsalSharePanel";
 import { RehearsalTimeline } from "./RehearsalTimeline";
@@ -96,7 +103,13 @@ function RehearsalFields({ value, onChange, hideDate = false }: { value: Rehears
   );
 }
 
-export function RehearsalClient({ projectId }: { projectId: string }) {
+export function RehearsalClient({
+  projectId,
+  initialSelectedTypes = ALL_REHEARSAL_FILTER_TYPES,
+}: {
+  projectId: string;
+  initialSelectedTypes?: RehearsalType[];
+}) {
   const { role, actor } = useProjectAccess();
   const { canEdit, canImport } = getRehearsalScheduleCapabilities(role);
   const [upcoming, setUpcoming] = useState<Rehearsal[]>([]);
@@ -114,6 +127,7 @@ export function RehearsalClient({ projectId }: { projectId: string }) {
   const [conflict, setConflict] = useState(false);
   const [notice, setNotice] = useState("");
   const [view, setView] = useState<ScheduleView>("timeline");
+  const [selectedTypes, setSelectedTypes] = useState([...initialSelectedTypes]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -144,7 +158,22 @@ export function RehearsalClient({ projectId }: { projectId: string }) {
     return () => { active = false; };
   }, [projectId]);
 
-  const timelineModel = useMemo(() => buildRehearsalPrintModel(upcoming), [upcoming]);
+  const filteredUpcoming = useMemo(
+    () => filterRehearsalsByTypes(upcoming, selectedTypes),
+    [selectedTypes, upcoming]
+  );
+  const filteredPast = useMemo(
+    () => filterRehearsalsByTypes(past, selectedTypes),
+    [past, selectedTypes]
+  );
+  const timelineModel = useMemo(() => buildRehearsalPrintModel(filteredUpcoming), [filteredUpcoming]);
+  const printHref = `/projects/${projectId}/rehearsals/print?types=${encodeURIComponent(serializeRehearsalFilterTypes(selectedTypes))}`;
+
+  const toggleType = (type: Rehearsal["type"], checked: boolean) => {
+    setSelectedTypes((current) => ALL_REHEARSAL_FILTER_TYPES.filter((candidate) =>
+      candidate === type ? checked : current.includes(candidate)
+    ));
+  };
 
   const openSingle = () => {
     setDraft({ ...EMPTY_REHEARSAL_INPUT, date: todayInTokyo() });
@@ -255,7 +284,7 @@ export function RehearsalClient({ projectId }: { projectId: string }) {
             />}
           </>}
           <Link className={styles.actionLink} href="/settings">Googleカレンダー連携</Link>
-          <Link className={styles.actionLink} href={`/projects/${projectId}/rehearsals/print`}>印刷</Link>
+          <Link className={styles.actionLink} href={printHref}>印刷</Link>
         </div>
       </header>
 
@@ -264,21 +293,38 @@ export function RehearsalClient({ projectId }: { projectId: string }) {
 
       {role && <RehearsalSharePanel projectId={projectId} canManage={canEdit} />}
 
+      <section className={styles.displayFilters} aria-labelledby="rehearsal-filter-title">
+        <div><p>DISPLAY</p><h2 id="rehearsal-filter-title">表示する稽古</h2><span>画面表示と印刷に反映されます</span></div>
+        <fieldset className={styles.typeChecks}>
+          <legend className={styles.visuallyHidden}>表示する稽古種類</legend>
+          {ALL_REHEARSAL_FILTER_TYPES.map((type) => <label key={type}>
+            <input type="checkbox" checked={selectedTypes.includes(type)} onChange={(event) => toggleType(type, event.target.checked)} />
+            <span>{REHEARSAL_TYPE_LABELS[type]}</span>
+          </label>)}
+        </fieldset>
+        <div className={styles.filterActions}>
+          <button type="button" onClick={() => setSelectedTypes([...ALL_REHEARSAL_FILTER_TYPES])}>すべて選択</button>
+          <button type="button" onClick={() => setSelectedTypes([])}>すべて解除</button>
+        </div>
+      </section>
+
+      <GoogleCalendarSyncSettings projectId={projectId} />
+
       <div className={styles.viewSwitch} role="group" aria-label="稽古予定の表示形式"><button type="button" data-selected={view === "list"} onClick={() => setView("list")}>一覧</button><button type="button" data-selected={view === "timeline"} onClick={() => setView("timeline")}>時間軸</button></div>
 
       {view === "list" ? <>
         <section className={styles.schedule} aria-labelledby="upcoming-title">
-          <div className={styles.sectionTitle}><p>UPCOMING</p><h2 id="upcoming-title">今後の稽古</h2><span>{upcoming.length}件</span></div>
-          {!loading && upcoming.length === 0 ? <p className={styles.empty}>登録されている今後の稽古はありません。</p> : <RehearsalRows items={upcoming} canEdit={canEdit} deletingId={deletingId} onEdit={openEdit} onDelete={remove} />}
+          <div className={styles.sectionTitle}><p>UPCOMING</p><h2 id="upcoming-title">今後の稽古</h2><span>{filteredUpcoming.length}件</span></div>
+          {!loading && filteredUpcoming.length === 0 ? <p className={styles.empty}>{selectedTypes.length === 0 ? "表示する稽古が選択されていません。" : "選択中の種類に該当する今後の稽古はありません。"}</p> : <RehearsalRows items={filteredUpcoming} canEdit={canEdit} deletingId={deletingId} onEdit={openEdit} onDelete={remove} />}
         </section>
 
         <details className={styles.pastSection}>
-          <summary>過去の稽古 <span>{past.length}件</span></summary>
-          {past.length === 0 ? <p className={styles.empty}>過去の稽古はありません。</p> : <RehearsalRows items={past} canEdit={canEdit} deletingId={deletingId} onEdit={openEdit} onDelete={remove} />}
+          <summary>過去の稽古 <span>{filteredPast.length}件</span></summary>
+          {filteredPast.length === 0 ? <p className={styles.empty}>{selectedTypes.length === 0 ? "表示する稽古が選択されていません。" : "選択中の種類に該当する過去の稽古はありません。"}</p> : <RehearsalRows items={filteredPast} canEdit={canEdit} deletingId={deletingId} onEdit={openEdit} onDelete={remove} />}
         </details>
       </> : <section className={styles.timelineSection} aria-labelledby="timeline-title">
         <div className={styles.sectionTitle}><p>TIMELINE</p><h2 id="timeline-title">今後の稽古時間軸</h2><span>{timelineModel.days.length}日</span></div>
-        {loading ? <p className={styles.empty}>読み込み中…</p> : timelineModel.rehearsalCount === 0 ? <p className={styles.empty}>登録されている今後の稽古はありません。</p> : <>
+        {loading ? <p className={styles.empty}>読み込み中…</p> : timelineModel.rehearsalCount === 0 ? <p className={styles.empty}>{selectedTypes.length === 0 ? "表示する稽古が選択されていません。" : "選択中の種類に該当する今後の稽古はありません。"}</p> : <>
           <div className={styles.desktopTimeline}><RehearsalTimeline model={timelineModel} onSelect={canEdit ? (id) => { const item = upcoming.find((rehearsal) => rehearsal.id === id); if (item) openEdit(item); } : undefined} /></div>
           <RehearsalMobileTimeline model={timelineModel} onSelect={canEdit ? (id) => { const item = upcoming.find((rehearsal) => rehearsal.id === id); if (item) openEdit(item); } : undefined} />
         </>}

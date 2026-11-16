@@ -1,7 +1,20 @@
 import { deepStrictEqual, strictEqual } from "node:assert/strict";
 import { describe, it } from "node:test";
 import { Timestamp } from "firebase/firestore";
-import { buildRehearsalMobileTimelineModel, buildRehearsalPrintModel, formatRehearsalTimelineBar } from "../lib/rehearsal-print.ts";
+import {
+  buildRehearsalMobileTimelineModel,
+  buildRehearsalPrintModel as buildRehearsalPrintModelAtRuntime,
+  formatRehearsalTimelineBar,
+} from "../lib/rehearsal-print.ts";
+
+// Keep every fixture date in the future regardless of the machine clock.
+// This instant is 2026-11-15 00:00 in Asia/Tokyo, so the test continues to
+// exercise the production Tokyo-date boundary instead of bypassing it.
+const FIXED_NOW = new Date("2026-11-14T15:00:00.000Z");
+
+function buildRehearsalPrintModel(rehearsals, now = FIXED_NOW) {
+  return buildRehearsalPrintModelAtRuntime(rehearsals, now);
+}
 
 function rehearsal(id, date, startTime, endTime, type, venue = "稽古場") {
   const toTimestamp = (time) => Timestamp.fromDate(new Date(`${date}T${time}:00+09:00`));

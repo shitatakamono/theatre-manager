@@ -1809,6 +1809,20 @@ describe("server-only LINE integration state", () => {
   });
 });
 
+describe("server-only Google Calendar project sync preferences", () => {
+  it("denies anonymous and authenticated client reads and writes", async () => {
+    for (const db of [firestoreFor(), firestoreFor(ownerUid), firestoreFor(viewerUid)]) {
+      const ref = doc(db, "googleCalendarConnections", "uid-a", "projectSettings", projectId);
+      await assertFails(getDoc(ref));
+      await assertFails(setDoc(ref, {
+        projectId,
+        rehearsalTypes: ["acting"],
+        updatedAt: serverTimestamp(),
+      }));
+    }
+  });
+});
+
 describe("server-only account merge state", () => {
   it("denies anonymous and authenticated client reads and writes", async () => {
     for (const db of [firestoreFor(), firestoreFor(ownerUid)]) {

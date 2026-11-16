@@ -233,6 +233,19 @@ describe("Google Calendar reconcile sync", () => {
     strictEqual(plan.deleteTargets.length, 0);
   });
 
+  it("applies preference changes only to future managed mappings", () => {
+    const past = { ...rehearsal("past-a", "acting"), startAt: "2026-01-01T03:00:00.000Z" };
+    const future = { ...rehearsal("future-a", "acting"), startAt: "2026-12-01T03:00:00.000Z" };
+    const plan = buildGoogleCalendarReconcileSyncPlan({
+      projectId: "project-a",
+      allRehearsals: [past, future],
+      desiredRehearsals: [],
+      mappings: [mapping("past-a"), mapping("future-a")],
+      shouldReconcileRehearsal: (item) => item.startAt >= "2026-06-01T00:00:00.000Z",
+    });
+    deepStrictEqual(plan.deleteTargets.map(({ rehearsalId }) => rehearsalId), ["future-a"]);
+  });
+
   it("keeps another project untouched", () => {
     const acting = rehearsal("acting-a", "acting");
     const plan = buildGoogleCalendarReconcileSyncPlan({

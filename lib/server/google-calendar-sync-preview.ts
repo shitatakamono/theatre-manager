@@ -1,5 +1,10 @@
 import type { CastMember, StaffRole } from "@/lib/performance";
 import { getLegacyRehearsalParticipationTypes } from "@/lib/rehearsal-participation";
+import type { RehearsalType } from "@/lib/rehearsals";
+import {
+  filterGoogleCalendarSyncRehearsals,
+  resolveGoogleCalendarSyncTypes,
+} from "@/lib/google-calendar-sync-preferences";
 import {
   buildGoogleCalendarSyncPreview,
   type GoogleCalendarSyncPreview,
@@ -7,6 +12,7 @@ import {
 } from "@/lib/google-calendar-sync-preview";
 import type { GoogleCalendarSyncPerson } from "@/lib/google-calendar-sync";
 import { adminDb } from "@/lib/server/firebase-admin";
+import { getGoogleCalendarProjectSyncPreference } from "@/lib/server/google-calendar-sync-preferences";
 
 export type GoogleCalendarSyncContext = {
   linked: boolean;
@@ -15,6 +21,8 @@ export type GoogleCalendarSyncContext = {
   targetCount: number;
   allRehearsals: GoogleCalendarSyncSourceRehearsal[];
   rehearsals: GoogleCalendarSyncSourceRehearsal[];
+  selectedTypes: RehearsalType[];
+  configured: boolean;
 };
 
 export type GoogleCalendarProjectRehearsalContext = {
@@ -46,7 +54,9 @@ export class GoogleCalendarSyncPreviewError extends Error {
 function buildSyncContext(
   preview: GoogleCalendarSyncPreview<string, GoogleCalendarSyncSourceRehearsal>,
   projectName: string,
-  allRehearsals: GoogleCalendarSyncSourceRehearsal[]
+  allRehearsals: GoogleCalendarSyncSourceRehearsal[],
+  selectedTypes: RehearsalType[],
+  configured: boolean
 ): GoogleCalendarSyncContext {
   return {
     linked: preview.linked,
@@ -55,6 +65,8 @@ function buildSyncContext(
     targetCount: preview.targetCount,
     allRehearsals,
     rehearsals: preview.rehearsals,
+    selectedTypes,
+    configured,
   };
 }
 
@@ -108,10 +120,12 @@ function mapRehearsal(
 function mapPerson(
   id: string,
   data: FirebaseFirestore.DocumentData
-): GoogleCalendarSyncPerson<string> {
+): GoogleCalendarSyncPerson<RehearsalType> {
   const participationTypes = Array.isArray(data.rehearsalParticipationTypes)
     ? data.rehearsalParticipationTypes.filter(
-        (value: unknown): value is string => typeof value === "string" && value.length > 0
+        (value: unknown): value is RehearsalType =>
+          typeof value === "string"
+          && ["acting", "stage_combat", "japanese_dance", "meeting", "other"].includes(value)
       )
     : getLegacyRehearsalParticipationTypes(data.specialPractice);
 
@@ -138,7 +152,10 @@ export async function getGoogleCalendarSyncContext(
   const { projectName, rehearsals, projectData, projectRef } = base;
 
   try {
-    const linkedUser = await projectRef.collection("participantLinkedUsers").doc(uid).get();
+    const [linkedUser, preference] = await Promise.all([
+      projectRef.collection("participantLinkedUsers").doc(uid).get(),
+      getGoogleCalendarProjectSyncPreference(uid, projectId),
+    ]);
     const cast = Array.isArray(projectData.cast)
       ? projectData.cast as CastMember[]
       : [];
@@ -150,7 +167,9 @@ export async function getGoogleCalendarSyncContext(
       return buildSyncContext(
         buildGoogleCalendarSyncPreview(null, rehearsals, cast, staff),
         projectName,
-        rehearsals
+        rehearsals,
+        preference?.rehearsalTypes ?? [],
+        preference !== null
       );
     }
 
@@ -165,15 +184,24 @@ export async function getGoogleCalendarSyncContext(
       throw new GoogleCalendarSyncPreviewError("linked_person_not_found", 409);
     }
 
+    const person = mapPerson(personSnapshot.id, personData);
+    const selectedTypes = resolveGoogleCalendarSyncTypes({
+      person,
+      cast,
+      staff,
+      configuredTypes: preference?.rehearsalTypes ?? null,
+    });
     return buildSyncContext(
-      buildGoogleCalendarSyncPreview(
-        mapPerson(personSnapshot.id, personData),
-        rehearsals,
-        cast,
-        staff
-      ),
+      {
+        linked: true,
+        totalRehearsals: rehearsals.length,
+        targetCount: filterGoogleCalendarSyncRehearsals(rehearsals, selectedTypes).length,
+        rehearsals: filterGoogleCalendarSyncRehearsals(rehearsals, selectedTypes),
+      },
       projectName,
-      rehearsals
+      rehearsals,
+      selectedTypes,
+      preference !== null
     );
   } catch (error) {
     if (error instanceof GoogleCalendarSyncPreviewError) throw error;

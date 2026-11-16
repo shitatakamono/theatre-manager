@@ -1,5 +1,5 @@
 .page { min-height: 100vh; background: #f4f6f5; color: #17201d; padding: 28px 40px 56px; }
-.header, .viewSwitch, .schedule, .timelineSection, .pastSection, .success, .error { width: min(1180px, 100%); }
+.header, .displayFilters, .calendarSettings, .viewSwitch, .schedule, .timelineSection, .pastSection, .success, .error { width: min(1180px, 100%); }
 .header { display: flex; justify-content: space-between; align-items: end; gap: 24px; padding-bottom: 18px; border-bottom: 1px solid #cbd5d1; }
 .header a { display: inline-block; margin-bottom: 18px; color: #53645e; font-size: 12px; font-weight: 700; }
 .header p, .sectionTitle > p, .dialog header p { color: #708078; font-size: 10px; font-weight: 800; letter-spacing: .14em; }
@@ -8,6 +8,29 @@
 .header button, .dialog footer button, .conflict button { min-height: 42px; border: 1px solid #21634f; border-radius: 8px; background: #21634f; color: #fff; padding: 8px 16px; font-weight: 800; cursor: pointer; }
 .actionLink { display: inline-flex !important; align-items: center; min-height: 42px; margin: 0 !important; border: 1px solid #21634f; border-radius: 8px; color: #21634f !important; padding: 8px 16px; text-decoration: none; }
 .secondaryButton { background: #fff !important; color: #285c4b !important; }
+.displayFilters, .calendarSettings { margin-top: 16px; border: 1px solid #d5ded9; border-radius: 12px; background: #fff; padding: 16px 18px; }
+.displayFilters { display: grid; grid-template-columns: minmax(170px, auto) 1fr auto; align-items: center; gap: 16px; }
+.displayFilters > div:first-child p, .calendarSettingsHeading p { color: #708078; font-size: 10px; font-weight: 800; letter-spacing: .14em; }
+.displayFilters h2, .calendarSettings h2 { margin-top: 2px; font-size: 18px; }
+.displayFilters > div:first-child span, .settingDescription, .settingHint { color: #63716c; font-size: 12px; }
+.typeChecks { display: flex; flex-wrap: wrap; gap: 8px; border: 0; padding: 0; }
+.typeChecks label { display: inline-flex; align-items: center; gap: 7px; min-height: 40px; border: 1px solid #cad6d1; border-radius: 999px; background: #f8faf9; padding: 7px 12px; font-size: 13px; font-weight: 750; cursor: pointer; }
+.typeChecks label:has(input:checked) { border-color: #21634f; background: #e9f3ef; color: #174c3b; }
+.typeChecks input { width: 17px; height: 17px; accent-color: #21634f; }
+.filterActions { display: flex; flex-wrap: wrap; gap: 7px; }
+.filterActions button { min-height: 38px; border: 1px solid #b9c9c3; border-radius: 8px; background: #fff; color: #285c4b; padding: 7px 11px; font-size: 12px; font-weight: 800; cursor: pointer; }
+.filterActions button:disabled { cursor: wait; opacity: .55; }
+.primaryCompactButton { border-color: #21634f !important; background: #21634f !important; color: #fff !important; }
+.calendarSettingsHeading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.calendarSettingsHeading > span { border-radius: 999px; background: #ecefed; color: #5e6965; padding: 5px 9px; font-size: 11px; font-weight: 800; }
+.calendarSettingsHeading > span[data-connected="true"] { background: #e5f2ec; color: #1f624c; }
+.settingDescription { margin: 7px 0 13px; }
+.calendarSettings .filterActions { margin-top: 11px; }
+.settingHint { margin-top: 10px; }
+.settingHint a { color: #21634f; font-weight: 800; }
+.inlineNotice, .inlineError { margin-top: 10px; border-radius: 8px; padding: 9px 11px; font-size: 12px; }
+.inlineNotice { background: #e7f4ed; color: #1d6048; }
+.inlineError { background: #fdeceb; color: #9b3028; }
 .success, .error { margin-top: 16px; border-radius: 8px; padding: 11px 14px; font-size: 13px; }
 .success { border: 1px solid #9dc9b8; background: #edf8f3; color: #205c49; }
 .error, .formError { border: 1px solid #e2b1b1; background: #fff4f4; color: #8b2929; }
@@ -139,6 +162,12 @@
   .headerActions > button, .headerActions > .actionLink { flex: 1 1 calc(50% - 4px); }
   .headerActions button, .headerActions .actionLink { width: 100%; justify-content: center; padding-inline: 10px; }
   .viewSwitch button { flex: 1; }
+  .displayFilters { grid-template-columns: 1fr; gap: 12px; padding: 14px; }
+  .calendarSettings { padding: 14px; }
+  .typeChecks { gap: 6px; }
+  .typeChecks label { min-height: 44px; padding-inline: 11px; }
+  .filterActions button { min-height: 44px; flex: 1 1 auto; }
+  .primaryCompactButton { flex-basis: 100% !important; }
   .desktopTimeline { display: none; }
   .sharePanel { grid-template-columns: 1fr; padding: 14px; }
   .shareControls { justify-content: stretch; }

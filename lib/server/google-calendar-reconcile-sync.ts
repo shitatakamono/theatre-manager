@@ -4,6 +4,7 @@ import {
   buildGoogleCalendarReconcileSyncPlan,
   runGoogleCalendarReconcileOperations,
 } from "@/lib/google-calendar-reconcile-sync";
+import { isUpcomingGoogleCalendarRehearsal } from "@/lib/google-calendar-sync-preferences";
 import { getGoogleCalendarAccessToken } from "@/lib/server/google-calendar-access-token";
 import { ensureGoogleCalendar } from "@/lib/server/google-calendar-calendar";
 import { runGoogleCalendarDeleteForMappings } from "@/lib/server/google-calendar-delete-sync";
@@ -63,11 +64,17 @@ export async function runGoogleCalendarReconcileSync(
   }
 
   const mappings = await getGoogleCalendarEventMappingsForProject(uid, projectId);
+  const now = new Date();
   const plan = buildGoogleCalendarReconcileSyncPlan({
     projectId,
     allRehearsals: context.allRehearsals,
     desiredRehearsals: context.rehearsals,
     mappings,
+    // Stored timestamps are absolute instants. Using one server-side `now`
+    // keeps the Asia/Tokyo rehearsal timestamps consistent at the boundary
+    // and preserves every past managed event.
+    shouldReconcileRehearsal: (rehearsal) =>
+      isUpcomingGoogleCalendarRehearsal(rehearsal, now),
   });
 
   if (plan.createTargets.length === 0 && plan.deleteTargets.length === 0) {

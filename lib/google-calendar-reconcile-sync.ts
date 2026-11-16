@@ -34,6 +34,7 @@ export function buildGoogleCalendarReconcileSyncPlan<
   allRehearsals: readonly Rehearsal[];
   desiredRehearsals: readonly Rehearsal[];
   mappings: readonly Mapping[];
+  shouldReconcileRehearsal?: (rehearsal: Rehearsal) => boolean;
 }): GoogleCalendarReconcileSyncPlan<Rehearsal, Mapping> {
   const allRehearsalIds = new Set(
     input.allRehearsals.map(({ rehearsalId }) => rehearsalId)
@@ -47,19 +48,27 @@ export function buildGoogleCalendarReconcileSyncPlan<
   const mappedRehearsalIds = new Set(
     projectMappings.map(({ rehearsalId }) => rehearsalId)
   );
+  const rehearsalsById = new Map(
+    input.allRehearsals.map((rehearsal) => [rehearsal.rehearsalId, rehearsal])
+  );
+  const shouldReconcile = input.shouldReconcileRehearsal ?? (() => true);
 
   return {
     totalRehearsals: input.allRehearsals.length,
     desiredCount: input.desiredRehearsals.length,
     mappedCount: projectMappings.length,
     createTargets: input.desiredRehearsals.filter(
-      ({ rehearsalId }) => !mappedRehearsalIds.has(rehearsalId)
+      (rehearsal) => shouldReconcile(rehearsal)
+        && !mappedRehearsalIds.has(rehearsal.rehearsalId)
     ),
     // Deleted rehearsal documents belong to G3-3, not this reconciliation.
-    deleteTargets: projectMappings.filter(({ rehearsalId }) =>
-      allRehearsalIds.has(rehearsalId)
-      && !desiredRehearsalIds.has(rehearsalId)
-    ),
+    deleteTargets: projectMappings.filter(({ rehearsalId }) => {
+      const rehearsal = rehearsalsById.get(rehearsalId);
+      return rehearsal !== undefined
+        && allRehearsalIds.has(rehearsalId)
+        && !desiredRehearsalIds.has(rehearsalId)
+        && shouldReconcile(rehearsal);
+    }),
   };
 }
 

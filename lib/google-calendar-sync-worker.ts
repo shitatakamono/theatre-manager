@@ -77,6 +77,7 @@ const RECONCILE_REASONS = new Set([
   "rehearsal_created",
   "person_changed",
   "participation_changed",
+  "sync_preferences_changed",
   "cast_staff_changed",
   "link_changed",
 ]);

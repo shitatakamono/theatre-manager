@@ -1,9 +1,16 @@
-"use client";
-
-import { use } from "react";
+import { parseRehearsalFilterTypes } from "@/lib/rehearsal-filter";
 import { RehearsalPrintClient } from "./RehearsalPrintClient";
 
-export default function RehearsalPrintPage({ params }: { params: Promise<{ projectId: string }> }) {
-  const { projectId } = use(params);
-  return <RehearsalPrintClient projectId={projectId} />;
+export default async function RehearsalPrintPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ projectId: string }>;
+  searchParams: Promise<{ types?: string }>;
+}) {
+  const [{ projectId }, query] = await Promise.all([params, searchParams]);
+  return <RehearsalPrintClient
+    projectId={projectId}
+    selectedTypes={parseRehearsalFilterTypes(query.types)}
+  />;
 }
