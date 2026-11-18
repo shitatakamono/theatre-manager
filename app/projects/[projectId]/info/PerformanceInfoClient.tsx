@@ -677,9 +677,24 @@ export function PerformanceInfoClient({
         >
           {staff.length === 0 ? <p className={styles.empty}>スタッフは未設定です</p> : (
             <dl className={styles.staffList}>
-              {staff.map((role) => (
-                <div key={role.id}><dt>{role.role || "役職未設定"}</dt><dd>{sortStaffMembers(role.members).map((member) => resolveStaffMemberPerson(member, people).creditName).filter(Boolean).join(" / ") || "担当者未設定"}</dd></div>
-              ))}
+              {staff.map((role) => {
+                const members = sortStaffMembers(role.members)
+                  .map((member) => ({
+                    id: member.id,
+                    name: resolveStaffMemberPerson(member, people).creditName,
+                  }))
+                  .filter(({ name }) => Boolean(name));
+                return (
+                  <div key={role.id}>
+                    <dt>{role.role || "役職未設定"}</dt>
+                    <dd>{members.length > 0 ? (
+                      <ul className={styles.staffMembers}>
+                        {members.map((member) => <li key={member.id}>{member.name}</li>)}
+                      </ul>
+                    ) : "担当者未設定"}</dd>
+                  </div>
+                );
+              })}
             </dl>
           )}
         </InfoCard>

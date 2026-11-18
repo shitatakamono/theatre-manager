@@ -103,8 +103,10 @@
 .priceTable tbody th { width: 80px; color: #4e5f58; font-weight: 700; }
 .priceTable td { font-weight: 700; }
 
-.peopleList { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px 20px; }
-.peopleList li { min-width: 0; }
+.peopleList { display: grid; gap: 0; }
+.peopleList li { min-width: 0; border-top: 1px solid #edf0ee; padding: 8px 0; }
+.peopleList li:first-child { border-top: 0; padding-top: 0; }
+.peopleList li:last-child { padding-bottom: 0; }
 .peopleList span { display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; }
 .peopleList strong { overflow-wrap: anywhere; }
 .peopleList small { color: #718079; font-size: 10px; }
@@ -116,6 +118,8 @@
 .staffList > div { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 14px; }
 .staffList dt { color: #566861; font-weight: 800; }
 .staffList dd { overflow-wrap: anywhere; }
+.staffMembers { display: grid; gap: 5px; }
+.staffMembers li + li { border-top: 1px solid #edf0ee; padding-top: 5px; }
 .creditList { display: grid; gap: 7px; }
 .creditList li { display: grid; grid-template-columns: 140px minmax(0, 1fr) auto; align-items: baseline; gap: 14px; }
 .creditList span { color: #687871; font-size: 11px; }
@@ -197,7 +201,6 @@
   .page { padding: 20px 24px 52px; }
   .hero { align-items: flex-start; flex-direction: column; gap: 12px; }
   .heroFacts { justify-content: flex-start; }
-  .peopleList { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 600px) {
@@ -218,7 +221,6 @@
   .showRow { grid-template-columns: 1fr 1fr; gap: 4px 10px; }
   .showRow strong,
   .showRow em { grid-column: 1 / -1; }
-  .peopleList { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; }
   .creditList li { border-bottom: 1px solid #edf0ee; padding-bottom: 7px; }
   .creditList small { justify-self: start; }
   .drawer { inset: 0; width: 100%; }
