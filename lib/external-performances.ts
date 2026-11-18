@@ -139,6 +139,7 @@ export function sortExternalPerformances(items: ExternalPerformance[]): External
     if (left.startDate && !right.startDate) return -1;
     if (!left.startDate && right.startDate) return 1;
     return left.startDate.localeCompare(right.startDate, "ja")
+      || (left.endDate && !right.endDate ? -1 : !left.endDate && right.endDate ? 1 : left.endDate.localeCompare(right.endDate, "ja"))
       || left.organizationName.localeCompare(right.organizationName, "ja")
       || left.performanceName.localeCompare(right.performanceName, "ja")
       || left.id.localeCompare(right.id);

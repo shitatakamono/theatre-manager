@@ -51,13 +51,38 @@ describe("external performance values", () => {
     }
   });
 
-  it("sorts dated records first and uses organization, performance, and id as stable ties", () => {
-    const sorted = sortExternalPerformances([
-      item("z", { startDate: "" }), item("b", { startDate: "2026-11-10", organizationName: "B団体" }),
-      item("c", { startDate: "2026-11-10", organizationName: "A団体", performanceName: "B公演" }),
-      item("a", { startDate: "2026-11-10", organizationName: "A団体", performanceName: "A公演" }),
+  it("sorts by start and end dates, puts undated records last, and uses stable text ties", () => {
+    const input = [
+      item("undated-b", { startDate: "", endDate: "", organizationName: "B団体" }),
+      item("same-start-later-end", { startDate: "2026-11-10", endDate: "2026-11-13", organizationName: "A団体" }),
+      item("same-start-no-end", { startDate: "2026-11-10", endDate: "", organizationName: "A団体" }),
+      item("later-start", { startDate: "2026-11-20", endDate: "2026-11-21" }),
+      item("same-start-early-end-b", { startDate: "2026-11-10", endDate: "2026-11-12", organizationName: "B団体" }),
+      item("same-start-early-end-a2", { startDate: "2026-11-10", endDate: "2026-11-12", organizationName: "A団体", performanceName: "B公演" }),
+      item("same-start-early-end-a1-z", { startDate: "2026-11-10", endDate: "2026-11-12", organizationName: "A団体", performanceName: "A公演" }),
+      item("same-start-early-end-a1-a", { startDate: "2026-11-10", endDate: "2026-11-12", organizationName: "A団体", performanceName: "A公演" }),
+      item("end-only", { startDate: "", endDate: "2026-12-01", organizationName: "A団体" }),
+      item("undated-a", { startDate: "", endDate: "", organizationName: "A団体" }),
+    ];
+    const sorted = sortExternalPerformances(input);
+    deepStrictEqual(sorted.map(({ id }) => id), [
+      "same-start-early-end-a1-a", "same-start-early-end-a1-z", "same-start-early-end-a2",
+      "same-start-early-end-b", "same-start-later-end", "same-start-no-end", "later-start",
+      "end-only", "undated-a", "undated-b",
     ]);
-    deepStrictEqual(sorted.map(({ id }) => id), ["a", "c", "b", "z"]);
+    deepStrictEqual(input.map(({ id }) => id), [
+      "undated-b", "same-start-later-end", "same-start-no-end", "later-start", "same-start-early-end-b",
+      "same-start-early-end-a2", "same-start-early-end-a1-z", "same-start-early-end-a1-a", "end-only", "undated-a",
+    ]);
+  });
+
+  it("keeps the date order when filtering insertion plans", () => {
+    const earlier = item("earlier", { startDate: "2026-11-01", endDate: "2026-11-02", insertion: { method: "with_work", dateTimeText: "", quantity: 300, postalAddress: "", postalRecipient: "", postalArrivalText: "", note: "", status: "contacted" } });
+    const later = item("later", { startDate: "2026-12-01", endDate: "2026-12-02", insertion: { ...earlier.insertion, status: "completed" } });
+    const undated = item("undated", { startDate: "", endDate: "", insertion: { ...earlier.insertion } });
+    const sorted = sortExternalPerformances([undated, later, earlier]);
+    deepStrictEqual(filterExternalPerformances(sorted, "planned").map(({ id }) => id), ["earlier", "later", "undated"]);
+    deepStrictEqual(filterExternalPerformances(sorted, "incomplete").map(({ id }) => id), ["earlier", "undated"]);
   });
 
   it("filters insertion plans and formats summaries without exposing details", () => {

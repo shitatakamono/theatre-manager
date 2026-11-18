@@ -98,6 +98,31 @@ describe("external performance transactions", () => {
     strictEqual((await logs(ownerDb)).size, 2);
   });
 
+  it("returns manual registrations in date order and re-sorts after a date edit", async () => {
+    const db = firestoreFor(ownerUid);
+    const laterId = await createProjectExternalPerformance(projectId, {
+      ...base, performanceName: "後の公演", startDate: "2026-12-10", endDate: "2026-12-12",
+    }, context(ownerUid, 0).actor, db);
+    const earlyLongId = await createProjectExternalPerformance(projectId, {
+      ...base, performanceName: "早い長期公演", startDate: "2026-11-10", endDate: "2026-11-15",
+    }, context(ownerUid, 0).actor, db);
+    const earlyShortId = await createProjectExternalPerformance(projectId, {
+      ...base, performanceName: "早い短期公演", startDate: "2026-11-10", endDate: "2026-11-12",
+    }, context(ownerUid, 0).actor, db);
+    const undatedId = await createProjectExternalPerformance(projectId, {
+      ...base, performanceName: "日程未定公演", startDate: "", endDate: "2026-12-20",
+    }, context(ownerUid, 0).actor, db);
+
+    let records = await getProjectExternalPerformances(projectId, db);
+    deepStrictEqual(records.map(({ id }) => id), [earlyShortId, earlyLongId, laterId, undatedId]);
+    const later = records.find(({ id }) => id === laterId);
+    await updateProjectExternalPerformance(db, projectId, laterId, {
+      ...externalPerformanceToInput(later), startDate: "2026-10-01", endDate: "2026-10-02",
+    }, context(ownerUid, later.revision));
+    records = await getProjectExternalPerformances(projectId, db);
+    deepStrictEqual(records.map(({ id }) => id), [laterId, earlyShortId, earlyLongId, undatedId]);
+  });
+
   it("deletes the nested insertion with its parent document", async () => {
     const db = firestoreFor(editorUid);
     const id = await createProjectExternalPerformance(projectId, { ...base, insertion: {

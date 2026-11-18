@@ -2,6 +2,7 @@ import { strictEqual } from "node:assert/strict";
 import { after, before, beforeEach, describe, it } from "node:test";
 import { deleteApp, getApps } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
+import { sortExternalPerformances } from "../lib/external-performances.ts";
 
 const emulatorProjectId = "seisakuboard-conflict-test";
 const projectId = "external-performance-import";
@@ -82,5 +83,17 @@ describe("external performance CSV import", () => {
     strictEqual(left.imported + right.imported, 1);
     strictEqual(left.skipped + right.skipped, 1);
     strictEqual((await project().collection("externalPerformances").get()).size, 1);
+  });
+
+  it("uses the shared date ordering for CSV-imported candidates", async () => {
+    await service.importExternalPerformanceRows({ uid: ownerUid, projectId, rows: [
+      row(2, { performanceName: "日程未定", startDate: "", endDate: "" }, true),
+      row(3, { performanceName: "後の公演", startDate: "2027-04-01", endDate: "2027-04-03" }),
+      row(4, { performanceName: "早い長期公演", startDate: "2027-03-01", endDate: "2027-03-05" }),
+      row(5, { performanceName: "早い短期公演", startDate: "2027-03-01", endDate: "2027-03-02" }),
+    ], db });
+    const records = await project().collection("externalPerformances").get();
+    const sorted = sortExternalPerformances(records.docs.map((record) => ({ id: record.id, ...record.data() })));
+    strictEqual(sorted.map(({ performanceName }) => performanceName).join(","), "早い短期公演,早い長期公演,後の公演,日程未定");
   });
 });
