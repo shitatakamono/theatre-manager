@@ -33,7 +33,7 @@
   },
   "dependencies": {
     "firebase": "^13.0.0",
-    "firebase-admin": "13.10.0",
+    "firebase-admin": "14.5.1",
     "next": "16.4.6",
     "openai": "^7.39.0",
     "react": "19.2.1",
