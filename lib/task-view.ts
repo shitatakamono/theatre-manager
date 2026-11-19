@@ -51,6 +51,7 @@ export const TASK_SECTION_FILTER_OPTIONS: ReadonlyArray<{ value: TaskSectionFilt
   { value: "tickets", label: "チケット" },
   { value: "reception", label: "当日受付" },
   { value: "accounting", label: "会計" },
+  { value: "merchandise", label: "物販" },
   { value: "other", label: "その他" },
 ];
 

@@ -29,7 +29,7 @@ import {
 export type ProductionTaskSource = "standard" | "accountingCustom" | "customTask";
 export type ProductionTaskStatus = "not-started" | "in-progress" | "complete" | "on-hold";
 export type ProductionTaskPriority = "low" | "normal" | "high";
-export type ProductionSectionSlug = "venue" | "flyer" | "dm" | "web" | "tickets" | "reception" | "accounting";
+export type ProductionSectionSlug = "venue" | "flyer" | "dm" | "web" | "tickets" | "reception" | "accounting" | "merchandise";
 export type FlyerTaskKind = "submission" | "delivery";
 export type ProductionTaskGroupType = "common" | "flyer" | "poster";
 
@@ -67,6 +67,7 @@ const SECTION_LABELS: Record<ProductionSectionSlug, string> = {
   tickets: "チケット",
   reception: "当日受付",
   accounting: "会計",
+  merchandise: "物販",
 };
 
 const validDate = (value: unknown): string | null =>
@@ -104,6 +105,10 @@ function standardTask(
   };
 }
 
+function displayInSection(task: ProductionTaskView, section: ProductionSectionSlug): ProductionTaskView {
+  return { ...task, section, sectionLabel: SECTION_LABELS[section] };
+}
+
 function booleanStatus(value: unknown): ProductionTaskStatus {
   return value === true ? "complete" : "not-started";
 }
@@ -135,7 +140,10 @@ function buildVenueTasks(project: ProjectPerformanceRecord): ProductionTaskView[
     }),
     standardTask(project.id, "venue", "meeting:load-in", "搬入", { dueDate: dateFromDateTime(venue.meeting?.loadIn?.dateTime), note: text(venue.meeting?.loadIn?.note) }),
     standardTask(project.id, "venue", "meeting:load-out", "搬出", { dueDate: dateFromDateTime(venue.meeting?.loadOut?.dateTime), note: text(venue.meeting?.loadOut?.note) }),
-    standardTask(project.id, "venue", "meeting:merchandise", "物販販売許可申請", { status: applicationStatus(venue.meeting?.merchandiseApplication) }),
+    displayInSection(
+      standardTask(project.id, "venue", "meeting:merchandise", "物販販売許可申請", { status: applicationStatus(venue.meeting?.merchandiseApplication) }),
+      "merchandise"
+    ),
     standardTask(project.id, "venue", "meeting:parking", "駐車場申請", { status: applicationStatus(venue.meeting?.parkingApplication) }),
   ];
   for (const [key, label] of [["audio", "音響"], ["lighting", "照明"], ["video", "映像"]] as const) {
@@ -291,10 +299,16 @@ function buildReceptionTasks(project: ProjectPerformanceRecord): ProductionTaskV
   }
   if (reception.merchandise?.enabled) {
     for (const [key, label] of Object.entries({ productRegistration: "販売商品登録・確認", inventoryRegistration: "在庫登録・確認", salesArea: "売場準備", pricePop: "値札・POP準備", delivery: "商品搬入確認" }) as ["productRegistration" | "inventoryRegistration" | "salesArea" | "pricePop" | "delivery", string][]) {
-      tasks.push(standardTask(project.id, "reception", `merchandise:${key}`, label, { status: booleanStatus(reception.merchandise[key]), detailLabel: "物販準備" }));
+      tasks.push(displayInSection(
+        standardTask(project.id, "reception", `merchandise:${key}`, label, { status: booleanStatus(reception.merchandise[key]), detailLabel: "物販準備" }),
+        "merchandise"
+      ));
     }
     for (const item of reception.merchandise.customItems ?? []) {
-      tasks.push(standardTask(project.id, "reception", `merchandise:custom:${item.id}`, item.label || "名称未設定", { status: booleanStatus(item.checked), detailLabel: "物販準備" }));
+      tasks.push(displayInSection(
+        standardTask(project.id, "reception", `merchandise:custom:${item.id}`, item.label || "名称未設定", { status: booleanStatus(item.checked), detailLabel: "物販準備" }),
+        "merchandise"
+      ));
     }
   }
   tasks.push(standardTask(project.id, "reception", "opening", "開場前確認", { status: booleanStatus(reception.opening?.openingCheckCompleted), note: text(reception.opening?.note) }));
@@ -332,6 +346,7 @@ export function getCustomTaskSection(task: Task): ProductionSectionSlug | null {
     .map((category) => (category ?? "").trim().toLowerCase().replaceAll(" ", ""));
   const dmCategories = new Set(["dm・折込", "dm／折込", "dm/折込", "dm", "折込", "折り込み", "郵送", "持込", "持ち込み"]);
   if (categories.some((category) => dmCategories.has(category))) return "dm";
+  if (categories.includes("物販")) return "merchandise";
   const value = categories.join(" ");
   if (/会場|venue/.test(value)) return "venue";
   if (/チラシ|ポスター|flyer|poster/.test(value)) return "flyer";
@@ -382,13 +397,18 @@ export function buildProductionTaskViews(
   customTasks: readonly Task[],
   projectFlyers: readonly Flyer[] = []
 ): ProductionTaskView[] {
+  const venueTasks = buildVenueTasks(project);
+  const receptionTasks = buildReceptionTasks(project);
+  const merchandiseTasks = [...venueTasks, ...receptionTasks]
+    .filter((task) => task.section === "merchandise");
   return [
-    ...buildVenueTasks(project),
+    ...venueTasks.filter((task) => task.section !== "merchandise"),
     ...buildFlyerTasks(project, projectFlyers),
     ...buildWebTasks(project),
     ...buildTicketTasks(project),
-    ...buildReceptionTasks(project),
+    ...receptionTasks.filter((task) => task.section !== "merchandise"),
     ...(normalizeAccounting(project.production?.accounting).tasks ?? []).map((task) => accountingTask(project.id, task)),
+    ...merchandiseTasks,
     ...customTasks.map((task) => toCustomProductionTask(project.id, task)),
   ];
 }

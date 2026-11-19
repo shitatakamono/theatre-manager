@@ -1,7 +1,7 @@
 export type TaskCategoryMap = Record<string, string[]>;
 
 export const BUILT_IN_TASK_CATEGORY_CHILDREN: Readonly<TaskCategoryMap> = {
-  制作: ["WEB／SNS", "DM・折込"],
+  制作: ["WEB／SNS", "DM・折込", "物販"],
 };
 
 export function mergeBuiltInTaskCategories(categoryMap: TaskCategoryMap): TaskCategoryMap {

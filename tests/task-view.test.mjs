@@ -59,7 +59,7 @@ describe("production task adapter", () => {
   it("generates existing standard work from every production section", () => {
     const tasks = buildProductionTaskViews(project(), []);
     deepStrictEqual([...new Set(tasks.filter((task) => task.source === "standard").map((task) => task.section))], [
-      "venue", "flyer", "web", "tickets", "reception", "accounting",
+      "venue", "flyer", "web", "tickets", "reception", "accounting", "merchandise",
     ]);
     strictEqual(tasks.some((task) => task.title === "チラシ提出済"), true);
     strictEqual(tasks.some((task) => task.title === "本公開"), true);
@@ -115,8 +115,42 @@ describe("production task adapter", () => {
 
   it("adds new production categories without removing the existing publicity category", () => {
     deepStrictEqual(mergeBuiltInTaskCategories({ 制作: ["広報", "受付", "会計"] }).制作, [
-      "広報", "受付", "会計", "WEB／SNS", "DM・折込",
+      "広報", "受付", "会計", "WEB／SNS", "DM・折込", "物販",
     ]);
+  });
+
+  it("classifies standard and custom merchandise work without changing stable IDs or edit targets", () => {
+    const tasks = buildProductionTaskViews(project({
+      venue: { meeting: { merchandiseApplication: "applied" } },
+      reception: { merchandise: {
+        enabled: true,
+        productRegistration: true,
+        inventoryRegistration: false,
+        salesArea: false,
+        pricePop: false,
+        delivery: false,
+        customItems: [{ id: "display", label: "陳列確認", checked: false }],
+      } },
+    }), [{
+      id: "custom-merchandise", title: "追加商品を確認", stage: "中期",
+      category_parent: "制作", category_child: "物販", done: false,
+    }]);
+    const merchandise = tasks.filter((task) => task.section === "merchandise");
+
+    deepStrictEqual(merchandise.map((task) => task.id), [
+      "standard:venue:meeting:merchandise",
+      "standard:reception:merchandise:productRegistration",
+      "standard:reception:merchandise:inventoryRegistration",
+      "standard:reception:merchandise:salesArea",
+      "standard:reception:merchandise:pricePop",
+      "standard:reception:merchandise:delivery",
+      "standard:reception:merchandise:custom:display",
+      "custom:custom-merchandise",
+    ]);
+    strictEqual(merchandise[0]?.editTarget, "/projects/p1/production/venue");
+    strictEqual(merchandise[1]?.editTarget, "/projects/p1/production/reception");
+    strictEqual(merchandise.at(-1)?.editTarget, "/projects/p1/tasks");
+    strictEqual(merchandise.every((task) => task.sectionLabel === "物販"), true);
   });
 
   it("maps all additional-task fields without affecting standard work", () => {
@@ -344,6 +378,16 @@ describe("task view helpers", () => {
     ]);
   });
 
+  it("filters merchandise tasks from the resolved production section", () => {
+    const tasks = [
+      viewTask("merchandise", { section: "merchandise", sectionLabel: "物販" }),
+      viewTask("reception", { section: "reception", sectionLabel: "当日受付" }),
+    ];
+    deepStrictEqual(filterAndSortTasks(tasks, "all", "merchandise", "deadline-asc", null, "2026-10-20").map(({ id }) => id), [
+      "merchandise",
+    ]);
+  });
+
   it("returns the section already resolved by the adapter", () => {
     strictEqual(getTaskSection(viewTask("flyer", { section: "flyer" })), "flyer");
     strictEqual(getTaskSection(viewTask("unknown", { section: null })), null);
@@ -363,6 +407,14 @@ describe("additional task UI", () => {
     const web = page.indexOf('slug: "web", label: "WEB／SNS"');
     strictEqual(flyer >= 0 && flyer < dm && dm < web, true);
     strictEqual(page.includes('href={`/projects/${projectId}/external-performances`}>折込管理</Link>'), true);
+  });
+
+  it("places merchandise after accounting as the eighth roadmap section", async () => {
+    const page = await readFile(new URL("../app/projects/[projectId]/page.tsx", import.meta.url), "utf8");
+    const accounting = page.indexOf('slug: "accounting", label: "会計"');
+    const merchandise = page.indexOf('slug: "merchandise", label: "物販"');
+    strictEqual(accounting >= 0 && accounting < merchandise, true);
+    strictEqual((page.match(/kind: "range", slug:/g) ?? []).length, 8);
   });
 
   it("offers create, edit, delete, assignment and mobile-friendly shared task controls", async () => {

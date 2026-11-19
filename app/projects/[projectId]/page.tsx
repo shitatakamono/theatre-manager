@@ -107,6 +107,7 @@ const roadmapSections: RoadmapSection[] = [
   { kind: "range", slug: "tickets", label: "チケット", start: { months: -2 }, end: {} },
   { kind: "range", slug: "reception", label: "当日受付", start: { months: -1 }, end: {} },
   { kind: "range", slug: "accounting", label: "会計", start: { months: -6 }, end: { weeks: 2 } },
+  { kind: "range", slug: "merchandise", label: "物販", start: { months: -2 }, end: {} },
 ];
 
 const DAY_IN_MILLISECONDS = 24 * 60 * 60 * 1000;
