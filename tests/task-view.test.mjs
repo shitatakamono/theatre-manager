@@ -4,11 +4,13 @@ import { readFile } from "node:fs/promises";
 import {
   aggregateTaskWarning,
   buildTaskCreateInput,
+  filterAndSortTasks,
   filterTasks,
   formatTaskDueDate,
   getTaskDeadlineWarning,
   getTaskProgressStatus,
   getTaskSection,
+  sortTasks,
   sortTasksByDeadline,
 } from "../lib/task-view.ts";
 import {
@@ -292,6 +294,30 @@ describe("task view helpers", () => {
     ]).map(({ id }) => id), ["first", "later", "none-a", "none-b"]);
   });
 
+  it("sorts deadlines in both directions while always keeping undated tasks last", () => {
+    const tasks = [
+      viewTask("same-a", { dueDate: "2026-11-02" }), viewTask("none-a"),
+      viewTask("first", { dueDate: "2026-10-25" }), viewTask("same-b", { dueDate: "2026-11-02" }),
+      viewTask("none-b"),
+    ];
+    deepStrictEqual(sortTasks(tasks, "deadline-asc").map(({ id }) => id), ["first", "same-a", "same-b", "none-a", "none-b"]);
+    deepStrictEqual(sortTasks(tasks, "deadline-desc").map(({ id }) => id), ["same-a", "same-b", "first", "none-a", "none-b"]);
+  });
+
+  it("sorts progress by active, not started, on hold and complete with deadline and stable ties", () => {
+    deepStrictEqual(sortTasks([
+      viewTask("complete", { status: "complete", dueDate: "2026-10-01" }),
+      viewTask("todo-later", { dueDate: "2026-11-02" }),
+      viewTask("active-later", { status: "in-progress", dueDate: "2026-11-03" }),
+      viewTask("hold", { status: "on-hold" }),
+      viewTask("active-first", { status: "in-progress", dueDate: "2026-10-20" }),
+      viewTask("todo-first", { dueDate: "2026-11-01" }),
+      viewTask("unknown", { status: "future-status" }),
+    ], "progress").map(({ id }) => id), [
+      "active-first", "active-later", "todo-first", "todo-later", "hold", "complete", "unknown",
+    ]);
+  });
+
   it("filters incomplete, approaching, and only explicitly assigned current-user tasks", () => {
     const tasks = [
       viewTask("mine", { dueDate: "2026-10-25", assigneeUid: "u1" }),
@@ -301,6 +327,21 @@ describe("task view helpers", () => {
     deepStrictEqual(filterTasks(tasks, "mine", { uid: "u1", displayName: "田中" }, "2026-10-20").map(({ id }) => id), ["done", "mine"]);
     deepStrictEqual(filterTasks(tasks, "incomplete", null, "2026-10-20").map(({ id }) => id), ["mine", "unknown"]);
     deepStrictEqual(filterTasks(tasks, "due-soon", null, "2026-10-20").map(({ id }) => id), ["mine"]);
+  });
+
+  it("combines the existing target filter with resolved sections including other", () => {
+    const tasks = [
+      viewTask("venue-mine", { section: "venue", sectionLabel: "会場", assigneeUid: "u1", dueDate: "2026-11-02" }),
+      viewTask("venue-other", { section: "venue", sectionLabel: "会場", assigneeUid: "u2", dueDate: "2026-10-25" }),
+      viewTask("web-mine", { assigneeUid: "u1", dueDate: "2026-10-24" }),
+      viewTask("other", { section: null, sectionLabel: "その他", dueDate: "2026-10-23" }),
+      viewTask("other-done", { section: null, sectionLabel: "その他", status: "complete", dueDate: "2026-10-22" }),
+    ];
+    deepStrictEqual(filterAndSortTasks(tasks, "mine", "venue", "deadline-asc", { uid: "u1" }, "2026-10-20").map(({ id }) => id), ["venue-mine"]);
+    deepStrictEqual(filterAndSortTasks(tasks, "incomplete", "other", "deadline-asc", null, "2026-10-20").map(({ id }) => id), ["other"]);
+    deepStrictEqual(filterAndSortTasks(tasks, "all", "all", "deadline-asc", null, "2026-10-20").map(({ id }) => id), [
+      "other-done", "other", "web-mine", "venue-other", "venue-mine",
+    ]);
   });
 
   it("returns the section already resolved by the adapter", () => {
@@ -341,6 +382,21 @@ describe("additional task UI", () => {
     strictEqual(drawer.includes("task.source !== \"customTask\""), true);
     strictEqual(drawer.includes("task.relatedViewHref"), true);
     strictEqual(drawer.includes("task.relatedViewLabel"), true);
+  });
+
+  it("uses shared section and sort controls for the desktop table and mobile cards", async () => {
+    const [page, styles] = await Promise.all([
+      readFile(new URL("../app/projects/[projectId]/tasks/page.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../app/projects/[projectId]/tasks/tasks.module.css", import.meta.url), "utf8"),
+    ]);
+    strictEqual(page.includes("filterAndSortTasks(tasks, filter, sectionFilter, sort"), true);
+    strictEqual(page.includes('aria-label="制作セクション"'), true);
+    strictEqual(page.includes('aria-label="並び替え"'), true);
+    strictEqual(page.includes("TASK_SECTION_FILTER_OPTIONS.map"), true);
+    strictEqual(page.includes("TASK_SORT_OPTIONS.map"), true);
+    strictEqual(page.includes("{filtered.length}件"), true);
+    strictEqual(styles.includes(".selectControls"), true);
+    strictEqual(styles.includes("grid-template-columns: 1fr 1fr"), true);
   });
 
   it("loads the same flyer records on the project roadmap and task list and groups roadmap rows", async () => {

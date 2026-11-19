@@ -1,10 +1,12 @@
-import type { ProductionTaskView } from "./production-task-view.ts";
+import type { ProductionSectionSlug, ProductionTaskView } from "./production-task-view.ts";
 import { isTaskRelatedView, type TaskRelatedView } from "./task-related-views.ts";
 
 export type TaskProgressStatus = "not-started" | "in-progress" | "complete" | "on-hold";
 export type TaskDeadlineWarning = "none" | "within14Days" | "within7Days" | "overdue";
 export type TaskListFilter = "all" | "mine" | "incomplete" | "due-soon";
-export type { ProductionSectionSlug } from "./production-task-view.ts";
+export type TaskSectionFilter = ProductionSectionSlug | "all" | "other";
+export type TaskSortOption = "deadline-asc" | "deadline-desc" | "progress";
+export type { ProductionSectionSlug };
 export type TaskCreateInput = {
   title: string;
   stage: string;
@@ -39,6 +41,24 @@ export const TASK_PRIORITY_LABELS: Record<TaskPriority, string> = {
   normal: "通常",
   high: "高",
 };
+
+export const TASK_SECTION_FILTER_OPTIONS: ReadonlyArray<{ value: TaskSectionFilter; label: string }> = [
+  { value: "all", label: "すべて" },
+  { value: "venue", label: "会場" },
+  { value: "flyer", label: "チラシ・ポスター" },
+  { value: "dm", label: "DM・折込" },
+  { value: "web", label: "WEB／SNS" },
+  { value: "tickets", label: "チケット" },
+  { value: "reception", label: "当日受付" },
+  { value: "accounting", label: "会計" },
+  { value: "other", label: "その他" },
+];
+
+export const TASK_SORT_OPTIONS: ReadonlyArray<{ value: TaskSortOption; label: string }> = [
+  { value: "deadline-asc", label: "期限が早い順" },
+  { value: "deadline-desc", label: "期限が遅い順" },
+  { value: "progress", label: "進捗順" },
+];
 
 const DAY_IN_MILLISECONDS = 24 * 60 * 60 * 1000;
 
@@ -115,8 +135,41 @@ export function aggregateTaskWarning(tasks: readonly ProductionTaskView[], today
   }, "none");
 }
 
-export function sortTasksByDeadline(tasks: readonly ProductionTaskView[]): ProductionTaskView[] {
+export function sortTasksByDeadline(
+  tasks: readonly ProductionTaskView[],
+  direction: "asc" | "desc" = "asc"
+): ProductionTaskView[] {
   return tasks.map((task, index) => ({ task, index })).sort((left, right) => {
+    const leftDate = getTaskDueDate(left.task);
+    const rightDate = getTaskDueDate(right.task);
+    if (leftDate && rightDate && leftDate !== rightDate) {
+      const compared = leftDate.localeCompare(rightDate);
+      return direction === "asc" ? compared : -compared;
+    }
+    if (leftDate && !rightDate) return -1;
+    if (!leftDate && rightDate) return 1;
+    return left.index - right.index;
+  }).map(({ task }) => task);
+}
+
+const progressOrder: Record<TaskProgressStatus, number> = {
+  "in-progress": 0,
+  "not-started": 1,
+  "on-hold": 2,
+  complete: 3,
+};
+
+export function sortTasks(
+  tasks: readonly ProductionTaskView[],
+  sort: TaskSortOption
+): ProductionTaskView[] {
+  if (sort === "deadline-desc") return sortTasksByDeadline(tasks, "desc");
+  if (sort === "deadline-asc") return sortTasksByDeadline(tasks);
+
+  return tasks.map((task, index) => ({ task, index })).sort((left, right) => {
+    const leftRank = progressOrder[left.task.status] ?? Number.MAX_SAFE_INTEGER;
+    const rightRank = progressOrder[right.task.status] ?? Number.MAX_SAFE_INTEGER;
+    if (leftRank !== rightRank) return leftRank - rightRank;
     const leftDate = getTaskDueDate(left.task);
     const rightDate = getTaskDueDate(right.task);
     if (leftDate && rightDate && leftDate !== rightDate) return leftDate.localeCompare(rightDate);
@@ -126,24 +179,48 @@ export function sortTasksByDeadline(tasks: readonly ProductionTaskView[]): Produ
   }).map(({ task }) => task);
 }
 
+function matchesTaskListFilter(
+  task: ProductionTaskView,
+  filter: TaskListFilter,
+  currentUser: { uid?: string; displayName?: string } | null,
+  today: string
+): boolean {
+  if (filter === "incomplete") return getTaskProgressStatus(task) !== "complete";
+  if (filter === "due-soon") return getTaskDeadlineWarning(task, today) !== "none";
+  if (filter === "mine") {
+    if (!currentUser) return false;
+    return Boolean(
+      (task.assigneeUid && task.assigneeUid === currentUser.uid) ||
+      (currentUser.displayName && task.assignee === currentUser.displayName)
+    );
+  }
+  return true;
+}
+
 export function filterTasks(
   tasks: readonly ProductionTaskView[],
   filter: TaskListFilter,
   currentUser: { uid?: string; displayName?: string } | null,
   today: string
 ): ProductionTaskView[] {
-  return sortTasksByDeadline(tasks.filter((task) => {
-    if (filter === "incomplete") return getTaskProgressStatus(task) !== "complete";
-    if (filter === "due-soon") return getTaskDeadlineWarning(task, today) !== "none";
-    if (filter === "mine") {
-      if (!currentUser) return false;
-      return Boolean(
-        (task.assigneeUid && task.assigneeUid === currentUser.uid) ||
-        (currentUser.displayName && task.assignee === currentUser.displayName)
-      );
-    }
-    return true;
-  }));
+  return sortTasksByDeadline(tasks.filter((task) => matchesTaskListFilter(task, filter, currentUser, today)));
+}
+
+export function filterAndSortTasks(
+  tasks: readonly ProductionTaskView[],
+  filter: TaskListFilter,
+  section: TaskSectionFilter,
+  sort: TaskSortOption,
+  currentUser: { uid?: string; displayName?: string } | null,
+  today: string
+): ProductionTaskView[] {
+  const filtered = tasks.filter((task) => {
+    if (!matchesTaskListFilter(task, filter, currentUser, today)) return false;
+    if (section === "all") return true;
+    if (section === "other") return task.section === null;
+    return task.section === section;
+  });
+  return sortTasks(filtered, sort);
 }
 
 export function getTokyoDateString(now = new Date()): string {

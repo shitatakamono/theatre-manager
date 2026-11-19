@@ -7,7 +7,7 @@ import { useAuth } from "@/app/AuthProvider";
 import type { ProjectMember } from "@/lib/auth";
 import { addTask, deleteTask, getCategories, getProjectMembers, getProjectPerformanceData, getTasks, toggleTask, toCategoryMap, updateTask, type ProjectPerformanceRecord, type Task } from "@/lib/firestore";
 import { buildProductionTaskViews, canToggleProductionTask, type ProductionTaskView } from "@/lib/production-task-view";
-import { buildTaskCreateInput, filterTasks, formatTaskDueDate, getTaskAssignee, getTaskDeadlineWarning, getTaskDueDate, getTaskProgressStatus, getTokyoDateString, TASK_PRIORITY_LABELS, TASK_STATUS_LABELS, TASK_WARNING_LABELS, type TaskCreateInput, type TaskListFilter } from "@/lib/task-view";
+import { buildTaskCreateInput, filterAndSortTasks, formatTaskDueDate, getTaskAssignee, getTaskDeadlineWarning, getTaskDueDate, getTaskProgressStatus, getTokyoDateString, TASK_PRIORITY_LABELS, TASK_SECTION_FILTER_OPTIONS, TASK_SORT_OPTIONS, TASK_STATUS_LABELS, TASK_WARNING_LABELS, type TaskCreateInput, type TaskListFilter, type TaskSectionFilter, type TaskSortOption } from "@/lib/task-view";
 import { TASK_RELATED_VIEW_DEFINITIONS, type TaskRelatedView } from "@/lib/task-related-views";
 import { TaskDetailDrawer } from "../TaskDetailDrawer";
 import { useProjectAccess } from "../ProjectAccess";
@@ -48,6 +48,8 @@ export default function TasksPage({ params }: TasksPageProps) {
   const [flyers, setFlyers] = useState<Flyer[]>([]);
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [filter, setFilter] = useState<TaskListFilter>("all");
+  const [sectionFilter, setSectionFilter] = useState<TaskSectionFilter>("all");
+  const [sort, setSort] = useState<TaskSortOption>("deadline-asc");
   const [selectedTask, setSelectedTask] = useState<ProductionTaskView | null>(null);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -70,7 +72,10 @@ export default function TasksPage({ params }: TasksPageProps) {
   }, [projectId]);
 
   const tasks = useMemo(() => project ? buildProductionTaskViews(project, customTasks, flyers) : [], [customTasks, flyers, project]);
-  const filtered = useMemo(() => filterTasks(tasks, filter, profile, today), [filter, profile, tasks, today]);
+  const filtered = useMemo(
+    () => filterAndSortTasks(tasks, filter, sectionFilter, sort, profile, today),
+    [filter, profile, sectionFilter, sort, tasks, today]
+  );
 
   async function handleToggleComplete(task: ProductionTaskView) {
     if (!canToggleProductionTask(task, canEdit) || !task.customTaskId) return;
@@ -160,7 +165,14 @@ export default function TasksPage({ params }: TasksPageProps) {
       <label className={styles.taskNote}><span>メモ</span><textarea rows={3} value={taskInput.note} onChange={(event) => setTaskInput((current) => ({ ...current, note: event.target.value }))} /></label>
       <div className={styles.createActions}><button type="button" onClick={resetTaskForm}>キャンセル</button><button type="submit" disabled={creating}>{creating ? "保存中…" : editingTaskId ? "変更を保存" : "追加する"}</button></div>
     </form>}
-    <nav className={styles.filters} aria-label="タスク絞り込み">{filters.map((item) => <button aria-pressed={filter === item.value} key={item.value} onClick={() => setFilter(item.value)} type="button">{item.label}</button>)}</nav>
+    <div className={styles.taskControls}>
+      <nav className={styles.filters} aria-label="表示対象">{filters.map((item) => <button aria-pressed={filter === item.value} key={item.value} onClick={() => setFilter(item.value)} type="button">{item.label}</button>)}</nav>
+      <div className={styles.selectControls}>
+        <label><span>制作セクション</span><select aria-label="制作セクション" value={sectionFilter} onChange={(event) => setSectionFilter(event.target.value as TaskSectionFilter)}>{TASK_SECTION_FILTER_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+        <label><span>並び替え</span><select aria-label="並び替え" value={sort} onChange={(event) => setSort(event.target.value as TaskSortOption)}>{TASK_SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+        <p className={styles.resultCount} aria-live="polite">{filtered.length}件</p>
+      </div>
+    </div>
     {error && <p className={styles.error} role="alert">{error}</p>}
     {loading ? <p className={styles.empty}>読み込み中…</p> : filtered.length === 0 ? <p className={styles.empty}>条件に一致するタスクはありません。</p> : <>
       <div className={styles.tableWrap}><table><thead><tr><th>期限</th><th>タスク名</th><th>担当</th><th>状態</th></tr></thead><tbody>{filtered.map((task) => {
